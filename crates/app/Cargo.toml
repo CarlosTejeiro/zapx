@@ -17,10 +17,13 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri      = { version = "2", features = [] }
-serde      = { workspace = true }
-serde_json = { workspace = true }
-thiserror  = { workspace = true }
-anyhow     = { workspace = true }
-tracing    = { workspace = true }
+tauri              = { version = "2", features = [] }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+thiserror          = { workspace = true }
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
+tokio              = { workspace = true }
+uuid               = { workspace = true }
+core-transport     = { path = "../core-transport" }

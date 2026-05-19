@@ -7,11 +7,13 @@
 //! public API (see style guide §2, API design).
 
 pub mod error;
+pub mod local_pty;
 
-mod local_pty;
 mod serial;
 mod ssh;
 mod telnet;
+
+pub use local_pty::LocalPty;
 
 /// A bidirectional byte stream with session lifecycle management.
 ///

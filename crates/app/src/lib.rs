@@ -19,7 +19,10 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            commands::sessions::list_sessions,
+            commands::sessions::open_local_session,
+            commands::sessions::send_input,
+            commands::sessions::resize_terminal,
+            commands::sessions::close_session,
             commands::folders::list_folders,
             commands::settings::get_settings,
         ])

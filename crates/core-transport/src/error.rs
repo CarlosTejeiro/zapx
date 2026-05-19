@@ -2,6 +2,18 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    // Protocol-specific variants are added in Bloque 1–4.
-    // Keep this enum exhaustive; callers must handle new variants.
+    #[error("failed to spawn shell process: {0}")]
+    SpawnFailed(String),
+
+    #[error("I/O closed unexpectedly")]
+    IoClosed,
+
+    #[error("failed to resize terminal: {0}")]
+    ResizeFailed(String),
+
+    #[error("not connected")]
+    NotConnected,
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }
