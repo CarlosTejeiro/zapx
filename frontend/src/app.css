@@ -1,0 +1,18 @@
+/* Tailwind CSS v4 — all configuration is done in CSS via @theme blocks.
+   The @tailwindcss/vite plugin processes this import; no postcss.config needed. */
+@import "tailwindcss";
+
+/* Global base resets */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#app {
+  height: 100%;
+}

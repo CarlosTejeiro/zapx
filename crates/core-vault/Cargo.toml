@@ -1,0 +1,11 @@
+[package]
+name             = "core-vault"
+edition.workspace    = true
+version.workspace    = true
+license.workspace    = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+zeroize   = { workspace = true }

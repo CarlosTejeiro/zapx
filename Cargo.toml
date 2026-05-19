@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/app",
+    "crates/core-config",
+    "crates/core-highlight",
+    "crates/core-logging",
+    "crates/core-persistence",
+    "crates/core-session",
+    "crates/core-terminal",
+    "crates/core-transport",
+    "crates/core-vault",
+    "xtask",
+]
+
+[workspace.package]
+edition    = "2021"
+version    = "0.0.1"
+authors    = ["zapx contributors"]
+license    = "Apache-2.0"
+repository = "https://github.com/TBD/zapx"
+rust-version = "1.80"
+
+# ---------------------------------------------------------------------------
+# Workspace-level dependency pins.
+# Each crate opts in with `dep = { workspace = true }`.
+# Versions are pinned to a major; Cargo.lock tracks the exact minor/patch.
+# ---------------------------------------------------------------------------
+[workspace.dependencies]
+# Async runtime — tokio is the only runtime; never mix (style guide §2)
+tokio   = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Error handling — thiserror in libs, anyhow only in app layer (style guide §2)
+thiserror = "2"
+anyhow    = "1"
+
+# Serialization
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Structured logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Credential zeroing — mandatory for secret-holding types (style guide §4)
+zeroize = { version = "1", features = ["derive"] }
+
+# Async traits — needed until AFIT is fully object-safe in stable Rust
+async-trait = "0.1"

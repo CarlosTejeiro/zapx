@@ -1,0 +1,35 @@
+# Rust build artefacts
+/target/
+Cargo.lock~
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+.pnpm-store/
+
+# Tauri bundle outputs
+src-tauri/target/
+crates/app/target/
+
+# Secrets — never commit
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor state (personal configs belong in global gitignore, not here)
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Build logs
+*.log

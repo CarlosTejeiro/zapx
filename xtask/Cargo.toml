@@ -1,0 +1,10 @@
+[package]
+name             = "xtask"
+edition.workspace    = true
+version.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# xtask is build/release automation — deps must be minimal and never bleed
+# into the product's dependency graph.
+[dependencies]
