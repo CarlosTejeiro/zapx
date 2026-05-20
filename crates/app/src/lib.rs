@@ -87,6 +87,9 @@ pub fn run() {
             commands::logging::list_session_logs,
             commands::logging::list_all_session_logs,
             commands::settings::get_settings,
+            commands::settings::get_setting,
+            commands::settings::set_setting,
+            commands::settings::list_color_schemes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running zapx");

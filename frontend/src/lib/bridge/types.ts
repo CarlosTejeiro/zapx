@@ -33,6 +33,35 @@ export interface HighlightRule {
   sort_order: number
 }
 
+export interface ColorScheme {
+  id: number
+  name: string
+  palette_json: string
+  is_builtin: boolean
+}
+
+export interface ColorPalette {
+  background: string
+  foreground: string
+  cursor: string
+  black: string
+  red: string
+  green: string
+  yellow: string
+  blue: string
+  magenta: string
+  cyan: string
+  white: string
+  brightBlack: string
+  brightRed: string
+  brightGreen: string
+  brightYellow: string
+  brightBlue: string
+  brightMagenta: string
+  brightCyan: string
+  brightWhite: string
+}
+
 export interface SessionLog {
   id: number
   session_id: number | null

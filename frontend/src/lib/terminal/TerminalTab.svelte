@@ -15,6 +15,7 @@
     listSessionLogs,
   } from '$lib/bridge/commands'
   import type { SavedSession, SessionLog } from '$lib/bridge/types'
+  import { terminalSettings, activePalette } from '$lib/stores/settings.svelte'
 
   interface SshParams {
     host: string
@@ -33,6 +34,8 @@
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
   let errorMsg = $state<string | null>(null)
+  // Held for $effect theme/font reactivity — set inside onMount.
+  let term: InstanceType<typeof Terminal> | null = null
 
   // Logging state
   let isLogging = $state(false)
@@ -114,31 +117,13 @@
   }
 
   onMount(async () => {
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Cascadia Code, JetBrains Mono, monospace',
-      theme: {
-        background: '#09090b',
-        foreground: '#e4e4e7',
-        cursor: '#a1a1aa',
-        black: '#18181b',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#a855f7',
-        cyan: '#06b6d4',
-        white: '#d4d4d8',
-        brightBlack: '#3f3f46',
-        brightRed: '#f87171',
-        brightGreen: '#4ade80',
-        brightYellow: '#fde047',
-        brightBlue: '#60a5fa',
-        brightMagenta: '#c084fc',
-        brightCyan: '#22d3ee',
-        brightWhite: '#f4f4f5',
-      },
+    term = new Terminal({
+      cursorBlink: terminalSettings.cursorBlink,
+      cursorStyle: terminalSettings.cursorStyle,
+      fontSize: terminalSettings.fontSize,
+      fontFamily: terminalSettings.fontFamily,
+      lineHeight: terminalSettings.lineHeight,
+      theme: activePalette,
     })
 
     const fitAddon = new FitAddon()
@@ -190,7 +175,7 @@
     const unlisten: UnlistenFn = await listen<TerminalDataPayload>(
       'terminal-data',
       (event) => {
-        if (event.payload.session_id !== sessionId) return
+        if (!term || event.payload.session_id !== sessionId) return
         term.write(new Uint8Array(event.payload.data))
       },
     )
@@ -204,6 +189,7 @@
 
     // Resize terminal when the container size changes.
     const observer = new ResizeObserver(() => {
+      if (!term) return
       fitAddon.fit()
       if (sessionId) {
         invoke('resize_terminal', {
@@ -218,7 +204,7 @@
     onDestroy(async () => {
       observer.disconnect()
       unlisten()
-      term.dispose()
+      term?.dispose()
       if (sessionId) {
         if (isLogging) {
           await stopSessionLogging(sessionId).catch(console.error)
@@ -238,6 +224,16 @@
         searchAddon.clearDecorations()
       }
     }
+  })
+
+  // Reactive appearance: push new theme/font settings to the live terminal
+  $effect(() => {
+    if (!term) return
+    term.options.theme = activePalette
+    term.options.fontSize = terminalSettings.fontSize
+    term.options.fontFamily = terminalSettings.fontFamily
+    term.options.cursorStyle = terminalSettings.cursorStyle
+    term.options.cursorBlink = terminalSettings.cursorBlink
   })
 </script>
 

@@ -3,7 +3,9 @@
   import SessionTree from '$lib/sessions/SessionTree.svelte'
   import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
+  import TerminalSettingsPanel from '$lib/settings/TerminalSettingsPanel.svelte'
   import { listFolders } from '$lib/bridge/commands'
+  import { loadSettings } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder } from '$lib/bridge/types'
 
   interface Tab {
@@ -23,8 +25,12 @@
   let activeId = $state(firstTab.id)
   let showNewSession = $state(false)
   let showHighlights = $state(false)
+  let showAppearance = $state(false)
   let folders = $state<Folder[]>([])
   let sessionTreeKey = $state(0)
+
+  // Load settings (themes, font prefs) on app start
+  $effect(() => { loadSettings() })
 
   async function loadFolders() {
     try {
@@ -100,6 +106,19 @@
         </button>
         {#if showHighlights}
           <HighlightRulesPanel />
+        {/if}
+      </div>
+      <div class="highlight-section">
+        <button
+          class="highlight-toggle"
+          onclick={() => (showAppearance = !showAppearance)}
+          aria-expanded={showAppearance}
+        >
+          <span>Appearance</span>
+          <span class="chevron">{showAppearance ? '▲' : '▼'}</span>
+        </button>
+        {#if showAppearance}
+          <TerminalSettingsPanel />
         {/if}
       </div>
     </aside>

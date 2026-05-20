@@ -19,6 +19,14 @@ pub use error::Error;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ColorScheme {
+    pub id: i64,
+    pub name: String,
+    pub palette_json: String,
+    pub is_builtin: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionLog {
     pub id: i64,
     pub session_id: Option<i64>,
@@ -105,6 +113,9 @@ impl Database {
         }
         if version < 3 {
             conn.execute_batch(include_str!("migrations/003_session_logs.sql"))?;
+        }
+        if version < 4 {
+            conn.execute_batch(include_str!("migrations/004_appearance.sql"))?;
         }
         Ok(())
     }
@@ -442,5 +453,67 @@ impl Database {
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    // -----------------------------------------------------------------------
+    // Color scheme CRUD
+    // -----------------------------------------------------------------------
+
+    pub fn list_color_schemes(&self) -> Result<Vec<ColorScheme>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, palette_json, is_builtin FROM color_schemes ORDER BY is_builtin DESC, name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ColorScheme {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                palette_json: row.get(2)?,
+                is_builtin: row.get::<_, i64>(3)? != 0,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    // -----------------------------------------------------------------------
+    // Settings CRUD
+    // -----------------------------------------------------------------------
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT value FROM settings WHERE key=?1",
+            rusqlite::params![key],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1,?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            rusqlite::params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_settings(&self) -> Result<std::collections::HashMap<String, String>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for r in rows {
+            let (k, v) = r?;
+            map.insert(k, v);
+        }
+        Ok(map)
     }
 }
