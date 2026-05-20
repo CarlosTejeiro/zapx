@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use core_persistence::SavedSession;
-use core_transport::SessionCmd;
+use core_transport::{SerialTransport, SessionCmd, TelnetTransport};
 
 use crate::error::AppError;
 use crate::state::{ActiveSession, AppState};
@@ -254,6 +254,7 @@ pub async fn create_saved_session(
             Some(port),
             Some(&username),
             Some(cred_id),
+            "{}",
         )
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -353,10 +354,221 @@ pub async fn open_saved_session(
             tracing::debug!(session_id, saved_session_id, "saved session opened");
             Ok(session_id)
         }
+        "telnet" => {
+            let host = session
+                .host
+                .ok_or_else(|| AppError::Internal("missing host".into()))?;
+            let port = session.port.unwrap_or(23);
+
+            let session_id = Uuid::new_v4().to_string();
+            let transport = TelnetTransport::connect(host.clone(), port)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+
+            let sid = session_id.clone();
+            let app_handle = app.clone();
+            let cmd_tx = transport.start_io_loop(cols, rows, move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            });
+
+            state
+                .sessions
+                .lock()
+                .unwrap()
+                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+
+            state.db.touch_session(saved_session_id).ok();
+            tracing::debug!(
+                session_id,
+                saved_session_id,
+                host,
+                port,
+                "telnet session opened"
+            );
+            Ok(session_id)
+        }
+        "serial" => {
+            let opts: serde_json::Value =
+                serde_json::from_str(&session.options_json).unwrap_or(serde_json::json!({}));
+            let device = opts["device"]
+                .as_str()
+                .ok_or_else(|| AppError::Internal("missing serial device".into()))?
+                .to_string();
+            let baud_rate = opts["baud_rate"].as_u64().unwrap_or(9600) as u32;
+
+            let session_id = Uuid::new_v4().to_string();
+            let transport = tokio::task::spawn_blocking({
+                let device = device.clone();
+                move || SerialTransport::open(&device, baud_rate)
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+            let sid = session_id.clone();
+            let app_handle = app.clone();
+            let cmd_tx = transport.start_io_loop(move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            });
+
+            state
+                .sessions
+                .lock()
+                .unwrap()
+                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+
+            state.db.touch_session(saved_session_id).ok();
+            tracing::debug!(
+                session_id,
+                saved_session_id,
+                device,
+                baud_rate,
+                "serial session opened"
+            );
+            Ok(session_id)
+        }
         p => Err(AppError::Internal(format!(
             "protocol '{p}' not yet supported"
         ))),
     }
+}
+
+/// Open a Telnet session directly (without saving).
+#[tauri::command]
+pub async fn open_telnet_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host: String,
+    port: u16,
+    cols: u16,
+    rows: u16,
+) -> Result<String, AppError> {
+    let session_id = Uuid::new_v4().to_string();
+    let transport = TelnetTransport::connect(host.clone(), port)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let sid = session_id.clone();
+    let app_handle = app.clone();
+    let cmd_tx = transport.start_io_loop(cols, rows, move |data| {
+        let _ = app_handle.emit(
+            "terminal-data",
+            TerminalDataPayload {
+                session_id: sid.clone(),
+                data,
+            },
+        );
+    });
+
+    state
+        .sessions
+        .lock()
+        .unwrap()
+        .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+
+    tracing::debug!(session_id, host, port, "telnet session opened");
+    Ok(session_id)
+}
+
+/// Open a Serial session directly (without saving).
+#[tauri::command]
+pub async fn open_serial_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    device: String,
+    baud_rate: u32,
+) -> Result<String, AppError> {
+    let session_id = Uuid::new_v4().to_string();
+    let transport = tokio::task::spawn_blocking({
+        let device = device.clone();
+        move || SerialTransport::open(&device, baud_rate)
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let sid = session_id.clone();
+    let app_handle = app.clone();
+    let cmd_tx = transport.start_io_loop(move |data| {
+        let _ = app_handle.emit(
+            "terminal-data",
+            TerminalDataPayload {
+                session_id: sid.clone(),
+                data,
+            },
+        );
+    });
+
+    // Serial sessions get a default size; resize is ignored by the transport.
+    state.sessions.lock().unwrap().insert(
+        session_id.clone(),
+        ActiveSession {
+            cmd_tx,
+            cols: 80,
+            rows: 24,
+        },
+    );
+
+    tracing::debug!(session_id, device, baud_rate, "serial session opened");
+    Ok(session_id)
+}
+
+/// List available serial ports on this machine.
+#[tauri::command]
+pub async fn list_serial_ports() -> Result<Vec<String>, AppError> {
+    Ok(core_transport::list_serial_ports())
+}
+
+/// Save a new Telnet session.
+#[tauri::command]
+pub async fn create_telnet_session(
+    state: State<'_, AppState>,
+    name: String,
+    folder_id: Option<i64>,
+    host: String,
+    port: u16,
+) -> Result<i64, AppError> {
+    state
+        .db
+        .create_session(
+            folder_id,
+            &name,
+            "telnet",
+            Some(&host),
+            Some(port),
+            None,
+            None,
+            "{}",
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Save a new Serial session (device and baud stored in options_json).
+#[tauri::command]
+pub async fn create_serial_session(
+    state: State<'_, AppState>,
+    name: String,
+    folder_id: Option<i64>,
+    device: String,
+    baud_rate: u32,
+) -> Result<i64, AppError> {
+    let opts = serde_json::json!({ "device": device, "baud_rate": baud_rate }).to_string();
+    state
+        .db
+        .create_session(folder_id, &name, "serial", None, None, None, None, &opts)
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 #[derive(serde::Serialize, Clone)]

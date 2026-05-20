@@ -8,13 +8,14 @@
 
 pub mod error;
 pub mod local_pty;
+pub mod serial;
 pub mod ssh;
-
-mod serial;
-mod telnet;
+pub mod telnet;
 
 pub use local_pty::LocalPty;
+pub use serial::{list_ports as list_serial_ports, SerialTransport};
 pub use ssh::SshTransport;
+pub use telnet::TelnetTransport;
 
 /// Commands sent to a live session's I/O task.
 #[derive(Debug)]

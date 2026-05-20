@@ -22,4 +22,10 @@ pub enum Error {
 
     #[error("authentication failed")]
     AuthFailed,
+
+    #[error("serial port error: {0}")]
+    Serial(#[from] tokio_serial::Error),
+
+    #[error("connection refused or timed out")]
+    ConnectionFailed,
 }

@@ -36,6 +36,7 @@ pub struct SavedSession {
     pub port: Option<u16>,
     pub username: Option<String>,
     pub credential_id: Option<i64>,
+    pub options_json: String,
     pub last_used_at: Option<String>,
 }
 
@@ -135,11 +136,13 @@ impl Database {
         port: Option<u16>,
         username: Option<&str>,
         credential_id: Option<i64>,
+        options_json: &str,
     ) -> Result<i64, Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO sessions (folder_id, name, protocol, host, port, username, credential_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            "INSERT INTO sessions
+             (folder_id, name, protocol, host, port, username, credential_id, options_json)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             rusqlite::params![
                 folder_id,
                 name,
@@ -148,6 +151,7 @@ impl Database {
                 port.map(|p| p as i64),
                 username,
                 credential_id,
+                options_json,
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -156,7 +160,8 @@ impl Database {
     pub fn list_sessions(&self) -> Result<Vec<SavedSession>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, folder_id, name, protocol, host, port, username, credential_id, last_used_at
+            "SELECT id, folder_id, name, protocol, host, port, username, credential_id,
+                    options_json, last_used_at
              FROM sessions ORDER BY folder_id NULLS LAST, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -169,7 +174,8 @@ impl Database {
                 port: row.get::<_, Option<i64>>(5)?.map(|p| p as u16),
                 username: row.get(6)?,
                 credential_id: row.get(7)?,
-                last_used_at: row.get(8)?,
+                options_json: row.get(8)?,
+                last_used_at: row.get(9)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -178,7 +184,8 @@ impl Database {
     pub fn get_session(&self, id: i64) -> Result<SavedSession, Error> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, folder_id, name, protocol, host, port, username, credential_id, last_used_at
+            "SELECT id, folder_id, name, protocol, host, port, username, credential_id,
+                    options_json, last_used_at
              FROM sessions WHERE id=?1",
             rusqlite::params![id],
             |row| {
@@ -191,7 +198,8 @@ impl Database {
                     port: row.get::<_, Option<i64>>(5)?.map(|p| p as u16),
                     username: row.get(6)?,
                     credential_id: row.get(7)?,
-                    last_used_at: row.get(8)?,
+                    options_json: row.get(8)?,
+                    last_used_at: row.get(9)?,
                 })
             },
         )

@@ -44,6 +44,28 @@ export async function openSavedSession(
   return invoke<string>('open_saved_session', { saved_session_id, cols, rows })
 }
 
+export async function createTelnetSession(
+  name: string,
+  folder_id: number | null,
+  host: string,
+  port: number,
+): Promise<number> {
+  return invoke<number>('create_telnet_session', { name, folder_id, host, port })
+}
+
+export async function createSerialSession(
+  name: string,
+  folder_id: number | null,
+  device: string,
+  baud_rate: number,
+): Promise<number> {
+  return invoke<number>('create_serial_session', { name, folder_id, device, baud_rate })
+}
+
+export async function listSerialPorts(): Promise<string[]> {
+  return invoke<string[]>('list_serial_ports')
+}
+
 export async function getSettings(): Promise<Record<string, unknown>> {
   return invoke<Record<string, unknown>>('get_settings')
 }

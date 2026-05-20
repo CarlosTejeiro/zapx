@@ -61,3 +61,7 @@ russh-keys = "0.46"
 # Bloque 3 — persistence + vault
 rusqlite = { version = "0.32", features = ["bundled"] }
 keyring  = "3"
+
+# Bloque 4 — serial transport
+serialport  = "4"
+tokio-serial = "5"

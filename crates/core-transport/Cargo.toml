@@ -13,3 +13,5 @@ async-trait  = { workspace = true }
 portable-pty = { workspace = true }
 russh        = { workspace = true }
 russh-keys   = { workspace = true }
+serialport   = { workspace = true }
+tokio-serial = { workspace = true }

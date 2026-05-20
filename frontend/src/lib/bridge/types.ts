@@ -9,6 +9,7 @@ export interface SavedSession {
   port: number | null
   username: string | null
   credential_id: number | null
+  options_json: string
   last_used_at: string | null
 }
 
