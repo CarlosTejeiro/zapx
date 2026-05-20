@@ -1,9 +1,13 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
   import SessionTree from '$lib/sessions/SessionTree.svelte'
   import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
+  import QuickConnectDialog from '$lib/sessions/QuickConnectDialog.svelte'
+  import type { ConnectParams } from '$lib/sessions/QuickConnectDialog.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
   import TerminalSettingsPanel from '$lib/settings/TerminalSettingsPanel.svelte'
+  import SettingsModal from '$lib/settings/SettingsModal.svelte'
   import { listFolders } from '$lib/bridge/commands'
   import { loadSettings } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder } from '$lib/bridge/types'
@@ -11,12 +15,9 @@
   interface Tab {
     id: number
     label: string
-    /** UUID of the live terminal session (set after connection is established) */
-    liveSessionId?: string
-    /** Saved session to open on mount */
     savedSession?: SavedSession
-    /** Inline SSH params for ad-hoc connections */
     ssh?: { host: string; port: number; user: string; password: string }
+    telnet?: { host: string; port: number }
   }
 
   let nextId = 1
@@ -24,13 +25,102 @@
   let tabs = $state<Tab[]>([firstTab])
   let activeId = $state(firstTab.id)
   let showNewSession = $state(false)
+  let showQuickConnect = $state(false)
+  let showSettings = $state(false)
   let showHighlights = $state(false)
   let showAppearance = $state(false)
   let folders = $state<Folder[]>([])
   let sessionTreeKey = $state(0)
 
   // Load settings (themes, font prefs) on app start
-  $effect(() => { loadSettings() })
+  $effect(() => {
+    loadSettings()
+  })
+
+  onMount(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if (!e.ctrlKey) return
+      switch (e.key) {
+        case 'n':
+          e.preventDefault()
+          showQuickConnect = true
+          break
+        case 't':
+          e.preventDefault()
+          addLocalTab()
+          break
+        case 'w':
+          e.preventDefault()
+          if (tabs.length > 1) closeTab(activeId)
+          break
+        case 'Tab':
+          e.preventDefault()
+          cycleTab(e.shiftKey ? -1 : 1)
+          break
+        case ',':
+          e.preventDefault()
+          showSettings = true
+          break
+      }
+    }
+    document.addEventListener('keydown', handleKeydown)
+    return () => document.removeEventListener('keydown', handleKeydown)
+  })
+
+  // Called by TerminalTab when the terminal captures a global shortcut
+  function handleGlobalShortcut(key: string, e: KeyboardEvent) {
+    switch (key) {
+      case 'n':
+        showQuickConnect = true
+        break
+      case 't':
+        addLocalTab()
+        break
+      case 'w':
+        if (tabs.length > 1) closeTab(activeId)
+        break
+      case 'Tab':
+        cycleTab(e.shiftKey ? -1 : 1)
+        break
+      case ',':
+        showSettings = true
+        break
+    }
+  }
+
+  function cycleTab(dir: 1 | -1) {
+    const idx = tabs.findIndex((t) => t.id === activeId)
+    const next = tabs[(idx + dir + tabs.length) % tabs.length]
+    if (next) activeId = next.id
+  }
+
+  function addLocalTab() {
+    const tab: Tab = { id: nextId++, label: 'shell' }
+    tabs = [...tabs, tab]
+    activeId = tab.id
+  }
+
+  function handleQuickConnect(params: ConnectParams) {
+    showQuickConnect = false
+    let tab: Tab
+    if (params.type === 'local') {
+      tab = { id: nextId++, label: 'shell' }
+    } else if (params.type === 'ssh') {
+      tab = {
+        id: nextId++,
+        label: params.host,
+        ssh: { host: params.host, port: params.port, user: params.user, password: params.password },
+      }
+    } else {
+      tab = {
+        id: nextId++,
+        label: `telnet:${params.host}`,
+        telnet: { host: params.host, port: params.port },
+      }
+    }
+    tabs = [...tabs, tab]
+    activeId = tab.id
+  }
 
   async function loadFolders() {
     try {
@@ -41,11 +131,7 @@
   }
 
   function openSavedSession(s: SavedSession) {
-    const tab: Tab = {
-      id: nextId++,
-      label: s.name,
-      savedSession: s,
-    }
+    const tab: Tab = { id: nextId++, label: s.name, savedSession: s }
     tabs = [...tabs, tab]
     activeId = tab.id
   }
@@ -87,7 +173,23 @@
           {/if}
         </button>
       {/each}
+      <button class="new-tab-btn" onclick={addLocalTab} title="New local tab (Ctrl+T)">+</button>
     </div>
+    <span class="flex-1"></span>
+    <button
+      class="header-btn"
+      onclick={() => (showQuickConnect = true)}
+      title="Quick Connect (Ctrl+N)"
+    >
+      ⚡ Connect
+    </button>
+    <button
+      class="header-btn"
+      onclick={() => (showSettings = true)}
+      title="Settings (Ctrl+,)"
+    >
+      ⚙ Settings
+    </button>
   </header>
 
   <div class="body">
@@ -95,9 +197,9 @@
       {#key sessionTreeKey}
         <SessionTree onOpen={openSavedSession} onAdd={openNewSessionDialog} />
       {/key}
-      <div class="highlight-section">
+      <div class="sidebar-section">
         <button
-          class="highlight-toggle"
+          class="section-toggle"
           onclick={() => (showHighlights = !showHighlights)}
           aria-expanded={showHighlights}
         >
@@ -108,9 +210,9 @@
           <HighlightRulesPanel />
         {/if}
       </div>
-      <div class="highlight-section">
+      <div class="sidebar-section">
         <button
-          class="highlight-toggle"
+          class="section-toggle"
           onclick={() => (showAppearance = !showAppearance)}
           aria-expanded={showAppearance}
         >
@@ -126,7 +228,12 @@
     <main class="terminal-area">
       {#each tabs as tab (tab.id)}
         <div class="tab-content" class:hidden={activeId !== tab.id}>
-          <TerminalTab savedSession={tab.savedSession} ssh={tab.ssh} />
+          <TerminalTab
+            savedSession={tab.savedSession}
+            ssh={tab.ssh}
+            telnet={tab.telnet}
+            onGlobalShortcut={handleGlobalShortcut}
+          />
         </div>
       {/each}
     </main>
@@ -141,6 +248,14 @@
   />
 {/if}
 
+{#if showQuickConnect}
+  <QuickConnectDialog onConnect={handleQuickConnect} onCancel={() => (showQuickConnect = false)} />
+{/if}
+
+{#if showSettings}
+  <SettingsModal onClose={() => (showSettings = false)} />
+{/if}
+
 <style>
   .layout {
     display: flex;
@@ -153,7 +268,7 @@
   .tab-bar {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
     height: 2.25rem;
     padding: 0 0.75rem;
     background: #18181b;
@@ -171,6 +286,7 @@
 
   .tabs {
     display: flex;
+    align-items: center;
     gap: 0.25rem;
   }
 
@@ -210,6 +326,42 @@
     color: #ef4444;
   }
 
+  .new-tab-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #52525b;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.2rem;
+    font-family: inherit;
+  }
+  .new-tab-btn:hover {
+    color: #e4e4e7;
+    background: #27272a;
+  }
+
+  .flex-1 {
+    flex: 1;
+  }
+
+  .header-btn {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    color: #a1a1aa;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .header-btn:hover {
+    color: #e4e4e7;
+    border-color: #71717a;
+  }
+
   .body {
     flex: 1;
     display: flex;
@@ -224,14 +376,14 @@
     min-width: 0;
   }
 
-  .highlight-section {
+  .sidebar-section {
     border-top: 1px solid #27272a;
     flex-shrink: 0;
     overflow-y: auto;
     max-height: 50%;
   }
 
-  .highlight-toggle {
+  .section-toggle {
     width: 100%;
     display: flex;
     justify-content: space-between;
@@ -245,7 +397,7 @@
     font-family: inherit;
   }
 
-  .highlight-toggle:hover {
+  .section-toggle:hover {
     color: #e4e4e7;
     background: #27272a;
   }

@@ -10,6 +10,7 @@
 
   import {
     openSavedSession,
+    openTelnetSession,
     startSessionLogging,
     stopSessionLogging,
     listSessionLogs,
@@ -24,12 +25,19 @@
     password: string
   }
 
-  interface Props {
-    ssh?: SshParams
-    savedSession?: SavedSession
+  interface TelnetParams {
+    host: string
+    port: number
   }
 
-  let { ssh, savedSession }: Props = $props()
+  interface Props {
+    ssh?: SshParams
+    telnet?: TelnetParams
+    savedSession?: SavedSession
+    onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
+  }
+
+  let { ssh, telnet, savedSession, onGlobalShortcut }: Props = $props()
 
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
@@ -133,16 +141,25 @@
     term.open(container)
     fitAddon.fit()
 
-    // Ctrl+F opens search bar
+    // Ctrl+F opens search bar; other Ctrl shortcuts bubble to App for global handling
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'f' && e.type === 'keydown') {
+      if (e.type !== 'keydown') return true
+      if (e.ctrlKey && e.key === 'f') {
         showSearch = !showSearch
         if (!showSearch) searchAddon?.clearDecorations()
-        return false // prevent default xterm handling
+        return false
       }
-      if (e.key === 'Escape' && showSearch && e.type === 'keydown') {
+      if (e.key === 'Escape' && showSearch) {
         showSearch = false
         searchAddon?.clearDecorations()
+        return false
+      }
+      // Pass global shortcuts to App without xterm consuming them
+      if (
+        e.ctrlKey &&
+        (e.key === 'n' || e.key === 't' || e.key === 'w' || e.key === 'Tab' || e.key === ',')
+      ) {
+        onGlobalShortcut?.(e.key, e)
         return false
       }
       return true
@@ -162,6 +179,8 @@
           cols: term.cols,
           rows: term.rows,
         })
+      } else if (telnet) {
+        sessionId = await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
       } else {
         sessionId = await invoke<string>('open_local_session')
       }

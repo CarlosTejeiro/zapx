@@ -134,4 +134,13 @@ export async function listColorSchemes(): Promise<ColorScheme[]> {
   return invoke<ColorScheme[]>('list_color_schemes')
 }
 
+export async function openTelnetSession(
+  host: string,
+  port: number,
+  cols: number,
+  rows: number,
+): Promise<string> {
+  return invoke<string>('open_telnet_session', { host, port, cols, rows })
+}
+
 export type { SavedSession, Folder, HighlightRule, SessionLog, ColorScheme }
