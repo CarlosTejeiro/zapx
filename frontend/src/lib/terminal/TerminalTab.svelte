@@ -16,6 +16,15 @@
     data: number[]
   }
 
+  async function waitForTauri(timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if ('__TAURI_INTERNALS__' in window) return
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    throw new Error('Tauri IPC not available after ' + timeoutMs + 'ms')
+  }
+
   onMount(async () => {
     const term = new Terminal({
       cursorBlink: true,
@@ -51,6 +60,7 @@
 
     // Open the backend session.
     try {
+      await waitForTauri()
       sessionId = await invoke<string>('open_local_session')
     } catch (e) {
       errorMsg = String(e)
@@ -118,6 +128,21 @@
   .terminal-container {
     flex: 1;
     overflow: hidden;
+    background: #09090b;
+  }
+
+  :global(.xterm) {
+    height: 100%;
+    padding: 0;
+  }
+
+  :global(.xterm-viewport) {
+    background-color: #09090b !important;
+    overflow-y: hidden !important;
+  }
+
+  :global(.xterm-screen) {
+    background-color: #09090b;
   }
 
   .error {

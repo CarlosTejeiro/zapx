@@ -19,8 +19,8 @@ pub async fn open_local_session(
 ) -> Result<String, AppError> {
     let session_id = Uuid::new_v4().to_string();
 
-    let pty = core_transport::LocalPty::spawn(80, 24)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let pty =
+        core_transport::LocalPty::spawn(80, 24).map_err(|e| AppError::Internal(e.to_string()))?;
 
     let reader = pty
         .take_reader()
@@ -107,10 +107,7 @@ pub async fn resize_terminal(
 /// Dropping the writer closes the PTY's stdin, which causes the shell to
 /// receive EOF and exit. The reader task will finish when it sees the EOF.
 #[tauri::command]
-pub async fn close_session(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<(), AppError> {
+pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Result<(), AppError> {
     let removed = state.sessions.lock().unwrap().remove(&session_id);
     if removed.is_some() {
         tracing::debug!(session_id, "session closed");
