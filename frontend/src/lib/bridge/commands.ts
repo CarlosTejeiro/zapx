@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { SavedSession, Folder } from './types'
+import type { SavedSession, Folder, HighlightRule } from './types'
 
 export async function listSessions(): Promise<SavedSession[]> {
   return invoke<SavedSession[]>('list_sessions')
@@ -70,4 +70,36 @@ export async function getSettings(): Promise<Record<string, unknown>> {
   return invoke<Record<string, unknown>>('get_settings')
 }
 
-export type { SavedSession, Folder }
+export async function listHighlightRules(): Promise<HighlightRule[]> {
+  return invoke<HighlightRule[]>('list_highlight_rules')
+}
+
+export async function createHighlightRule(
+  name: string,
+  pattern: string,
+  is_regex: boolean,
+  fg_color: string | null,
+  bg_color: string | null,
+  bold: boolean,
+  underline: boolean,
+): Promise<number> {
+  return invoke<number>('create_highlight_rule', {
+    name,
+    pattern,
+    is_regex,
+    fg_color,
+    bg_color,
+    bold,
+    underline,
+  })
+}
+
+export async function toggleHighlightRule(id: number, enabled: boolean): Promise<void> {
+  return invoke<void>('toggle_highlight_rule', { id, enabled })
+}
+
+export async function deleteHighlightRule(id: number): Promise<void> {
+  return invoke<void>('delete_highlight_rule', { id })
+}
+
+export type { SavedSession, Folder, HighlightRule }

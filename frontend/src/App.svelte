@@ -2,6 +2,7 @@
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
   import SessionTree from '$lib/sessions/SessionTree.svelte'
   import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
+  import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
   import { listFolders } from '$lib/bridge/commands'
   import type { SavedSession, Folder } from '$lib/bridge/types'
 
@@ -21,6 +22,7 @@
   let tabs = $state<Tab[]>([firstTab])
   let activeId = $state(firstTab.id)
   let showNewSession = $state(false)
+  let showHighlights = $state(false)
   let folders = $state<Folder[]>([])
   let sessionTreeKey = $state(0)
 
@@ -83,9 +85,24 @@
   </header>
 
   <div class="body">
-    {#key sessionTreeKey}
-      <SessionTree onOpen={openSavedSession} onAdd={openNewSessionDialog} />
-    {/key}
+    <aside class="sidebar">
+      {#key sessionTreeKey}
+        <SessionTree onOpen={openSavedSession} onAdd={openNewSessionDialog} />
+      {/key}
+      <div class="highlight-section">
+        <button
+          class="highlight-toggle"
+          onclick={() => (showHighlights = !showHighlights)}
+          aria-expanded={showHighlights}
+        >
+          <span>Highlight Rules</span>
+          <span class="chevron">{showHighlights ? '▲' : '▼'}</span>
+        </button>
+        {#if showHighlights}
+          <HighlightRulesPanel />
+        {/if}
+      </div>
+    </aside>
 
     <main class="terminal-area">
       {#each tabs as tab (tab.id)}
@@ -178,6 +195,44 @@
     flex: 1;
     display: flex;
     overflow: hidden;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid #27272a;
+    min-width: 0;
+  }
+
+  .highlight-section {
+    border-top: 1px solid #27272a;
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 50%;
+  }
+
+  .highlight-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    background: #18181b;
+    border: none;
+    cursor: pointer;
+    color: #a1a1aa;
+    font-size: 0.75rem;
+    font-family: inherit;
+  }
+
+  .highlight-toggle:hover {
+    color: #e4e4e7;
+    background: #27272a;
+  }
+
+  .chevron {
+    font-size: 0.6rem;
   }
 
   .terminal-area {

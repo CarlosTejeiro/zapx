@@ -65,3 +65,6 @@ keyring  = "3"
 # Bloque 4 — serial transport
 serialport  = "4"
 tokio-serial = "5"
+
+# Bloque 5 — keyword highlighting
+regex = "1"

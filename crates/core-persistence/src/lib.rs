@@ -27,6 +27,20 @@ pub struct Folder {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HighlightRule {
+    pub id: i64,
+    pub name: String,
+    pub pattern: String,
+    pub is_regex: bool,
+    pub fg_color: Option<String>,
+    pub bg_color: Option<String>,
+    pub bold: bool,
+    pub underline: bool,
+    pub enabled: bool,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SavedSession {
     pub id: i64,
     pub folder_id: Option<i64>,
@@ -74,6 +88,9 @@ impl Database {
 
         if version < 1 {
             conn.execute_batch(include_str!("migrations/001_initial.sql"))?;
+        }
+        if version < 2 {
+            conn.execute_batch(include_str!("migrations/002_highlight_rules.sql"))?;
         }
         Ok(())
     }
@@ -260,6 +277,89 @@ impl Database {
     pub fn delete_credential(&self, id: i64) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM credentials WHERE id=?1", rusqlite::params![id])?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Highlight rule CRUD
+    // -----------------------------------------------------------------------
+
+    pub fn list_highlight_rules(&self) -> Result<Vec<HighlightRule>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, pattern, is_regex, fg_color, bg_color,
+                    bold, underline, enabled, sort_order
+             FROM highlight_rules ORDER BY sort_order, id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(HighlightRule {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                pattern: row.get(2)?,
+                is_regex: row.get::<_, i64>(3)? != 0,
+                fg_color: row.get(4)?,
+                bg_color: row.get(5)?,
+                bold: row.get::<_, i64>(6)? != 0,
+                underline: row.get::<_, i64>(7)? != 0,
+                enabled: row.get::<_, i64>(8)? != 0,
+                sort_order: row.get(9)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_highlight_rule(
+        &self,
+        name: &str,
+        pattern: &str,
+        is_regex: bool,
+        fg_color: Option<&str>,
+        bg_color: Option<&str>,
+        bold: bool,
+        underline: bool,
+    ) -> Result<i64, Error> {
+        let conn = self.conn.lock().unwrap();
+        let sort_order: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order),0)+1 FROM highlight_rules",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        conn.execute(
+            "INSERT INTO highlight_rules
+             (name, pattern, is_regex, fg_color, bg_color, bold, underline, sort_order)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            rusqlite::params![
+                name,
+                pattern,
+                is_regex as i64,
+                fg_color,
+                bg_color,
+                bold as i64,
+                underline as i64,
+                sort_order
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn toggle_highlight_rule(&self, id: i64, enabled: bool) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE highlight_rules SET enabled=?1 WHERE id=?2",
+            rusqlite::params![enabled as i64, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_highlight_rule(&self, id: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM highlight_rules WHERE id=?1",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 }

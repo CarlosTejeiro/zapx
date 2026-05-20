@@ -99,6 +99,7 @@ name = "app"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "core-highlight",
  "core-persistence",
  "core-transport",
  "core-vault",
@@ -563,6 +564,8 @@ dependencies = [
 name = "core-highlight"
 version = "0.0.1"
 dependencies = [
+ "regex",
+ "serde",
  "thiserror 2.0.18",
 ]
 

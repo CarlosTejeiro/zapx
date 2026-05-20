@@ -19,3 +19,16 @@ export interface Folder {
   name: string
   sort_order: number
 }
+
+export interface HighlightRule {
+  id: number
+  name: string
+  pattern: string
+  is_regex: boolean
+  fg_color: string | null
+  bg_color: string | null
+  bold: boolean
+  underline: boolean
+  enabled: boolean
+  sort_order: number
+}

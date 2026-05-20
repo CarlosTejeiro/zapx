@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -19,4 +19,6 @@ pub struct AppState {
     pub sessions: Mutex<HashMap<String, ActiveSession>>,
     /// SQLite database (folders, saved sessions, credential references).
     pub db: core_persistence::Database,
+    /// Keyword highlighter — rebuilt whenever rules change.
+    pub highlighter: Arc<RwLock<core_highlight::Highlighter>>,
 }

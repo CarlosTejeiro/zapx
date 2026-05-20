@@ -5,7 +5,7 @@ mod menu;
 mod state;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 use tauri::Manager;
 
@@ -29,9 +29,29 @@ pub fn run() {
             let db = core_persistence::Database::open(&db_path)
                 .map_err(|e| format!("DB init failed: {e}"))?;
 
+            let rules = db.list_highlight_rules().unwrap_or_default();
+            let highlighter = Arc::new(RwLock::new(core_highlight::Highlighter::new(
+                rules
+                    .into_iter()
+                    .map(|r| core_highlight::HighlightRule {
+                        id: r.id,
+                        name: r.name,
+                        pattern: r.pattern,
+                        is_regex: r.is_regex,
+                        fg_color: r.fg_color,
+                        bg_color: r.bg_color,
+                        bold: r.bold,
+                        underline: r.underline,
+                        enabled: r.enabled,
+                        sort_order: r.sort_order,
+                    })
+                    .collect(),
+            )));
+
             app.manage(AppState {
                 sessions: Mutex::new(HashMap::new()),
                 db,
+                highlighter,
             });
             Ok(())
         })
@@ -54,6 +74,10 @@ pub fn run() {
             commands::folders::create_folder,
             commands::folders::rename_folder,
             commands::folders::delete_folder,
+            commands::highlight::list_highlight_rules,
+            commands::highlight::create_highlight_rule,
+            commands::highlight::toggle_highlight_rule,
+            commands::highlight::delete_highlight_rule,
             commands::settings::get_settings,
         ])
         .run(tauri::generate_context!())
