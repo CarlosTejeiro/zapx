@@ -26,6 +26,8 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("zapx.db");
+            let log_dir = data_dir.join("session_logs");
+            std::fs::create_dir_all(&log_dir)?;
             let db = core_persistence::Database::open(&db_path)
                 .map_err(|e| format!("DB init failed: {e}"))?;
 
@@ -52,6 +54,8 @@ pub fn run() {
                 sessions: Mutex::new(HashMap::new()),
                 db,
                 highlighter,
+                loggers: Arc::new(Mutex::new(HashMap::new())),
+                log_dir,
             });
             Ok(())
         })
@@ -78,6 +82,10 @@ pub fn run() {
             commands::highlight::create_highlight_rule,
             commands::highlight::toggle_highlight_rule,
             commands::highlight::delete_highlight_rule,
+            commands::logging::start_session_logging,
+            commands::logging::stop_session_logging,
+            commands::logging::list_session_logs,
+            commands::logging::list_all_session_logs,
             commands::settings::get_settings,
         ])
         .run(tauri::generate_context!())

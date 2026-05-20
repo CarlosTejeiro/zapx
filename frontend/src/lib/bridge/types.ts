@@ -32,3 +32,13 @@ export interface HighlightRule {
   enabled: boolean
   sort_order: number
 }
+
+export interface SessionLog {
+  id: number
+  session_id: number | null
+  started_at: string
+  ended_at: string | null
+  file_path: string
+  bytes: number
+  format: string
+}

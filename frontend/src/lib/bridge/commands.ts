@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { SavedSession, Folder, HighlightRule } from './types'
+import type { SavedSession, Folder, HighlightRule, SessionLog } from './types'
 
 export async function listSessions(): Promise<SavedSession[]> {
   return invoke<SavedSession[]>('list_sessions')
@@ -102,4 +102,24 @@ export async function deleteHighlightRule(id: number): Promise<void> {
   return invoke<void>('delete_highlight_rule', { id })
 }
 
-export type { SavedSession, Folder, HighlightRule }
+export async function startSessionLogging(
+  session_id: string,
+  saved_session_id: number | null,
+  session_name: string,
+): Promise<string> {
+  return invoke<string>('start_session_logging', { session_id, saved_session_id, session_name })
+}
+
+export async function stopSessionLogging(session_id: string): Promise<void> {
+  return invoke<void>('stop_session_logging', { session_id })
+}
+
+export async function listSessionLogs(saved_session_id: number): Promise<SessionLog[]> {
+  return invoke<SessionLog[]>('list_session_logs', { saved_session_id })
+}
+
+export async function listAllSessionLogs(): Promise<SessionLog[]> {
+  return invoke<SessionLog[]>('list_all_session_logs')
+}
+
+export type { SavedSession, Folder, HighlightRule, SessionLog }

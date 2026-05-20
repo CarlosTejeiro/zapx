@@ -99,7 +99,9 @@ name = "app"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "core-highlight",
+ "core-logging",
  "core-persistence",
  "core-transport",
  "core-vault",
@@ -573,8 +575,8 @@ dependencies = [
 name = "core-logging"
 version = "0.0.1"
 dependencies = [
+ "chrono",
  "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

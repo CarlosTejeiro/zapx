@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::io::{Read, Write as _};
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
@@ -8,10 +9,15 @@ use core_persistence::SavedSession;
 use core_transport::{SerialTransport, SessionCmd, TelnetTransport};
 
 use crate::error::AppError;
-use crate::state::{ActiveSession, AppState};
+use crate::state::{ActiveLog, ActiveSession, AppState};
 
-/// Wrap an `on_data` callback to apply keyword highlighting before emitting.
+/// Wrap an `on_data` callback to:
+/// 1. Write raw bytes to the session log (if logging is active).
+/// 2. Apply keyword highlighting.
+/// 3. Emit highlighted bytes to the frontend.
 fn make_on_data<F>(
+    session_id: String,
+    loggers: Arc<Mutex<HashMap<String, ActiveLog>>>,
     highlighter: Arc<RwLock<core_highlight::Highlighter>>,
     inner: F,
 ) -> impl Fn(Vec<u8>) + Send + 'static
@@ -19,6 +25,11 @@ where
     F: Fn(Vec<u8>) + Send + 'static,
 {
     move |data: Vec<u8>| {
+        if let Ok(mut map) = loggers.lock() {
+            if let Some(active) = map.get_mut(&session_id) {
+                let _ = active.logger.write(&data);
+            }
+        }
         let highlighted = highlighter.read().unwrap().apply(&data);
         inner(highlighted);
     }
@@ -117,7 +128,8 @@ pub async fn open_ssh_session(
     let sid = session_id.clone();
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
-    let cmd_tx = transport.start_io_loop(make_on_data(hl, move |data| {
+    let lg = Arc::clone(&state.loggers);
+    let cmd_tx = transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
         let _ = app_handle.emit(
             "terminal-data",
             TerminalDataPayload {
@@ -350,15 +362,17 @@ pub async fn open_saved_session(
             let sid = session_id.clone();
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
-            let cmd_tx = transport.start_io_loop(make_on_data(hl, move |data| {
-                let _ = app_handle.emit(
-                    "terminal-data",
-                    TerminalDataPayload {
-                        session_id: sid.clone(),
-                        data,
-                    },
-                );
-            }));
+            let lg = Arc::clone(&state.loggers);
+            let cmd_tx =
+                transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
+                    let _ = app_handle.emit(
+                        "terminal-data",
+                        TerminalDataPayload {
+                            session_id: sid.clone(),
+                            data,
+                        },
+                    );
+                }));
 
             state
                 .sessions
@@ -384,10 +398,11 @@ pub async fn open_saved_session(
             let sid = session_id.clone();
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
+            let lg = Arc::clone(&state.loggers);
             let cmd_tx = transport.start_io_loop(
                 cols,
                 rows,
-                make_on_data(hl, move |data| {
+                make_on_data(session_id.clone(), lg, hl, move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
                         TerminalDataPayload {
@@ -435,15 +450,17 @@ pub async fn open_saved_session(
             let sid = session_id.clone();
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
-            let cmd_tx = transport.start_io_loop(make_on_data(hl, move |data| {
-                let _ = app_handle.emit(
-                    "terminal-data",
-                    TerminalDataPayload {
-                        session_id: sid.clone(),
-                        data,
-                    },
-                );
-            }));
+            let lg = Arc::clone(&state.loggers);
+            let cmd_tx =
+                transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
+                    let _ = app_handle.emit(
+                        "terminal-data",
+                        TerminalDataPayload {
+                            session_id: sid.clone(),
+                            data,
+                        },
+                    );
+                }));
 
             state
                 .sessions
@@ -485,10 +502,11 @@ pub async fn open_telnet_session(
     let sid = session_id.clone();
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
+    let lg = Arc::clone(&state.loggers);
     let cmd_tx = transport.start_io_loop(
         cols,
         rows,
-        make_on_data(hl, move |data| {
+        make_on_data(session_id.clone(), lg, hl, move |data| {
             let _ = app_handle.emit(
                 "terminal-data",
                 TerminalDataPayload {
@@ -529,7 +547,8 @@ pub async fn open_serial_session(
     let sid = session_id.clone();
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
-    let cmd_tx = transport.start_io_loop(make_on_data(hl, move |data| {
+    let lg = Arc::clone(&state.loggers);
+    let cmd_tx = transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
         let _ = app_handle.emit(
             "terminal-data",
             TerminalDataPayload {

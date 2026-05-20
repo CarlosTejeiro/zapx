@@ -19,6 +19,17 @@ pub use error::Error;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionLog {
+    pub id: i64,
+    pub session_id: Option<i64>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub file_path: String,
+    pub bytes: i64,
+    pub format: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Folder {
     pub id: i64,
     pub parent_id: Option<i64>,
@@ -91,6 +102,9 @@ impl Database {
         }
         if version < 2 {
             conn.execute_batch(include_str!("migrations/002_highlight_rules.sql"))?;
+        }
+        if version < 3 {
+            conn.execute_batch(include_str!("migrations/003_session_logs.sql"))?;
         }
         Ok(())
     }
@@ -361,5 +375,72 @@ impl Database {
             rusqlite::params![id],
         )?;
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Session log CRUD
+    // -----------------------------------------------------------------------
+
+    pub fn create_session_log(
+        &self,
+        session_id: Option<i64>,
+        file_path: &str,
+        started_at: &str,
+    ) -> Result<i64, Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO session_logs (session_id, file_path, started_at) VALUES (?1,?2,?3)",
+            rusqlite::params![session_id, file_path, started_at],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn end_session_log(&self, id: i64, ended_at: &str, bytes: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE session_logs SET ended_at=?1, bytes=?2 WHERE id=?3",
+            rusqlite::params![ended_at, bytes, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_session_logs(&self, session_id: i64) -> Result<Vec<SessionLog>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, started_at, ended_at, file_path, bytes, format
+             FROM session_logs WHERE session_id=?1 ORDER BY started_at DESC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![session_id], |row| {
+            Ok(SessionLog {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                started_at: row.get(2)?,
+                ended_at: row.get(3)?,
+                file_path: row.get(4)?,
+                bytes: row.get(5)?,
+                format: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn list_all_session_logs(&self) -> Result<Vec<SessionLog>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, started_at, ended_at, file_path, bytes, format
+             FROM session_logs ORDER BY started_at DESC LIMIT 200",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SessionLog {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                started_at: row.get(2)?,
+                ended_at: row.get(3)?,
+                file_path: row.get(4)?,
+                bytes: row.get(5)?,
+                format: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 }

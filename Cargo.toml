@@ -68,3 +68,6 @@ tokio-serial = "5"
 
 # Bloque 5 — keyword highlighting
 regex = "1"
+
+# Bloque 6 — session logging
+chrono = { version = "0.4", features = ["serde"] }
