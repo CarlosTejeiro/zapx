@@ -16,4 +16,10 @@ pub enum Error {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("SSH error: {0}")]
+    Ssh(#[from] russh::Error),
+
+    #[error("authentication failed")]
+    AuthFailed,
 }

@@ -8,12 +8,20 @@
 
 pub mod error;
 pub mod local_pty;
+pub mod ssh;
 
 mod serial;
-mod ssh;
 mod telnet;
 
 pub use local_pty::LocalPty;
+pub use ssh::SshTransport;
+
+/// Commands sent to a live session's I/O task.
+#[derive(Debug)]
+pub enum SessionCmd {
+    Data(Vec<u8>),
+    Resize { cols: u16, rows: u16 },
+}
 
 /// A bidirectional byte stream with session lifecycle management.
 ///

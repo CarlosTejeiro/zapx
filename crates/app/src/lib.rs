@@ -20,6 +20,7 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::sessions::open_local_session,
+            commands::sessions::open_ssh_session,
             commands::sessions::send_input,
             commands::sessions::resize_terminal,
             commands::sessions::close_session,

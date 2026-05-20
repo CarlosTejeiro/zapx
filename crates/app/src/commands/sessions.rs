@@ -1,17 +1,19 @@
-use std::io::Read;
+use std::io::{Read, Write as _};
 use std::sync::mpsc;
 
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
+use core_transport::SessionCmd;
+
 use crate::error::AppError;
 use crate::state::{ActiveSession, AppState};
 
+// ---------------------------------------------------------------------------
+// Local PTY session
+// ---------------------------------------------------------------------------
+
 /// Spawn a local PTY session and return its UUID.
-///
-/// The PTY reader runs in a background thread that emits `terminal-data` events
-/// to the frontend. The session is cleaned up when [`close_session`] is called
-/// or when the shell process exits naturally.
 #[tauri::command]
 pub async fn open_local_session(
     app: AppHandle,
@@ -26,60 +28,119 @@ pub async fn open_local_session(
         .take_reader()
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let writer = pty.writer();
+    let pty_writer = pty.writer();
     let (resize_tx, resize_rx) = mpsc::channel::<(u16, u16)>();
 
+    // Bridge: tokio UnboundedReceiver → sync PTY writer / resize channel.
+    // Small PTY writes (keystrokes) are fast enough to do synchronously here.
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
+    tokio::spawn(async move {
+        while let Some(cmd) = cmd_rx.recv().await {
+            match cmd {
+                SessionCmd::Data(data) => {
+                    if let Ok(mut w) = pty_writer.lock() {
+                        let _ = w.write_all(&data);
+                    }
+                }
+                SessionCmd::Resize { cols, rows } => {
+                    let _ = resize_tx.send((cols, rows));
+                }
+            }
+        }
+    });
+
+    // Reader loop runs on a blocking thread (PTY reads are synchronous).
     let sid = session_id.clone();
     let app_handle = app.clone();
-
-    // The reader loop runs on a blocking thread (PTY reads are synchronous).
-    // It owns the PTY for the duration of the session.
     tokio::task::spawn_blocking(move || {
         reader_loop(reader, pty, resize_rx, sid, app_handle);
     });
 
-    let session = ActiveSession {
-        writer,
-        resize_tx,
-        cols: 80,
-        rows: 24,
-    };
-
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(session_id.clone(), session);
+    state.sessions.lock().unwrap().insert(
+        session_id.clone(),
+        ActiveSession {
+            cmd_tx,
+            cols: 80,
+            rows: 24,
+        },
+    );
 
     tracing::debug!(session_id, "local session opened");
     Ok(session_id)
 }
 
-/// Write keyboard input to the PTY.
+// ---------------------------------------------------------------------------
+// SSH session
+// ---------------------------------------------------------------------------
+
+/// Connect to an SSH host, open a PTY shell, and return the session UUID.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn open_ssh_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host: String,
+    port: u16,
+    user: String,
+    password: String,
+    cols: u16,
+    rows: u16,
+) -> Result<String, AppError> {
+    let session_id = Uuid::new_v4().to_string();
+
+    let transport = core_transport::SshTransport::open_shell(
+        host.clone(),
+        port,
+        user.clone(),
+        password,
+        cols,
+        rows,
+    )
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let sid = session_id.clone();
+    let app_handle = app.clone();
+    let cmd_tx = transport.start_io_loop(move |data| {
+        let _ = app_handle.emit(
+            "terminal-data",
+            TerminalDataPayload {
+                session_id: sid.clone(),
+                data,
+            },
+        );
+    });
+
+    state
+        .sessions
+        .lock()
+        .unwrap()
+        .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+
+    tracing::debug!(session_id, host, port, user, "ssh session opened");
+    Ok(session_id)
+}
+
+// ---------------------------------------------------------------------------
+// Shared session commands (work for both local and SSH)
+// ---------------------------------------------------------------------------
+
+/// Write keyboard input to the session.
 #[tauri::command]
 pub async fn send_input(
     state: State<'_, AppState>,
     session_id: String,
     data: Vec<u8>,
 ) -> Result<(), AppError> {
-    let writer = {
-        let sessions = state.sessions.lock().unwrap();
-        let session = sessions
-            .get(&session_id)
-            .ok_or_else(|| AppError::Internal(format!("unknown session: {session_id}")))?;
-        std::sync::Arc::clone(&session.writer)
-    };
-
-    use std::io::Write as _;
-    let result = writer
-        .lock()
-        .unwrap()
-        .write_all(&data)
-        .map_err(|e| AppError::Internal(e.to_string()));
-    result
+    let sessions = state.sessions.lock().unwrap();
+    let session = sessions
+        .get(&session_id)
+        .ok_or_else(|| AppError::Internal(format!("unknown session: {session_id}")))?;
+    session.cmd_tx.send(SessionCmd::Data(data)).ok();
+    Ok(())
 }
 
-/// Notify the PTY of a terminal resize.
+/// Notify the session of a terminal resize.
 #[tauri::command]
 pub async fn resize_terminal(
     state: State<'_, AppState>,
@@ -91,12 +152,7 @@ pub async fn resize_terminal(
     let session = sessions
         .get_mut(&session_id)
         .ok_or_else(|| AppError::Internal(format!("unknown session: {session_id}")))?;
-
-    session
-        .resize_tx
-        .send((cols, rows))
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
+    session.cmd_tx.send(SessionCmd::Resize { cols, rows }).ok();
     session.cols = cols;
     session.rows = rows;
     Ok(())
@@ -104,8 +160,7 @@ pub async fn resize_terminal(
 
 /// Terminate a session and clean up its resources.
 ///
-/// Dropping the writer closes the PTY's stdin, which causes the shell to
-/// receive EOF and exit. The reader task will finish when it sees the EOF.
+/// Dropping `cmd_tx` signals the I/O task to exit cleanly.
 #[tauri::command]
 pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Result<(), AppError> {
     let removed = state.sessions.lock().unwrap().remove(&session_id);
@@ -116,7 +171,7 @@ pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Re
 }
 
 // ---------------------------------------------------------------------------
-// Internal — PTY reader loop running on a blocking thread
+// Internal — PTY reader loop (blocking thread)
 // ---------------------------------------------------------------------------
 
 fn reader_loop(
@@ -129,7 +184,6 @@ fn reader_loop(
     let mut buf = vec![0u8; 4096];
 
     loop {
-        // Apply any pending resize requests before blocking on read.
         while let Ok((cols, rows)) = resize_rx.try_recv() {
             if let Err(e) = pty.resize(cols, rows) {
                 tracing::warn!(session_id, "resize failed: {e}");
@@ -148,7 +202,6 @@ fn reader_loop(
                     data: buf[..n].to_vec(),
                 };
                 if app.emit("terminal-data", payload).is_err() {
-                    // App window was closed; stop the loop.
                     break;
                 }
             }

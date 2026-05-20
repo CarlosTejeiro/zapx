@@ -7,6 +7,19 @@
   import type { UnlistenFn } from '@tauri-apps/api/event'
   import '@xterm/xterm/css/xterm.css'
 
+  interface SshParams {
+    host: string
+    port: number
+    user: string
+    password: string
+  }
+
+  interface Props {
+    ssh?: SshParams
+  }
+
+  let { ssh }: Props = $props()
+
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
   let errorMsg = $state<string | null>(null)
@@ -61,7 +74,18 @@
     // Open the backend session.
     try {
       await waitForTauri()
-      sessionId = await invoke<string>('open_local_session')
+      if (ssh) {
+        sessionId = await invoke<string>('open_ssh_session', {
+          host: ssh.host,
+          port: ssh.port,
+          user: ssh.user,
+          password: ssh.password,
+          cols: term.cols,
+          rows: term.rows,
+        })
+      } else {
+        sessionId = await invoke<string>('open_local_session')
+      }
     } catch (e) {
       errorMsg = String(e)
       term.dispose()

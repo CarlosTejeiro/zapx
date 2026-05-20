@@ -50,8 +50,10 @@ zeroize = { version = "1", features = ["derive"] }
 async-trait = "0.1"
 
 # Bloque 1 — local PTY and terminal emulation
-# wezterm-term is not published on crates.io; using vte (Alacritty's VT parser)
-# for the Rust-side VT parse layer. Full grid state engine evaluated in Bloque 5.
 portable-pty = "0.8"
 vte          = "0.13"
 uuid         = { version = "1", features = ["v4"] }
+
+# Bloque 2 — SSH transport
+russh      = "0.46"
+russh-keys = "0.46"
