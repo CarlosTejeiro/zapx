@@ -4,6 +4,7 @@ use std::sync::mpsc;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
+use core_persistence::SavedSession;
 use core_transport::SessionCmd;
 
 use crate::error::AppError;
@@ -214,6 +215,148 @@ fn reader_loop(
 
     pty.kill();
     tracing::debug!(session_id, "reader loop exited");
+}
+
+// ---------------------------------------------------------------------------
+// Saved session CRUD (persisted in SQLite via core-persistence)
+// ---------------------------------------------------------------------------
+
+/// Save a new SSH session (stores password in keyring, never in SQLite).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn create_saved_session(
+    state: State<'_, AppState>,
+    name: String,
+    folder_id: Option<i64>,
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+) -> Result<i64, AppError> {
+    // Generate a unique, opaque keyring key — never derived from user data.
+    let keyring_key = format!("ssh:{}", Uuid::new_v4());
+
+    core_vault::Vault::store(&keyring_key, &password)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let cred_id = state
+        .db
+        .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    state
+        .db
+        .create_session(
+            folder_id,
+            &name,
+            "ssh",
+            Some(&host),
+            Some(port),
+            Some(&username),
+            Some(cred_id),
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// List all saved sessions.
+#[tauri::command]
+pub async fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SavedSession>, AppError> {
+    state
+        .db
+        .list_sessions()
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Delete a saved session (and its credential from the keyring).
+#[tauri::command]
+pub async fn delete_saved_session(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
+    let session = state
+        .db
+        .get_session(id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    if let Some(cred_id) = session.credential_id {
+        if let Ok(key) = state.db.get_credential_keyring_key(cred_id) {
+            core_vault::Vault::delete(&key).ok();
+            state.db.delete_credential(cred_id).ok();
+        }
+    }
+
+    state
+        .db
+        .delete_session(id)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Open a saved session: load config from DB, retrieve password from keyring,
+/// establish the connection, and return the live session UUID.
+#[tauri::command]
+pub async fn open_saved_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+    cols: u16,
+    rows: u16,
+) -> Result<String, AppError> {
+    let session = state
+        .db
+        .get_session(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    match session.protocol.as_str() {
+        "ssh" => {
+            let host = session
+                .host
+                .ok_or_else(|| AppError::Internal("missing host".into()))?;
+            let port = session.port.unwrap_or(22);
+            let username = session
+                .username
+                .ok_or_else(|| AppError::Internal("missing username".into()))?;
+
+            let password = {
+                let cred_id = session
+                    .credential_id
+                    .ok_or_else(|| AppError::Internal("missing credential".into()))?;
+                let key = state
+                    .db
+                    .get_credential_keyring_key(cred_id)
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+                core_vault::Vault::retrieve(&key).map_err(|e| AppError::Internal(e.to_string()))?
+            };
+
+            let session_id = Uuid::new_v4().to_string();
+            let transport = core_transport::SshTransport::open_shell(
+                host, port, username, password, cols, rows,
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+            let sid = session_id.clone();
+            let app_handle = app.clone();
+            let cmd_tx = transport.start_io_loop(move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            });
+
+            state
+                .sessions
+                .lock()
+                .unwrap()
+                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+
+            state.db.touch_session(saved_session_id).ok();
+            tracing::debug!(session_id, saved_session_id, "saved session opened");
+            Ok(session_id)
+        }
+        p => Err(AppError::Internal(format!(
+            "protocol '{p}' not yet supported"
+        ))),
+    }
 }
 
 #[derive(serde::Serialize, Clone)]

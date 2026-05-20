@@ -1,20 +1,20 @@
-// Type placeholders — generated bindings arrive in Bloque 1 (specta + ts-rs)
+// Mirror of core-persistence public model types
 
-export type SessionId = string
-export type FolderId = string
-export type CredentialRef = string
-export type HighlightRuleId = string
-
-export interface Session {
-  id: SessionId
+export interface SavedSession {
+  id: number
+  folder_id: number | null
   name: string
-  host: string
-  port: number
-  folderId: FolderId | null
+  protocol: string
+  host: string | null
+  port: number | null
+  username: string | null
+  credential_id: number | null
+  last_used_at: string | null
 }
 
 export interface Folder {
-  id: FolderId
+  id: number
+  parent_id: number | null
   name: string
-  parentId: FolderId | null
+  sort_order: number
 }

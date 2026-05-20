@@ -1,25 +1,55 @@
 <script lang="ts">
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
-  import SshConnectDialog from '$lib/terminal/SshConnectDialog.svelte'
-  import type { SshParams } from '$lib/terminal/SshConnectDialog.svelte'
+  import SessionTree from '$lib/sessions/SessionTree.svelte'
+  import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
+  import { listFolders } from '$lib/bridge/commands'
+  import type { SavedSession, Folder } from '$lib/bridge/types'
 
   interface Tab {
     id: number
     label: string
-    ssh?: SshParams
+    /** UUID of the live terminal session (set after connection is established) */
+    liveSessionId?: string
+    /** Saved session to open on mount */
+    savedSession?: SavedSession
+    /** Inline SSH params for ad-hoc connections */
+    ssh?: { host: string; port: number; user: string; password: string }
   }
 
   let nextId = 1
   const firstTab: Tab = { id: nextId++, label: 'shell' }
   let tabs = $state<Tab[]>([firstTab])
   let activeId = $state(firstTab.id)
-  let showDialog = $state(false)
+  let showNewSession = $state(false)
+  let folders = $state<Folder[]>([])
+  let sessionTreeKey = $state(0)
 
-  function openSshTab(params: SshParams) {
-    showDialog = false
-    const tab: Tab = { id: nextId++, label: `${params.user}@${params.host}`, ssh: params }
+  async function loadFolders() {
+    try {
+      folders = await listFolders()
+    } catch {
+      // non-fatal; folders list just stays empty
+    }
+  }
+
+  function openSavedSession(s: SavedSession) {
+    const tab: Tab = {
+      id: nextId++,
+      label: s.name,
+      savedSession: s,
+    }
     tabs = [...tabs, tab]
     activeId = tab.id
+  }
+
+  function handleSessionCreated() {
+    showNewSession = false
+    sessionTreeKey += 1
+  }
+
+  function openNewSessionDialog() {
+    loadFolders()
+    showNewSession = true
   }
 
   function closeTab(id: number) {
@@ -33,11 +63,7 @@
     <span class="app-name">zapx</span>
     <div class="tabs">
       {#each tabs as tab (tab.id)}
-        <button
-          class="tab"
-          class:active={activeId === tab.id}
-          onclick={() => (activeId = tab.id)}
-        >
+        <button class="tab" class:active={activeId === tab.id} onclick={() => (activeId = tab.id)}>
           {tab.label}
           {#if tabs.length > 1}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -45,27 +71,38 @@
               class="close-btn"
               role="button"
               tabindex="-1"
-              onclick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+              onclick={(e) => {
+                e.stopPropagation()
+                closeTab(tab.id)
+              }}
             >×</span>
           {/if}
         </button>
       {/each}
-
-      <button class="tab new-tab" onclick={() => (showDialog = true)} title="New SSH session">+</button>
     </div>
   </header>
 
-  <main class="terminal-area">
-    {#each tabs as tab (tab.id)}
-      <div class="tab-content" class:hidden={activeId !== tab.id}>
-        <TerminalTab ssh={tab.ssh} />
-      </div>
-    {/each}
-  </main>
+  <div class="body">
+    {#key sessionTreeKey}
+      <SessionTree onOpen={openSavedSession} onAdd={openNewSessionDialog} />
+    {/key}
+
+    <main class="terminal-area">
+      {#each tabs as tab (tab.id)}
+        <div class="tab-content" class:hidden={activeId !== tab.id}>
+          <TerminalTab savedSession={tab.savedSession} ssh={tab.ssh} />
+        </div>
+      {/each}
+    </main>
+  </div>
 </div>
 
-{#if showDialog}
-  <SshConnectDialog onConnect={openSshTab} onCancel={() => (showDialog = false)} />
+{#if showNewSession}
+  <NewSessionDialog
+    {folders}
+    onCreated={() => handleSessionCreated()}
+    onCancel={() => (showNewSession = false)}
+  />
 {/if}
 
 <style>
@@ -116,8 +153,15 @@
     font-family: inherit;
   }
 
-  .tab:hover { background: #27272a; color: #e4e4e7; }
-  .tab.active { background: #27272a; color: #e4e4e7; }
+  .tab:hover {
+    background: #27272a;
+    color: #e4e4e7;
+  }
+
+  .tab.active {
+    background: #27272a;
+    color: #e4e4e7;
+  }
 
   .close-btn {
     font-size: 0.9rem;
@@ -126,11 +170,14 @@
     padding: 0 0.1rem;
   }
 
-  .close-btn:hover { color: #ef4444; }
+  .close-btn:hover {
+    color: #ef4444;
+  }
 
-  .new-tab {
-    font-size: 1rem;
-    padding: 0.1rem 0.5rem;
+  .body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
   }
 
   .terminal-area {

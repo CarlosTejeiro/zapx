@@ -1,4 +1,5 @@
-/// Errors produced by [`core_vault`](crate).
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {}
+pub enum Error {
+    #[error("keyring error: {0}")]
+    Keyring(#[from] keyring::Error),
+}

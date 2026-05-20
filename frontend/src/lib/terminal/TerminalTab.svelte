@@ -7,6 +7,9 @@
   import type { UnlistenFn } from '@tauri-apps/api/event'
   import '@xterm/xterm/css/xterm.css'
 
+  import { openSavedSession } from '$lib/bridge/commands'
+  import type { SavedSession } from '$lib/bridge/types'
+
   interface SshParams {
     host: string
     port: number
@@ -16,9 +19,10 @@
 
   interface Props {
     ssh?: SshParams
+    savedSession?: SavedSession
   }
 
-  let { ssh }: Props = $props()
+  let { ssh, savedSession }: Props = $props()
 
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
@@ -74,7 +78,9 @@
     // Open the backend session.
     try {
       await waitForTauri()
-      if (ssh) {
+      if (savedSession) {
+        sessionId = await openSavedSession(savedSession.id, term.cols, term.rows)
+      } else if (ssh) {
         sessionId = await invoke<string>('open_ssh_session', {
           host: ssh.host,
           port: ssh.port,

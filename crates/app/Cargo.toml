@@ -27,3 +27,5 @@ tracing-subscriber = { workspace = true }
 tokio              = { workspace = true }
 uuid               = { workspace = true }
 core-transport     = { path = "../core-transport" }
+core-persistence   = { path = "../core-persistence" }
+core-vault         = { path = "../core-vault" }

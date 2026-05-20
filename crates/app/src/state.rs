@@ -6,9 +6,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use core_transport::SessionCmd;
 
 /// A live terminal session (local PTY or SSH).
-///
-/// The underlying I/O loop is owned by a background task; this struct holds
-/// only what the Tauri command handlers need to interact with it.
 pub struct ActiveSession {
     /// Send keyboard input or resize events to the session's I/O task.
     pub cmd_tx: UnboundedSender<SessionCmd>,
@@ -17,7 +14,9 @@ pub struct ActiveSession {
 }
 
 /// Shared application state injected into Tauri commands via [`tauri::State`].
-#[derive(Default)]
 pub struct AppState {
+    /// Live terminal sessions keyed by UUID.
     pub sessions: Mutex<HashMap<String, ActiveSession>>,
+    /// SQLite database (folders, saved sessions, credential references).
+    pub db: core_persistence::Database,
 }
