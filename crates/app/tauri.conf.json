@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PYLON",
+  "productName": "zapx",
   "version": "0.1.0",
-  "identifier": "dev.pylon.app",
+  "identifier": "dev.zapx.app",
   "build": {
     "beforeDevCommand": "",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PYLON",
+        "title": "zapx",
         "decorations": false,
         "width": 1200,
         "height": 800,

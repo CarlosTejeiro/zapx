@@ -72,6 +72,7 @@
       savedSession={pane.savedSession}
       ssh={pane.ssh}
       telnet={pane.telnet}
+      hideToolbar={true}
       {onGlobalShortcut}
       onSessionOpen={() => handleStatus('connected')}
       onSessionError={() => handleStatus('error')}

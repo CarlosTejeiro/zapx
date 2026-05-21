@@ -8,10 +8,12 @@
     folders: Folder[]
     activeSessionId?: number
     onSelect: (session: SavedSession) => void
+    onAddSession?: () => void
     onSettings?: () => void
+    onToggleTheme?: () => void
   }
 
-  const { theme, sessions, folders, activeSessionId, onSelect, onSettings }: Props = $props()
+  const { theme, sessions, folders, activeSessionId, onSelect, onAddSession, onSettings, onToggleTheme }: Props = $props()
 
   let search = $state('')
   let expandedSections = $state<Set<string>>(new Set(['pinned', 'sessions']))
@@ -87,19 +89,27 @@
 
     <!-- Favorites / pinned (root sessions without folder) -->
     <div class="sb-section">
-      <button
-        class="sb-section-header"
-        style:color={theme.textDim}
-        onclick={() => toggleSection('sessions')}
-      >
-        <span
-          class="sb-caret"
-          class:expanded={expandedSections.has('sessions')}
+      <div class="sb-section-row">
+        <button
+          class="sb-section-header"
           style:color={theme.textDim}
-        >▸</span>
-        SESSIONS
-        <span class="sb-count" style:color={theme.textDim}>{rootSessions.length}</span>
-      </button>
+          onclick={() => toggleSection('sessions')}
+        >
+          <span
+            class="sb-caret"
+            class:expanded={expandedSections.has('sessions')}
+            style:color={theme.textDim}
+          >▸</span>
+          SESSIONS
+          <span class="sb-count" style:color={theme.textDim}>{rootSessions.length}</span>
+        </button>
+        <button
+          class="sb-add-btn"
+          title="New session"
+          style:color={theme.textDim}
+          onclick={onAddSession}
+        >+</button>
+      </div>
 
       {#if expandedSections.has('sessions')}
         {#each rootSessions as s (s.id)}
@@ -188,6 +198,12 @@
     <span class="sb-username" style:color={theme.textMuted} style:font-family={theme.fontUi}>
       {username}
     </span>
+    <button class="sb-settings-btn" title="Toggle theme" onclick={onToggleTheme} style:color={theme.accent}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+      </svg>
+    </button>
     <button class="sb-settings-btn" title="Settings" onclick={onSettings} style:color={theme.textDim}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"/>
@@ -260,8 +276,38 @@
     margin-bottom: 2px;
   }
 
+  .sb-section-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .sb-add-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-right: 6px;
+    transition: background 0.1s, color 0.1s;
+    color: inherit;
+  }
+
+  .sb-add-btn:hover {
+    background: rgba(255,255,255,0.06);
+    color: #c9cdd3;
+  }
+
   .sb-section-header {
-    width: 100%;
+    flex: 1;
+    width: auto;
     display: flex;
     align-items: center;
     gap: 4px;

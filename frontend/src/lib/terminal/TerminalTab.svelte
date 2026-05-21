@@ -55,13 +55,14 @@
     ssh?: SshParams
     telnet?: TelnetParams
     savedSession?: SavedSession
+    hideToolbar?: boolean
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
     onSessionOpen?: () => void
     onSessionError?: () => void
     onSessionClose?: () => void
   }
 
-  let { ssh, telnet, savedSession, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose }: Props = $props()
+  let { ssh, telnet, savedSession, hideToolbar = false, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose }: Props = $props()
 
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
@@ -292,6 +293,7 @@
 
 <div class="terminal-wrapper">
   <!-- toolbar -->
+  {#if !hideToolbar}
   <div class="toolbar">
     <!-- logging button -->
     <button
@@ -329,6 +331,7 @@
       🔍
     </button>
   </div>
+  {/if}
 
   <!-- search bar -->
   {#if showSearch}

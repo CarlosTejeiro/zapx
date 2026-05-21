@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getTheme } from '$lib/themes/store.svelte'
+  import { getTheme, setTheme } from '$lib/themes/store.svelte'
   import TitleBar from '$lib/pylon/TitleBar.svelte'
   import Sidebar from '$lib/pylon/Sidebar.svelte'
   import TabBar from '$lib/pylon/TabBar.svelte'
@@ -27,6 +27,10 @@
   // ── theme ────────────────────────────────────────────────────────────────────
 
   const theme = $derived(getTheme())
+
+  function toggleTheme() {
+    setTheme(theme.name === 'graphite' ? 'neonNoir' : 'graphite')
+  }
 
   // ── state ────────────────────────────────────────────────────────────────────
 
@@ -199,7 +203,14 @@
 <!-- ── PYLON shell ──────────────────────────────────────────────────────────── -->
 <div class="pylon-shell" style:background={theme.appBg}>
 
-  <TitleBar {theme} sessionName={activeSessionName} />
+  <TitleBar
+    {theme}
+    sessionName={activeSessionName}
+    themeName={theme.name}
+    onNewSession={() => showNewSession = true}
+    onSettings={() => showSettings = true}
+    onToggleTheme={toggleTheme}
+  />
 
   <div class="pylon-body">
 
@@ -209,7 +220,9 @@
       {folders}
       activeSessionId={activePaneData?.savedSession?.id}
       onSelect={openSavedSessionTab}
+      onAddSession={() => showNewSession = true}
       onSettings={() => showSettings = true}
+      onToggleTheme={toggleTheme}
     />
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>
