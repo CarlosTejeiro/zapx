@@ -15,6 +15,7 @@
     onNewSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
+    onAbout?: () => void
     themeName?: string
   }
 
@@ -24,6 +25,7 @@
     onNewSession,
     onSettings,
     onToggleTheme,
+    onAbout,
     themeName = 'neon-noir',
   }: Props = $props()
 
@@ -33,35 +35,20 @@
 
   const menus = $derived<Record<string, MenuItem[]>>({
     File: [
-      { label: 'New Window', disabled: true },
-      { divider: true, label: '' },
       { label: 'Quit', action: () => win.close() },
-    ],
-    Edit: [
-      { label: 'Copy', disabled: true },
-      { label: 'Paste', disabled: true },
-      { divider: true, label: '' },
-      { label: 'Find  Ctrl+F', disabled: true },
     ],
     View: [
       { label: themeName === 'graphite' ? '● Graphite' : '  Graphite', action: () => { onToggleTheme?.(); openMenu = null } },
       { label: themeName === 'neon-noir' ? '● Neon Noir' : '  Neon Noir', action: () => { onToggleTheme?.(); openMenu = null } },
-      { divider: true, label: '' },
-      { label: 'Status Bar', disabled: true },
     ],
     Session: [
       { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
-      { divider: true, label: '' },
-      { label: 'Disconnect', disabled: true },
-      { label: 'Reconnect', disabled: true },
     ],
     Tools: [
       { label: 'Settings  Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
-      { divider: true, label: '' },
-      { label: 'Snippets', disabled: true },
     ],
     Help: [
-      { label: 'About zapx', disabled: true },
+      { label: 'About zapx', action: () => { onAbout?.(); openMenu = null } },
     ],
   })
 

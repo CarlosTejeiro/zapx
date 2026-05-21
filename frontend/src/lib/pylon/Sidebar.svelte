@@ -62,7 +62,7 @@
 <aside
   class="sidebar"
   style:background={theme.sidebarBg}
-  style:border-right="1px solid {theme.border}"
+  style:border-right="1px solid {theme.accent}30"
   style:font-family={theme.fontUi}
 >
 

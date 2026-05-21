@@ -144,29 +144,29 @@ export const neonNoir: PylonTheme = {
   fontUi: '"Geist", "SF Pro Display", system-ui, sans-serif',
   fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
 
-  appBg: '#0a0d14',
-  bodyBg: '#0d1119',
-  sidebarBg: '#090c12',
-  titlebarBg: '#070a10',
-  statusbarBg: '#060910',
-  tabBarBg: '#070a10',
+  appBg: '#080b11',
+  bodyBg: '#0d1220',
+  sidebarBg: '#05080e',   // noticeably darker than bodyBg for contrast
+  titlebarBg: '#04070c',
+  statusbarBg: '#04070c',
+  tabBarBg: '#04070c',
 
-  tabActiveBg: '#0d1119',
+  tabActiveBg: '#0d1220',
   tabIdleBg: 'transparent',
-  tabBorder: '#1a2030',
+  tabBorder: '#1e2840',
   tabRadius: '8px 8px 0 0',
 
   accent: '#22d3ee',
   accent2: '#f472b6',
-  itemHoverBg: 'rgba(34,211,238,0.06)',
-  itemActiveBg: 'rgba(34,211,238,0.12)',
+  itemHoverBg: 'rgba(34,211,238,0.07)',
+  itemActiveBg: 'rgba(34,211,238,0.13)',
   itemActiveBorder: '#22d3ee',
 
-  textPrimary: '#cbd5e1',
-  textMuted: '#4b5a72',
-  textDim: '#2d3a50',
+  textPrimary: '#d4dff0',
+  textMuted: '#5a6e90',
+  textDim: '#334060',
 
-  border: '#1a2030',
+  border: '#1e2840',   // more visible than before
   radius: '5px',
 
   ok: '#4ade80',

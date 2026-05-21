@@ -64,6 +64,7 @@
   let folders = $state<Folder[]>([])
   let showNewSession = $state(false)
   let showSettings = $state(false)
+  let showAbout = $state(false)
   let splitOn = $state(false)
   let multiOn = $state(false)
 
@@ -210,6 +211,7 @@
     onNewSession={() => showNewSession = true}
     onSettings={() => showSettings = true}
     onToggleTheme={toggleTheme}
+    onAbout={() => showAbout = true}
   />
 
   <div class="pylon-body">
@@ -283,6 +285,52 @@
   <SettingsModal onClose={() => showSettings = false} />
 {/if}
 
+{#if showAbout}
+  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+  <div class="about-backdrop" onclick={() => showAbout = false} tabindex="-1">
+    <div
+      class="about-modal"
+      style:background={theme.sidebarBg}
+      style:border="1px solid {theme.border}"
+      style:font-family={theme.fontUi}
+      onclick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+    >
+      <div class="about-header" style:border-bottom="1px solid {theme.border}">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="2" width="3" height="12" rx="1" fill={theme.accent}/>
+          <rect x="5" y="2" width="6" height="3" rx="1" fill={theme.accent}/>
+          <rect x="5" y="7" width="5" height="3" rx="1" fill={theme.accent} opacity="0.7"/>
+        </svg>
+        <span style:color={theme.textPrimary} style:font-size="15px" style:font-weight="600">zapx</span>
+        <button
+          class="about-close"
+          style:color={theme.textDim}
+          onclick={() => showAbout = false}
+        >✕</button>
+      </div>
+      <div class="about-body">
+        <p style:color={theme.textMuted} style:font-size="12.5px" style:line-height="1.7">
+          A modern multiprotocol terminal for network engineers.<br/>
+          Built with Tauri · Svelte 5 · xterm.js · Rust.
+        </p>
+        <table class="about-table" style:color={theme.textMuted}>
+          <tbody>
+            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>0.1.0</td></tr>
+            <tr><td style:color={theme.textDim}>Runtime</td><td>Tauri 2 · WebView</td></tr>
+            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{theme.name === 'neon-noir' ? 'Neon Noir' : 'Graphite'}</td></tr>
+          </tbody>
+        </table>
+        <p class="about-hint" style:color={theme.textDim} style:font-family={theme.fontMono}>
+          Credentials stored securely via system keyring
+        </p>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .pylon-shell {
     width: 100vw;
@@ -324,5 +372,70 @@
 
   .pane-slot.hidden {
     display: none;
+  }
+
+  .about-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .about-modal {
+    width: 360px;
+    border-radius: 8px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+
+  .about-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .about-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: inherit;
+    transition: background 0.1s;
+  }
+
+  .about-close:hover { background: rgba(255,255,255,0.08); }
+
+  .about-body {
+    padding: 0 18px 18px;
+  }
+
+  .about-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 10px 0;
+  }
+
+  .about-table td {
+    padding: 4px 0;
+  }
+
+  .about-table td:first-child {
+    width: 80px;
+    font-size: 11px;
+  }
+
+  .about-hint {
+    font-size: 10.5px;
+    margin: 10px 0 0;
+    opacity: 0.6;
   }
 </style>

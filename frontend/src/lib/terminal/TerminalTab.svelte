@@ -91,9 +91,21 @@
   }
 
   function fmtError(e: unknown): string {
-    if (typeof e === 'string') return e
-    if (e instanceof Error) return e.message
-    try { return JSON.stringify(e) } catch { return 'Unknown error' }
+    // Tauri errors arrive as JSON strings like {"Internal":"keyring error: ..."}
+    const raw = typeof e === 'string' ? e : (e instanceof Error ? e.message : (() => { try { return JSON.stringify(e) } catch { return 'Unknown error' } })())
+    try {
+      const obj = JSON.parse(raw) as Record<string, unknown>
+      const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
+      if (inner.includes('keyring') && inner.includes('No matching entry')) {
+        return 'Saved credentials not found in keyring.\n\nFix: delete this session and recreate it — you will be prompted to re-enter your password.\n\nIf running in WSL, ensure gnome-keyring is running:\n  eval $(gnome-keyring-daemon --start --components=secrets)'
+      }
+      if (inner.includes('Connection refused')) return 'Connection refused — check the host and port.'
+      if (inner.includes('timeout') || inner.includes('timed out')) return 'Connection timed out — the host is unreachable.'
+      if (inner.includes('Authentication') || inner.includes('authentication')) return 'Authentication failed — check your username and password.'
+      return inner
+    } catch {
+      return raw
+    }
   }
 
   async function waitForTauri(timeoutMs = 5000): Promise<void> {
@@ -353,7 +365,10 @@
   {/if}
 
   {#if errorMsg}
-    <div class="error">{errorMsg}</div>
+    <div class="error">
+      <span class="error-icon">⚠</span>
+      <pre class="error-text">{errorMsg}</pre>
+    </div>
   {/if}
 
   <!-- past logs panel -->
@@ -554,10 +569,30 @@
   }
 
   .error {
-    padding: 0.5rem 1rem;
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
     color: #ef4444;
-    font-family: monospace;
-    font-size: 0.875rem;
-    background: #1c0a09;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    background: rgba(239, 68, 68, 0.07);
+    border-left: 3px solid #ef4444;
+    flex-shrink: 0;
+    line-height: 1.6;
+  }
+
+  .error-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .error-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
   }
 </style>
