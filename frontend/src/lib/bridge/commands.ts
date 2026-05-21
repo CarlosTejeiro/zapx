@@ -9,8 +9,8 @@ export async function listFolders(): Promise<Folder[]> {
   return invoke<Folder[]>('list_folders')
 }
 
-export async function createFolder(name: string, parent_id: number | null): Promise<number> {
-  return invoke<number>('create_folder', { name, parent_id })
+export async function createFolder(name: string, parentId: number | null): Promise<number> {
+  return invoke<number>('create_folder', { name, parentId })
 }
 
 export async function renameFolder(id: number, name: string): Promise<void> {
@@ -23,13 +23,13 @@ export async function deleteFolder(id: number): Promise<void> {
 
 export async function createSavedSession(
   name: string,
-  folder_id: number | null,
+  folderId: number | null,
   host: string,
   port: number,
   username: string,
   password: string,
 ): Promise<number> {
-  return invoke<number>('create_saved_session', { name, folder_id, host, port, username, password })
+  return invoke<number>('create_saved_session', { name, folderId, host, port, username, password })
 }
 
 export async function deleteSavedSession(id: number): Promise<void> {
@@ -37,29 +37,29 @@ export async function deleteSavedSession(id: number): Promise<void> {
 }
 
 export async function openSavedSession(
-  saved_session_id: number,
+  savedSessionId: number,
   cols: number,
   rows: number,
 ): Promise<string> {
-  return invoke<string>('open_saved_session', { saved_session_id, cols, rows })
+  return invoke<string>('open_saved_session', { savedSessionId, cols, rows })
 }
 
 export async function createTelnetSession(
   name: string,
-  folder_id: number | null,
+  folderId: number | null,
   host: string,
   port: number,
 ): Promise<number> {
-  return invoke<number>('create_telnet_session', { name, folder_id, host, port })
+  return invoke<number>('create_telnet_session', { name, folderId, host, port })
 }
 
 export async function createSerialSession(
   name: string,
-  folder_id: number | null,
+  folderId: number | null,
   device: string,
-  baud_rate: number,
+  baudRate: number,
 ): Promise<number> {
-  return invoke<number>('create_serial_session', { name, folder_id, device, baud_rate })
+  return invoke<number>('create_serial_session', { name, folderId, device, baudRate })
 }
 
 export async function listSerialPorts(): Promise<string[]> {
@@ -77,18 +77,18 @@ export async function listHighlightRules(): Promise<HighlightRule[]> {
 export async function createHighlightRule(
   name: string,
   pattern: string,
-  is_regex: boolean,
-  fg_color: string | null,
-  bg_color: string | null,
+  isRegex: boolean,
+  fgColor: string | null,
+  bgColor: string | null,
   bold: boolean,
   underline: boolean,
 ): Promise<number> {
   return invoke<number>('create_highlight_rule', {
     name,
     pattern,
-    is_regex,
-    fg_color,
-    bg_color,
+    isRegex,
+    fgColor,
+    bgColor,
     bold,
     underline,
   })
@@ -103,19 +103,19 @@ export async function deleteHighlightRule(id: number): Promise<void> {
 }
 
 export async function startSessionLogging(
-  session_id: string,
-  saved_session_id: number | null,
-  session_name: string,
+  sessionId: string,
+  savedSessionId: number | null,
+  sessionName: string,
 ): Promise<string> {
-  return invoke<string>('start_session_logging', { session_id, saved_session_id, session_name })
+  return invoke<string>('start_session_logging', { sessionId, savedSessionId, sessionName })
 }
 
-export async function stopSessionLogging(session_id: string): Promise<void> {
-  return invoke<void>('stop_session_logging', { session_id })
+export async function stopSessionLogging(sessionId: string): Promise<void> {
+  return invoke<void>('stop_session_logging', { sessionId })
 }
 
-export async function listSessionLogs(saved_session_id: number): Promise<SessionLog[]> {
-  return invoke<SessionLog[]>('list_session_logs', { saved_session_id })
+export async function listSessionLogs(savedSessionId: number): Promise<SessionLog[]> {
+  return invoke<SessionLog[]>('list_session_logs', { savedSessionId })
 }
 
 export async function listAllSessionLogs(): Promise<SessionLog[]> {

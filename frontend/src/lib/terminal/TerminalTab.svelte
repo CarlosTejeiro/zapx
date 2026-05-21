@@ -16,7 +16,28 @@
     listSessionLogs,
   } from '$lib/bridge/commands'
   import type { SavedSession, SessionLog } from '$lib/bridge/types'
-  import { terminalSettings, activePalette } from '$lib/stores/settings.svelte'
+  import { terminalSettings, colorSchemes } from '$lib/stores/settings.svelte'
+  import type { ColorPalette } from '$lib/bridge/types'
+
+  const DEFAULT_PALETTE: ColorPalette = {
+    background: '#282c34', foreground: '#abb2bf', cursor: '#528bff',
+    black: '#282c34', red: '#e06c75', green: '#98c379', yellow: '#e5c07b',
+    blue: '#61afef', magenta: '#c678dd', cyan: '#56b6c2', white: '#abb2bf',
+    brightBlack: '#5c6370', brightRed: '#e06c75', brightGreen: '#98c379',
+    brightYellow: '#e5c07b', brightBlue: '#61afef', brightMagenta: '#c678dd',
+    brightCyan: '#56b6c2', brightWhite: '#ffffff',
+  }
+
+  function parsePalette(json: string | null): ColorPalette {
+    if (!json) return DEFAULT_PALETTE
+    try { return JSON.parse(json) as ColorPalette } catch { return DEFAULT_PALETTE }
+  }
+
+  const activePalette = $derived<ColorPalette>(
+    parsePalette(
+      colorSchemes.find((s) => s.name === terminalSettings.activeColorScheme)?.palette_json ?? null,
+    ),
+  )
 
   interface SshParams {
     host: string
@@ -35,9 +56,12 @@
     telnet?: TelnetParams
     savedSession?: SavedSession
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
+    onSessionOpen?: () => void
+    onSessionError?: () => void
+    onSessionClose?: () => void
   }
 
-  let { ssh, telnet, savedSession, onGlobalShortcut }: Props = $props()
+  let { ssh, telnet, savedSession, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose }: Props = $props()
 
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
@@ -63,6 +87,12 @@
   interface TerminalDataPayload {
     session_id: string
     data: number[]
+  }
+
+  function fmtError(e: unknown): string {
+    if (typeof e === 'string') return e
+    if (e instanceof Error) return e.message
+    try { return JSON.stringify(e) } catch { return 'Unknown error' }
   }
 
   async function waitForTauri(timeoutMs = 5000): Promise<void> {
@@ -185,10 +215,13 @@
         sessionId = await invoke<string>('open_local_session')
       }
     } catch (e) {
-      errorMsg = String(e)
+      errorMsg = fmtError(e)
+      onSessionError?.()
       term.dispose()
       return
     }
+
+    onSessionOpen?.()
 
     // Forward PTY output to xterm.
     const unlisten: UnlistenFn = await listen<TerminalDataPayload>(
@@ -231,6 +264,7 @@
         await invoke('close_session', { sessionId }).catch(console.error)
         sessionId = null
       }
+      onSessionClose?.()
     })
   })
 

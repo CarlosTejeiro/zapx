@@ -1,5 +1,5 @@
 import { getSetting, setSetting, listColorSchemes } from '$lib/bridge/commands'
-import type { ColorScheme, ColorPalette } from '$lib/bridge/types'
+import type { ColorScheme } from '$lib/bridge/types'
 
 // ── reactive global terminal settings ──────────────────────────────────────
 
@@ -12,28 +12,15 @@ export const terminalSettings = $state({
   activeColorScheme: 'One Dark',
 })
 
-export let colorSchemes = $state<ColorScheme[]>([])
-
-export const activePalette = $derived<ColorPalette>(
-  parsePalette(
-    colorSchemes.find((s) => s.name === terminalSettings.activeColorScheme)?.palette_json ?? null,
-  ),
-)
-
-function parsePalette(json: string | null): ColorPalette {
-  if (!json) return DEFAULT_PALETTE
-  try {
-    return JSON.parse(json) as ColorPalette
-  } catch {
-    return DEFAULT_PALETTE
-  }
-}
+export const colorSchemes = $state<ColorScheme[]>([])
 
 // ── load from DB on app start ───────────────────────────────────────────────
 
 export async function loadSettings(): Promise<void> {
   try {
-    colorSchemes = await listColorSchemes()
+    const schemes = await listColorSchemes()
+    colorSchemes.length = 0
+    colorSchemes.push(...schemes)
   } catch {
     // non-fatal; built-in themes defined by DEFAULT_PALETTE fallback
   }
@@ -83,28 +70,4 @@ export async function applyCursorStyle(style: 'block' | 'underline' | 'bar'): Pr
 export async function applyCursorBlink(blink: boolean): Promise<void> {
   terminalSettings.cursorBlink = blink
   await setSetting('terminal.cursorBlink', String(blink))
-}
-
-// ── fallback palette (One Dark) used before DB loads ───────────────────────
-
-const DEFAULT_PALETTE: ColorPalette = {
-  background: '#282c34',
-  foreground: '#abb2bf',
-  cursor: '#528bff',
-  black: '#282c34',
-  red: '#e06c75',
-  green: '#98c379',
-  yellow: '#e5c07b',
-  blue: '#61afef',
-  magenta: '#c678dd',
-  cyan: '#56b6c2',
-  white: '#abb2bf',
-  brightBlack: '#5c6370',
-  brightRed: '#e06c75',
-  brightGreen: '#98c379',
-  brightYellow: '#e5c07b',
-  brightBlue: '#61afef',
-  brightMagenta: '#c678dd',
-  brightCyan: '#56b6c2',
-  brightWhite: '#ffffff',
 }

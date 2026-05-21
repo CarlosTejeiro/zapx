@@ -47,31 +47,30 @@
   }
 
   const rootSessions = $derived(sessions.filter((s) => s.folder_id === null))
-  const sessionsByFolder = $derived(
-    (id: number) => sessions.filter((s) => s.folder_id === id),
-  )
+  const sessionsByFolder = $derived((id: number) => sessions.filter((s) => s.folder_id === id))
+
+  function protocolColor(protocol: string): string {
+    if (protocol === 'ssh') return '#22c55e'
+    if (protocol === 'telnet') return '#f59e0b'
+    if (protocol === 'serial') return '#a78bfa'
+    return '#3b82f6'
+  }
 
   $effect(() => { load() })
 </script>
 
-<aside class="sidebar">
-  <header class="header">
-    <span class="title">Sessions</span>
-    <button class="add-btn" onclick={onAdd} title="New session">+</button>
-  </header>
-
+<div class="tree-root">
   {#if loading}
     <p class="hint">Loading…</p>
   {:else if error}
-    <p class="hint error">{error}</p>
+    <p class="hint err">{error}</p>
   {:else}
     <ul class="tree">
-      <!-- Root sessions (no folder) -->
       {#each rootSessions as s (s.id)}
         <li>
-          <button class="session-row" ondblclick={() => onOpen(s)}>
-            <span class="icon">⌨</span>
-            <span class="label">{s.name}</span>
+          <button class="session-row" onclick={() => onOpen(s)}>
+            <span class="proto-dot" style:background={protocolColor(s.protocol)}></span>
+            <span class="session-name">{s.name}</span>
             <!-- svelte-ignore a11y_interactive_supports_focus -->
             <span
               class="del-btn"
@@ -84,24 +83,21 @@
         </li>
       {/each}
 
-      <!-- Folders -->
       {#each folders as folder (folder.id)}
-        <li class="folder-item">
-          <button
-            class="folder-row"
-            onclick={() => toggleFolder(folder.id)}
-          >
-            <span class="chevron">{expandedFolders.has(folder.id) ? '▾' : '▸'}</span>
-            <span class="label">{folder.name}</span>
+        <li>
+          <button class="folder-row" onclick={() => toggleFolder(folder.id)}>
+            <span class="folder-chevron">{expandedFolders.has(folder.id) ? '▾' : '▸'}</span>
+            <span class="folder-icon">📁</span>
+            <span class="session-name">{folder.name}</span>
           </button>
 
           {#if expandedFolders.has(folder.id)}
             <ul class="subtree">
               {#each sessionsByFolder(folder.id) as s (s.id)}
                 <li>
-                  <button class="session-row" ondblclick={() => onOpen(s)}>
-                    <span class="icon">⌨</span>
-                    <span class="label">{s.name}</span>
+                  <button class="session-row session-indented" onclick={() => onOpen(s)}>
+                    <span class="proto-dot" style:background={protocolColor(s.protocol)}></span>
+                    <span class="session-name">{s.name}</span>
                     <!-- svelte-ignore a11y_interactive_supports_focus -->
                     <span
                       class="del-btn"
@@ -122,119 +118,142 @@
       {/each}
 
       {#if sessions.length === 0}
-        <li><p class="hint">No sessions yet.<br />Click + to add one.</p></li>
+        <li>
+          <p class="hint">No sessions.<br />
+            <button class="hint-add" onclick={onAdd}>+ Add session</button>
+          </p>
+        </li>
       {/if}
     </ul>
   {/if}
-</aside>
+</div>
 
 <style>
-  .sidebar {
-    width: 13rem;
-    min-width: 10rem;
-    max-width: 18rem;
-    background: #18181b;
-    border-right: 1px solid #27272a;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-shrink: 0;
+  .tree-root {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
   }
-
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0.65rem;
-    border-bottom: 1px solid #27272a;
-    flex-shrink: 0;
-  }
-
-  .title {
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: #52525b;
-  }
-
-  .add-btn {
-    background: transparent;
-    border: none;
-    color: #71717a;
-    font-size: 1.1rem;
-    cursor: pointer;
-    line-height: 1;
-    padding: 0 0.2rem;
-  }
-
-  .add-btn:hover { color: #e4e4e7; }
 
   .tree,
   .subtree {
     list-style: none;
     margin: 0;
     padding: 0;
-    overflow-y: auto;
   }
 
-  .tree { flex: 1; padding: 0.25rem 0; }
+  .tree {
+    padding: 0.2rem 0;
+  }
 
-  .subtree { padding-left: 0.75rem; }
+  .subtree {
+    padding-left: 0.5rem;
+  }
 
   .session-row,
   .folder-row {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
+    gap: 0.3rem;
+    padding: 0.22rem 0.5rem;
+    font-size: 0.75rem;
     font-family: inherit;
     background: transparent;
     border: none;
     color: #a1a1aa;
     cursor: pointer;
     text-align: left;
+    border-left: 2px solid transparent;
   }
 
   .session-row:hover,
-  .folder-row:hover { background: #27272a; color: #e4e4e7; }
-
-  .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  .icon { font-size: 0.75rem; flex-shrink: 0; }
-
-  .chevron { font-size: 0.65rem; flex-shrink: 0; color: #52525b; }
-
-  .del-btn {
-    background: transparent;
-    border: none;
-    color: #52525b;
-    font-size: 0.9rem;
-    cursor: pointer;
-    line-height: 1;
-    padding: 0 0.15rem;
-    opacity: 0;
+  .folder-row:hover {
+    background: #1e1e1e;
+    color: #e4e4e7;
+    border-left-color: #3b82f6;
   }
 
-  .session-row:hover .del-btn { opacity: 1; }
-  .del-btn:hover { color: #ef4444; }
+  .session-indented {
+    padding-left: 0.75rem;
+  }
+
+  .proto-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .folder-chevron {
+    font-size: 0.6rem;
+    color: #52525b;
+    flex-shrink: 0;
+  }
+
+  .folder-icon {
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .session-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .del-btn {
+    color: #52525b;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0 0.1rem;
+    opacity: 0;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    line-height: 1;
+    font-family: inherit;
+  }
+
+  .session-row:hover .del-btn {
+    opacity: 1;
+  }
+
+  .del-btn:hover {
+    color: #ef4444;
+  }
 
   .hint {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     color: #52525b;
-    padding: 0.75rem 0.75rem;
+    padding: 0.6rem 0.6rem;
     line-height: 1.5;
     margin: 0;
   }
 
-  .error { color: #ef4444; }
+  .hint-add {
+    background: none;
+    border: none;
+    color: #4a9eff;
+    cursor: pointer;
+    font-size: 0.72rem;
+    padding: 0;
+    font-family: inherit;
+  }
+
+  .hint-add:hover {
+    text-decoration: underline;
+  }
+
+  .err {
+    color: #ef4444;
+  }
 
   .empty {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #3f3f46;
-    padding: 0.15rem 0.5rem;
+    padding: 0.15rem 0.75rem;
     display: block;
     font-style: italic;
   }
