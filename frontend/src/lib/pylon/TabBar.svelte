@@ -49,6 +49,8 @@
   style:background={theme.tabBarBg}
   style:border-bottom="1px solid {theme.border}"
   style:font-family={theme.fontUi}
+  style:--item-hover-bg={theme.itemHoverBg}
+  style:--text-primary={theme.textPrimary}
 >
 
   <!-- Tabs strip -->
@@ -226,8 +228,8 @@
   }
 
   .tab-add:hover {
-    background: rgba(255,255,255,0.06);
-    color: #c9cdd3;
+    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    color: var(--text-primary, #c9cdd3);
   }
 
   .tab-actions {
@@ -256,6 +258,6 @@
   }
 
   .tab-action-btn:hover {
-    background: rgba(255,255,255,0.06);
+    background: var(--item-hover-bg, rgba(255,255,255,0.06));
   }
 </style>

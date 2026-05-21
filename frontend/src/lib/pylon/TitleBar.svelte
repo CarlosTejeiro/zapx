@@ -15,6 +15,7 @@
     onNewSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
+    onSetTheme?: (key: string) => void
     onAbout?: () => void
     themeName?: string
   }
@@ -25,8 +26,9 @@
     onNewSession,
     onSettings,
     onToggleTheme,
+    onSetTheme,
     onAbout,
-    themeName = 'neon-noir',
+    themeName = 'parchment',
   }: Props = $props()
 
   const win = getCurrentWindow()
@@ -38,8 +40,9 @@
       { label: 'Quit', action: () => win.close() },
     ],
     View: [
-      { label: themeName === 'graphite' ? '● Graphite' : '  Graphite', action: () => { onToggleTheme?.(); openMenu = null } },
-      { label: themeName === 'neon-noir' ? '● Neon Noir' : '  Neon Noir', action: () => { onToggleTheme?.(); openMenu = null } },
+      { label: themeName === 'parchment' ? '● Parchment' : '  Parchment', action: () => { onSetTheme?.('parchment'); openMenu = null } },
+      { label: themeName === 'graphite'  ? '● Graphite'  : '  Graphite',  action: () => { onSetTheme?.('graphite');  openMenu = null } },
+      { label: themeName === 'neon-noir' ? '● Neon Noir' : '  Neon Noir', action: () => { onSetTheme?.('neonNoir'); openMenu = null } },
     ],
     Session: [
       { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
@@ -67,7 +70,13 @@
   if (!target.closest?.('.tb-menu-wrap')) closeMenus()
 }} />
 
-<header class="titlebar" style:background={theme.titlebarBg} style:color={theme.textMuted}>
+<header
+  class="titlebar"
+  style:background={theme.titlebarBg}
+  style:color={theme.textMuted}
+  style:--item-hover-bg={theme.itemHoverBg}
+  style:--text-primary={theme.textPrimary}
+>
 
   <!-- Left: brand + active session -->
   <div class="tb-left">
@@ -210,8 +219,8 @@
 
   .tb-menu-item:hover,
   .tb-menu-item.active {
-    background: rgba(255,255,255,0.06);
-    color: #c9cdd3;
+    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    color: var(--text-primary, #c9cdd3);
   }
 
   .tb-dropdown {
@@ -240,7 +249,7 @@
   }
 
   .dd-item:not(:disabled):hover {
-    background: rgba(255,255,255,0.07);
+    background: var(--item-hover-bg, rgba(255,255,255,0.07));
   }
 
   .dd-item:disabled {
@@ -270,8 +279,8 @@
   }
 
   .tb-ctrl:hover {
-    background: rgba(255,255,255,0.08);
-    color: #c9cdd3;
+    background: var(--item-hover-bg, rgba(255,255,255,0.08));
+    color: var(--text-primary, #c9cdd3);
   }
 
   .tb-ctrl-close:hover {

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PYLON — SSH client variants</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: "Geist", system-ui, sans-serif; }
+    body { background: #f0eee9; }
+    * { box-sizing: border-box; }
+
+    /* Window-chrome wrapper around each artboard: simulates a real desktop
+       window with a soft outer glow that matches the variant's accent. */
+    .pylon-window {
+      width: 100%; height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .pylon-window-neon {
+      box-shadow:
+        0 0 0 1px rgba(34,211,238,0.18),
+        0 30px 80px rgba(0,0,0,0.4),
+        0 0 80px rgba(34,211,238,0.08);
+    }
+    .pylon-window-graphite {
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 24px 70px rgba(0,0,0,0.35);
+    }
+    .pylon-window-parchment {
+      box-shadow:
+        0 0 0 1px rgba(85,70,40,0.10),
+        0 24px 70px rgba(85,70,40,0.18);
+    }
+    .pylon-window-phosphor {
+      box-shadow:
+        0 0 0 1px rgba(74,222,128,0.22),
+        0 30px 80px rgba(0,0,0,0.5),
+        0 0 100px rgba(74,222,128,0.10);
+    }
+    .pylon-window-vapor {
+      box-shadow:
+        0 0 0 1px rgba(168,85,247,0.30),
+        0 30px 80px rgba(0,0,0,0.4),
+        0 0 100px rgba(244,114,182,0.12),
+        0 0 100px rgba(56,189,248,0.08);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="data.js"></script>
+  <script src="themes.js"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="terminal.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useEffect } = React;
+
+    function Variant({ themeKey }) {
+      const theme = window.PYLON_THEMES[themeKey];
+      return (
+        <div className={"pylon-window pylon-window-" + themeKey}>
+          <window.PylonApp theme={theme} brand="PYLON" subBrand="SSH" />
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection
+            id="overview"
+            title="PYLON — Modern SSH Client"
+            subtitle="Cross-platform terminal · tabs · multi-pane. Three directions: one bold, two understated."
+          >
+            <DCArtboard id="neon" label="A · Neon Noir" width={1280} height={800}>
+              <Variant themeKey="neon" />
+            </DCArtboard>
+            <DCArtboard id="graphite" label="B · Graphite" width={1280} height={800}>
+              <Variant themeKey="graphite" />
+            </DCArtboard>
+            <DCArtboard id="parchment" label="C · Parchment" width={1280} height={800}>
+              <Variant themeKey="parchment" />
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    // Wait one frame so all the babel scripts have evaluated and registered
+    // their globals (PylonApp, PylonTerminal, DesignCanvas, …).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    }));
+  </script>
+</body>
+</html>

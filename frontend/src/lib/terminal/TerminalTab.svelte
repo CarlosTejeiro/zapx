@@ -56,13 +56,29 @@
     telnet?: TelnetParams
     savedSession?: SavedSession
     hideToolbar?: boolean
+    pylonPalette?: ColorPalette
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
     onSessionOpen?: () => void
     onSessionError?: () => void
     onSessionClose?: () => void
+    onNeedPassword?: () => void
   }
 
-  let { ssh, telnet, savedSession, hideToolbar = false, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose }: Props = $props()
+  let { ssh, telnet, savedSession, hideToolbar = false, pylonPalette, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose, onNeedPassword }: Props = $props()
+
+  function isKeyringMissing(e: unknown): boolean {
+    const raw = typeof e === 'string' ? e : (e instanceof Error ? e.message : (() => { try { return JSON.stringify(e) } catch { return '' } })())
+    try {
+      const obj = JSON.parse(raw) as Record<string, unknown>
+      const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
+      return inner.includes('keyring') && inner.includes('No matching entry')
+    } catch {
+      return raw.includes('keyring') && raw.includes('No matching entry')
+    }
+  }
+
+  // When a pylon theme palette is provided it takes precedence over user color scheme settings
+  const effectivePalette = $derived(pylonPalette ?? activePalette)
 
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
@@ -174,7 +190,7 @@
       fontSize: terminalSettings.fontSize,
       fontFamily: terminalSettings.fontFamily,
       lineHeight: terminalSettings.lineHeight,
-      theme: activePalette,
+      theme: effectivePalette,
     })
 
     const fitAddon = new FitAddon()
@@ -228,6 +244,11 @@
         sessionId = await invoke<string>('open_local_session')
       }
     } catch (e) {
+      if (isKeyringMissing(e)) {
+        onNeedPassword?.()
+        term.dispose()
+        return
+      }
       errorMsg = fmtError(e)
       onSessionError?.()
       term.dispose()
@@ -295,7 +316,7 @@
   // Reactive appearance: push new theme/font settings to the live terminal
   $effect(() => {
     if (!term) return
-    term.options.theme = activePalette
+    term.options.theme = effectivePalette
     term.options.fontSize = terminalSettings.fontSize
     term.options.fontFamily = terminalSettings.fontFamily
     term.options.cursorStyle = terminalSettings.cursorStyle
@@ -404,7 +425,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #09090b;
+    background: var(--term-bg, #09090b);
   }
 
   .toolbar {
@@ -551,7 +572,7 @@
   .terminal-container {
     flex: 1;
     overflow: hidden;
-    background: #09090b;
+    background: var(--term-bg, #09090b);
   }
 
   :global(.xterm) {
@@ -560,12 +581,12 @@
   }
 
   :global(.xterm-viewport) {
-    background-color: #09090b !important;
+    background-color: var(--term-bg, #09090b) !important;
     overflow-y: hidden !important;
   }
 
   :global(.xterm-screen) {
-    background-color: #09090b;
+    background-color: var(--term-bg, #09090b);
   }
 
   .error {

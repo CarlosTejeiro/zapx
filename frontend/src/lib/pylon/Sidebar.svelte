@@ -64,6 +64,8 @@
   style:background={theme.sidebarBg}
   style:border-right="1px solid {theme.accent}30"
   style:font-family={theme.fontUi}
+  style:--item-hover-bg={theme.itemHoverBg}
+  style:--text-primary={theme.textPrimary}
 >
 
   <!-- Search -->
@@ -301,8 +303,8 @@
   }
 
   .sb-add-btn:hover {
-    background: rgba(255,255,255,0.06);
-    color: #c9cdd3;
+    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    color: var(--text-primary, #c9cdd3);
   }
 
   .sb-section-header {
@@ -356,7 +358,7 @@
   }
 
   .sb-row:hover {
-    background: rgba(255,255,255,0.04) !important;
+    background: var(--item-hover-bg, rgba(255,255,255,0.04)) !important;
   }
 
   .sb-row-indented {
@@ -450,7 +452,7 @@
   }
 
   .sb-settings-btn:hover {
-    background: rgba(255,255,255,0.06);
-    color: #c9cdd3;
+    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    color: var(--text-primary, #c9cdd3);
   }
 </style>

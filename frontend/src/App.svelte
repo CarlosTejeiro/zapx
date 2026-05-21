@@ -9,6 +9,7 @@
   import type { PaneData } from '$lib/pylon/Pane.svelte'
   import StatusBar from '$lib/pylon/StatusBar.svelte'
   import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
+  import ResizeHandles from '$lib/pylon/ResizeHandles.svelte'
   import SettingsModal from '$lib/settings/SettingsModal.svelte'
   import { listSessions, listFolders } from '$lib/bridge/commands'
   import { loadSettings } from '$lib/stores/settings.svelte'
@@ -21,15 +22,24 @@
   interface AppTab {
     id: number
     pane: PaneData
+    pane2?: PaneData
+    splitRatio: number
     status: PaneStatus
+    status2: PaneStatus
   }
 
   // ── theme ────────────────────────────────────────────────────────────────────
 
   const theme = $derived(getTheme())
 
+  const themeKeyMap: Record<string, string> = {
+    'parchment': 'graphite',
+    'graphite':  'neonNoir',
+    'neon-noir': 'parchment',
+  }
+
   function toggleTheme() {
-    setTheme(theme.name === 'graphite' ? 'neonNoir' : 'graphite')
+    setTheme(themeKeyMap[theme.name] ?? 'parchment')
   }
 
   // ── state ────────────────────────────────────────────────────────────────────
@@ -51,13 +61,14 @@
   }
 
   function mkTab(pane: PaneData): AppTab {
-    return { id: nextId++, pane, status: 'connecting' }
+    return { id: nextId++, pane, splitRatio: 0.5, status: 'connecting', status2: 'connecting' }
   }
 
   const firstPane = mkPane('shell')
   const firstTab = mkTab(firstPane)
 
   let tabs = $state<AppTab[]>([firstTab])
+  let splitContainerEl = $state<HTMLDivElement | null>(null)
   let activeTabId = $state(firstTab.id)
   let focusedPaneId = $state(firstPane.id)
   let sessions = $state<SavedSession[]>([])
@@ -83,21 +94,34 @@
 
   const activePaneData = $derived(activeTab?.pane)
 
+  // Focused pane may be the split pane2; derive connection info from it
+  const focusedPaneData = $derived(
+    activeTab?.pane2 && focusedPaneId === activeTab.pane2.id
+      ? activeTab.pane2
+      : activeTab?.pane
+  )
+
+  const focusedStatus = $derived(
+    activeTab?.pane2 && focusedPaneId === activeTab.pane2.id
+      ? (activeTab.status2 ?? 'connecting')
+      : (activeTab?.status ?? 'connecting')
+  )
+
   const statusHost = $derived(
-    activePaneData?.ssh?.host ??
-    activePaneData?.savedSession?.host ??
+    focusedPaneData?.ssh?.host ??
+    focusedPaneData?.savedSession?.host ??
     ''
   )
 
   const statusPort = $derived(
-    activePaneData?.ssh?.port ??
-    activePaneData?.savedSession?.port ??
+    focusedPaneData?.ssh?.port ??
+    focusedPaneData?.savedSession?.port ??
     undefined
   )
 
   const statusProtocol = $derived(
-    activePaneData?.savedSession?.protocol?.toUpperCase() ??
-    (activePaneData?.ssh ? 'SSH' : activePaneData?.telnet ? 'TELNET' : 'LOCAL')
+    focusedPaneData?.savedSession?.protocol?.toUpperCase() ??
+    (focusedPaneData?.ssh ? 'SSH' : focusedPaneData?.telnet ? 'TELNET' : 'LOCAL')
   )
 
   const activeSessionName = $derived(
@@ -153,11 +177,45 @@
     if (tab) focusedPaneId = tab.pane.id
   }
 
-  function handleStatusChange(tabId: number, status: PaneStatus) {
+  function handleStatusChange(tabId: number, paneId: number, status: PaneStatus) {
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
-    tab.status = status
-    tabs = tabs // trigger reactivity
+    if (paneId === tab.pane.id) {
+      tab.status = status
+    } else if (tab.pane2 && paneId === tab.pane2.id) {
+      tab.status2 = status
+    }
+    tabs = tabs
+  }
+
+  function handleSplitToggle() {
+    splitOn = !splitOn
+    if (splitOn) {
+      const tab = tabs.find((t) => t.id === activeTabId)
+      if (tab && !tab.pane2) {
+        tab.pane2 = mkPane('shell')
+        tabs = tabs
+      }
+    }
+  }
+
+  function startSplitResize(e: MouseEvent) {
+    e.preventDefault()
+    const container = splitContainerEl
+    if (!container) return
+    const onMove = (me: MouseEvent) => {
+      const tab = tabs.find((t) => t.id === activeTabId)
+      if (!tab) return
+      const rect = container.getBoundingClientRect()
+      tab.splitRatio = Math.max(0.2, Math.min(0.8, (me.clientX - rect.left) / rect.width))
+      tabs = tabs
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   function handleSessionAdded() {
@@ -180,7 +238,7 @@
         break
       }
       case ',': showSettings = true; break
-      case '\\': splitOn = !splitOn; break
+      case '\\': handleSplitToggle(); break
     }
   }
 
@@ -193,13 +251,16 @@
         case 'w':    e.preventDefault(); closeTab(activeTabId);        break
         case 'Tab':  e.preventDefault(); handleGlobalShortcut('Tab', e); break
         case ',':    e.preventDefault(); showSettings = true;          break
-        case '\\':   e.preventDefault(); splitOn = !splitOn;           break
+        case '\\':   e.preventDefault(); handleSplitToggle();           break
       }
     }
     document.addEventListener('keydown', onKeydown)
     return () => document.removeEventListener('keydown', onKeydown)
   })
 </script>
+
+<!-- ── Resize handles (frameless window) ───────────────────────────────────── -->
+<ResizeHandles />
 
 <!-- ── PYLON shell ──────────────────────────────────────────────────────────── -->
 <div class="pylon-shell" style:background={theme.appBg}>
@@ -211,6 +272,7 @@
     onNewSession={() => showNewSession = true}
     onSettings={() => showSettings = true}
     onToggleTheme={toggleTheme}
+    onSetTheme={(k) => setTheme(k)}
     onAbout={() => showAbout = true}
   />
 
@@ -238,7 +300,7 @@
         onActivate={activateTab}
         onAdd={addLocalTab}
         onClose={closeTab}
-        onToggleSplit={() => splitOn = !splitOn}
+        onToggleSplit={handleSplitToggle}
         onToggleMulti={() => multiOn = !multiOn}
       />
 
@@ -246,14 +308,46 @@
         {#each tabs as tab (tab.id)}
           <div class="pane-slot" class:hidden={tab.id !== activeTabId}>
             {#if tab.id === activeTabId}
-              <Pane
-                {theme}
-                pane={tab.pane}
-                focused={focusedPaneId === tab.pane.id}
-                onFocus={() => focusedPaneId = tab.pane.id}
-                onStatusChange={(s) => handleStatusChange(tab.id, s)}
-                onGlobalShortcut={handleGlobalShortcut}
-              />
+              {#if splitOn && tab.pane2}
+                <!-- Split view -->
+                <div class="split-container" bind:this={splitContainerEl}>
+                  <div class="split-pane" style:flex={tab.splitRatio}>
+                    <Pane
+                      {theme}
+                      pane={tab.pane}
+                      focused={focusedPaneId === tab.pane.id}
+                      onFocus={() => focusedPaneId = tab.pane.id}
+                      onStatusChange={(s) => handleStatusChange(tab.id, tab.pane.id, s)}
+                      onGlobalShortcut={handleGlobalShortcut}
+                    />
+                  </div>
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div
+                    class="split-handle"
+                    style:background={theme.border}
+                    onmousedown={startSplitResize}
+                  ></div>
+                  <div class="split-pane" style:flex={1 - tab.splitRatio}>
+                    <Pane
+                      {theme}
+                      pane={tab.pane2}
+                      focused={focusedPaneId === tab.pane2.id}
+                      onFocus={() => { if (tab.pane2) focusedPaneId = tab.pane2.id }}
+                      onStatusChange={(s) => { if (tab.pane2) handleStatusChange(tab.id, tab.pane2.id, s) }}
+                      onGlobalShortcut={handleGlobalShortcut}
+                    />
+                  </div>
+                </div>
+              {:else}
+                <Pane
+                  {theme}
+                  pane={tab.pane}
+                  focused={focusedPaneId === tab.pane.id}
+                  onFocus={() => focusedPaneId = tab.pane.id}
+                  onStatusChange={(s) => handleStatusChange(tab.id, tab.pane.id, s)}
+                  onGlobalShortcut={handleGlobalShortcut}
+                />
+              {/if}
             {/if}
           </div>
         {/each}
@@ -261,7 +355,7 @@
 
       <StatusBar
         {theme}
-        status={activeTab?.status ?? 'connecting'}
+        status={focusedStatus}
         host={statusHost || undefined}
         port={statusPort ?? undefined}
         protocol={statusProtocol}
@@ -320,7 +414,7 @@
           <tbody>
             <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>0.1.0</td></tr>
             <tr><td style:color={theme.textDim}>Runtime</td><td>Tauri 2 · WebView</td></tr>
-            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{theme.name === 'neon-noir' ? 'Neon Noir' : 'Graphite'}</td></tr>
+            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{theme.name === 'neon-noir' ? 'Neon Noir' : theme.name === 'parchment' ? 'Parchment' : 'Graphite'}</td></tr>
           </tbody>
         </table>
         <p class="about-hint" style:color={theme.textDim} style:font-family={theme.fontMono}>
@@ -372,6 +466,33 @@
 
   .pane-slot.hidden {
     display: none;
+  }
+
+  .split-container {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .split-pane {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    flex-basis: 0;
+  }
+
+  .split-handle {
+    width: 4px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+
+  .split-handle:hover {
+    opacity: 1;
   }
 
   .about-backdrop {

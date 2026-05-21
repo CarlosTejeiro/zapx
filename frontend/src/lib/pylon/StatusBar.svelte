@@ -36,6 +36,29 @@
     : status === 'closed'  ? theme.textDim
     : theme.warn
   )
+
+  let uptimeStr = $state('')
+
+  $effect(() => {
+    // Track status as a dependency; restart timer on each connect
+    if (status === 'connected') {
+      const startTime = Date.now()
+      function tick() {
+        const secs = Math.floor((Date.now() - startTime) / 1000)
+        const h = Math.floor(secs / 3600)
+        const m = Math.floor((secs % 3600) / 60)
+        const s = secs % 60
+        uptimeStr = h > 0
+          ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+          : `${m}:${String(s).padStart(2,'0')}`
+      }
+      tick()
+      const timer = setInterval(tick, 1000)
+      return () => { clearInterval(timer); uptimeStr = '' }
+    } else {
+      uptimeStr = ''
+    }
+  })
 </script>
 
 <footer
@@ -68,6 +91,11 @@
         <span style:color={theme.textDim}>{protocol.toLowerCase()}</span>
         <span style:color={theme.textMuted}> {port}</span>
       </span>
+    {/if}
+
+    {#if uptimeStr && status === 'connected'}
+      <span class="sb-divider">|</span>
+      <span class="sb-seg sb-mono" style:color={theme.textMuted}>up {uptimeStr}</span>
     {/if}
 
     {#if latencyMs !== undefined && status === 'connected'}

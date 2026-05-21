@@ -1,7 +1,7 @@
-import { neonNoir, themes } from './index'
+import { parchment, themes } from './index'
 import type { PylonTheme } from './index'
 
-let active = $state<PylonTheme>(neonNoir)
+let active = $state<PylonTheme>(parchment)
 
 export function getTheme(): PylonTheme {
   return active

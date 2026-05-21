@@ -203,4 +203,69 @@ export const neonNoir: PylonTheme = {
   windowShadow: '0 30px 80px rgba(0,0,0,0.4), 0 0 80px rgba(34,211,238,0.08)',
 }
 
-export const themes: Record<string, PylonTheme> = { graphite, neonNoir }
+export const parchment: PylonTheme = {
+  name: 'parchment',
+
+  fontUi: '"Geist", "SF Pro Text", system-ui, sans-serif',
+  fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+
+  appBg: '#f5f2eb',
+  bodyBg: '#faf8f3',
+  sidebarBg: '#f0ece2',
+  titlebarBg: '#efeae0',
+  statusbarBg: '#e7e1d3',
+  tabBarBg: '#efeae0',
+
+  tabActiveBg: '#faf8f3',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(85,70,40,0.15)',
+  tabRadius: '6px 6px 0 0',
+
+  accent: '#564ca0',
+  accent2: '#b3793a',
+  itemHoverBg: 'rgba(85,70,40,0.05)',
+  itemActiveBg: 'rgba(86,76,160,0.10)',
+  itemActiveBorder: '#564ca0',
+
+  textPrimary: '#2d2a24',
+  textMuted: '#5d5549',
+  textDim: '#8a8174',
+
+  border: 'rgba(85,70,40,0.14)',
+  radius: '6px',
+
+  ok: '#3e8f60',
+  warn: '#b88528',
+  err: '#b13a3a',
+
+  terminal: {
+    bg: '#1d1e26',
+    fg: '#d4d6dc',
+    cursor: '#8e85e0',
+    dim: '#3d3f52',
+    ok: '#4ade80',
+    warn: '#fbbf24',
+    err: '#ef4444',
+    black: '#1d1e26',
+    red: '#cc5555',
+    green: '#55aa77',
+    yellow: '#c9882a',
+    blue: '#5b8fc9',
+    magenta: '#8e85e0',
+    cyan: '#5eb3b2',
+    white: '#d4d6dc',
+    brightBlack: '#3d3f52',
+    brightRed: '#e06c75',
+    brightGreen: '#66bb88',
+    brightYellow: '#d4a85a',
+    brightBlue: '#82bfff',
+    brightMagenta: '#a99ede',
+    brightCyan: '#67e8f9',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.15)',
+}
+
+export const themes: Record<string, PylonTheme> = { graphite, neonNoir, parchment }
