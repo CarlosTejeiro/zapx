@@ -7,14 +7,25 @@
 //! public API (see style guide §2, API design).
 
 pub mod error;
+pub mod forwards;
 pub mod local_pty;
 pub mod serial;
+pub mod sftp;
 pub mod ssh;
 pub mod telnet;
 
+pub use forwards::{open_dynamic_forward, open_local_forward, ForwardController, ForwardInfo};
 pub use local_pty::LocalPty;
 pub use serial::{list_ports as list_serial_ports, SerialTransport};
-pub use ssh::SshTransport;
+pub use sftp::{empty_slot as empty_sftp_slot, SftpClient, SftpEntry, SftpSlot};
+pub use ssh::{
+    connect_authenticated, connect_authenticated_via, preflight_host_key, trust_host_key,
+    HostKeyStatus, KiPrompt, KiRequest, KiResponder, SshAuth, SshTransport,
+};
+
+/// Type alias for the authenticated SSH session handle that the app layer
+/// passes around as a bastion link in ProxyJump chains.
+pub type SshHandle = russh::client::Handle<ssh::SshClientHandler>;
 pub use telnet::TelnetTransport;
 
 /// Commands sent to a live session's I/O task.

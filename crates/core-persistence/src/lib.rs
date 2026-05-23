@@ -46,6 +46,15 @@ pub struct Folder {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Snippet {
+    pub id: i64,
+    pub name: String,
+    pub content: String,
+    pub sort_order: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HighlightRule {
     pub id: i64,
     pub name: String,
@@ -71,6 +80,14 @@ pub struct SavedSession {
     pub credential_id: Option<i64>,
     pub options_json: String,
     pub last_used_at: Option<String>,
+    /// SSH auth method: NULL/"password" | "key" | "agent".
+    pub auth_method: Option<String>,
+    /// Optional ProxyJump: another saved session whose live SSH connection is
+    /// used as the transport for this session (via a `direct-tcpip` channel).
+    pub via_session_id: Option<i64>,
+    /// Optional JSON array of `{expect, send, is_regex, timeout_ms}` login
+    /// steps run automatically when the session is opened. NULL = no automation.
+    pub login_script_json: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +133,18 @@ impl Database {
         }
         if version < 4 {
             conn.execute_batch(include_str!("migrations/004_appearance.sql"))?;
+        }
+        if version < 5 {
+            conn.execute_batch(include_str!("migrations/005_ssh_key_auth.sql"))?;
+        }
+        if version < 6 {
+            conn.execute_batch(include_str!("migrations/006_jump_host.sql"))?;
+        }
+        if version < 7 {
+            conn.execute_batch(include_str!("migrations/007_snippets.sql"))?;
+        }
+        if version < 8 {
+            conn.execute_batch(include_str!("migrations/008_login_script.sql"))?;
         }
         Ok(())
     }
@@ -169,6 +198,7 @@ impl Database {
     // -----------------------------------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &self,
         folder_id: Option<i64>,
@@ -180,11 +210,39 @@ impl Database {
         credential_id: Option<i64>,
         options_json: &str,
     ) -> Result<i64, Error> {
+        self.create_session_full(
+            folder_id,
+            name,
+            protocol,
+            host,
+            port,
+            username,
+            credential_id,
+            options_json,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_session_full(
+        &self,
+        folder_id: Option<i64>,
+        name: &str,
+        protocol: &str,
+        host: Option<&str>,
+        port: Option<u16>,
+        username: Option<&str>,
+        credential_id: Option<i64>,
+        options_json: &str,
+        auth_method: Option<&str>,
+        via_session_id: Option<i64>,
+    ) -> Result<i64, Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO sessions
-             (folder_id, name, protocol, host, port, username, credential_id, options_json)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+             (folder_id, name, protocol, host, port, username, credential_id, options_json, auth_method, via_session_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
             rusqlite::params![
                 folder_id,
                 name,
@@ -194,6 +252,8 @@ impl Database {
                 username,
                 credential_id,
                 options_json,
+                auth_method,
+                via_session_id,
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -203,7 +263,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, folder_id, name, protocol, host, port, username, credential_id,
-                    options_json, last_used_at
+                    options_json, last_used_at, auth_method, via_session_id, login_script_json
              FROM sessions ORDER BY folder_id NULLS LAST, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -218,6 +278,9 @@ impl Database {
                 credential_id: row.get(7)?,
                 options_json: row.get(8)?,
                 last_used_at: row.get(9)?,
+                auth_method: row.get(10)?,
+                via_session_id: row.get(11)?,
+                login_script_json: row.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -227,7 +290,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT id, folder_id, name, protocol, host, port, username, credential_id,
-                    options_json, last_used_at
+                    options_json, last_used_at, auth_method, via_session_id, login_script_json
              FROM sessions WHERE id=?1",
             rusqlite::params![id],
             |row| {
@@ -242,6 +305,9 @@ impl Database {
                     credential_id: row.get(7)?,
                     options_json: row.get(8)?,
                     last_used_at: row.get(9)?,
+                    auth_method: row.get(10)?,
+                    via_session_id: row.get(11)?,
+                    login_script_json: row.get(12)?,
                 })
             },
         )
@@ -249,6 +315,63 @@ impl Database {
             rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
             e => Error::Rusqlite(e),
         })
+    }
+
+    /// Reparent a session to a folder (or `None` for the root). Used by the
+    /// session-tree drag-and-drop.
+    pub fn set_session_folder(&self, id: i64, folder_id: Option<i64>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions SET folder_id = ?1 WHERE id = ?2",
+            rusqlite::params![folder_id, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Update the user-editable fields of a saved session. Auth method and
+    /// credential reference are intentionally NOT updated here — to change
+    /// credentials the user re-creates the session in v1.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_session_fields(
+        &self,
+        id: i64,
+        name: &str,
+        folder_id: Option<i64>,
+        host: Option<&str>,
+        port: Option<u16>,
+        username: Option<&str>,
+        via_session_id: Option<i64>,
+        options_json: Option<&str>,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions
+             SET name = ?1,
+                 folder_id = ?2,
+                 host = ?3,
+                 port = ?4,
+                 username = ?5,
+                 via_session_id = ?6,
+                 options_json = COALESCE(?7, options_json)
+             WHERE id = ?8",
+            rusqlite::params![
+                name,
+                folder_id,
+                host,
+                port.map(|p| p as i64),
+                username,
+                via_session_id,
+                options_json,
+                id,
+            ],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
     }
 
     pub fn delete_session(&self, id: i64) -> Result<(), Error> {
@@ -515,5 +638,86 @@ impl Database {
             map.insert(k, v);
         }
         Ok(map)
+    }
+
+    // -----------------------------------------------------------------------
+    // Login script (migration 008) — JSON blob on `sessions`.
+    // -----------------------------------------------------------------------
+
+    pub fn set_login_script(
+        &self,
+        session_id: i64,
+        script_json: Option<&str>,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions SET login_script_json = ?1 WHERE id = ?2",
+            rusqlite::params![script_json, session_id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    pub fn get_login_script(&self, session_id: i64) -> Result<Option<String>, Error> {
+        Ok(self.get_session(session_id)?.login_script_json)
+    }
+
+    // -----------------------------------------------------------------------
+    // Snippets CRUD (migration 007)
+    // -----------------------------------------------------------------------
+
+    pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, content, sort_order, created_at
+             FROM snippets ORDER BY sort_order, name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Snippet {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+                sort_order: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn create_snippet(&self, name: &str, content: &str) -> Result<i64, Error> {
+        let conn = self.conn.lock().unwrap();
+        // Next sort_order = current max + 1; keeps user-created entries after seeds.
+        let next: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM snippets",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(1);
+        conn.execute(
+            "INSERT INTO snippets (name, content, sort_order) VALUES (?1, ?2, ?3)",
+            rusqlite::params![name, content, next],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_snippet(&self, id: i64, name: &str, content: &str) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE snippets SET name = ?1, content = ?2 WHERE id = ?3",
+            rusqlite::params![name, content, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    pub fn delete_snippet(&self, id: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM snippets WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
     }
 }

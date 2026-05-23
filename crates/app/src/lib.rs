@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod events;
+mod login_script;
 mod menu;
 mod state;
 
@@ -22,6 +23,8 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -56,16 +59,42 @@ pub fn run() {
                 highlighter,
                 loggers: Arc::new(Mutex::new(HashMap::new())),
                 log_dir,
+                ki_pending: Arc::new(Mutex::new(HashMap::new())),
+                forwards: Mutex::new(HashMap::new()),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::sessions::open_local_session,
             commands::sessions::open_ssh_session,
+            commands::sessions::ssh_preflight_host_key,
+            commands::sessions::ssh_trust_host_key,
+            commands::sessions::respond_keyboard_interactive,
+            commands::forwards::add_local_forward,
+            commands::forwards::add_dynamic_forward,
+            commands::forwards::list_forwards,
+            commands::forwards::remove_forward,
+            commands::sftp::sftp_list_dir,
+            commands::sftp::sftp_stat,
+            commands::sftp::sftp_canonicalize,
+            commands::sftp::sftp_mkdir,
+            commands::sftp::sftp_remove_dir,
+            commands::sftp::sftp_remove_file,
+            commands::sftp::sftp_rename,
+            commands::sftp::sftp_download_file,
+            commands::sftp::sftp_upload_file,
+            commands::snippets::list_snippets,
+            commands::snippets::create_snippet,
+            commands::snippets::update_snippet,
+            commands::snippets::delete_snippet,
+            commands::login_scripts::get_login_script,
+            commands::login_scripts::set_login_script,
             commands::sessions::send_input,
             commands::sessions::resize_terminal,
             commands::sessions::close_session,
             commands::sessions::create_saved_session,
+            commands::sessions::update_saved_session,
+            commands::sessions::move_saved_session,
             commands::sessions::list_sessions,
             commands::sessions::delete_saved_session,
             commands::sessions::open_saved_session,

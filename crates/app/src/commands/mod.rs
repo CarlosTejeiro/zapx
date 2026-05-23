@@ -1,6 +1,10 @@
 pub mod folders;
+pub mod forwards;
 pub mod highlight;
 pub mod logging;
+pub mod login_scripts;
 pub mod sessions;
 pub mod settings;
+pub mod sftp;
+pub mod snippets;
 pub mod vault;

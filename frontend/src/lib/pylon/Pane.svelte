@@ -1,10 +1,10 @@
 <script lang="ts">
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
   import type { PylonTheme } from '$lib/themes/index'
-  import type { SavedSession, ColorPalette } from '$lib/bridge/types'
+  import type { SavedSession, ColorPalette, AuthMethod } from '$lib/bridge/types'
   import { getCachedPassword, setCachedPassword } from '$lib/credentialCache'
 
-  interface SshParams { host: string; port: number; user: string; password: string }
+  interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
 
   export interface PaneData {
@@ -22,12 +22,28 @@
     theme: PylonTheme
     pane: PaneData
     focused: boolean
+    /** Whether closing this pane is allowed (false when the tab has a single leaf). */
+    canClose?: boolean
     onFocus: () => void
+    onSplitH?: () => void
+    onSplitV?: () => void
+    onClosePane?: () => void
     onStatusChange?: (status: PaneStatus) => void
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
   }
 
-  const { theme, pane, focused, onFocus, onStatusChange, onGlobalShortcut }: Props = $props()
+  const {
+    theme,
+    pane,
+    focused,
+    canClose = false,
+    onFocus,
+    onSplitH,
+    onSplitV,
+    onClosePane,
+    onStatusChange,
+    onGlobalShortcut,
+  }: Props = $props()
 
   let status = $state<PaneStatus>('connecting')
 
@@ -48,7 +64,7 @@
       const cached = getCachedPassword(s.id)
       if (cached) {
         // Use cached password silently — no form shown
-        sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', password: cached }
+        sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', auth: { type: 'password', password: cached } }
         status = 'connecting'
         onStatusChange?.('connecting')
         termKey++
@@ -67,7 +83,7 @@
     if (!s) return
     const pw = passwordInput
     setCachedPassword(s.id, pw)
-    sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', password: pw }
+    sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', auth: { type: 'password', password: pw } }
     passwordInput = ''
     needsPassword = false
     status = 'connecting'
@@ -127,6 +143,38 @@
       <span class="ph-host" style:color={theme.terminal.dim}>{hostLabel}</span>
     {/if}
     <span class="ph-proto" style:color={theme.terminal.dim}>{protocol.toUpperCase()}</span>
+    <span class="ph-actions">
+      {#if onSplitH}
+        <button
+          class="ph-btn"
+          type="button"
+          title="Split horizontally"
+          aria-label="Split horizontally"
+          style:color={theme.terminal.dim}
+          onclick={(e) => { e.stopPropagation(); onSplitH?.() }}
+        >⊟</button>
+      {/if}
+      {#if onSplitV}
+        <button
+          class="ph-btn"
+          type="button"
+          title="Split vertically"
+          aria-label="Split vertically"
+          style:color={theme.terminal.dim}
+          onclick={(e) => { e.stopPropagation(); onSplitV?.() }}
+        >⊞</button>
+      {/if}
+      {#if canClose && onClosePane}
+        <button
+          class="ph-btn ph-btn-close"
+          type="button"
+          title="Close pane"
+          aria-label="Close pane"
+          style:color={theme.terminal.dim}
+          onclick={(e) => { e.stopPropagation(); onClosePane?.() }}
+        >✕</button>
+      {/if}
+    </span>
   </div>
 
   <!-- Terminal body -->
@@ -164,6 +212,7 @@
           savedSession={sshOverride ? undefined : pane.savedSession}
           ssh={sshOverride ?? pane.ssh}
           telnet={pane.telnet}
+          paneId={pane.id}
           hideToolbar={true}
           pylonPalette={terminalPalette}
           {onGlobalShortcut}
@@ -229,6 +278,37 @@
     font-weight: 600;
     letter-spacing: 0.4px;
     flex-shrink: 0;
+  }
+
+  .ph-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+
+  .ph-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 1px 5px;
+    border-radius: 3px;
+    opacity: 0.55;
+    transition: opacity 0.1s, background 0.1s;
+    font-family: inherit;
+  }
+
+  .ph-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .ph-btn-close:hover {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444 !important;
   }
 
   .pane-body {

@@ -10,12 +10,25 @@
 
   import {
     openSavedSession,
+    openSshSession,
     openTelnetSession,
+    sshPreflightHostKey,
+    sshTrustHostKey,
     startSessionLogging,
     stopSessionLogging,
     listSessionLogs,
   } from '$lib/bridge/commands'
-  import type { SavedSession, SessionLog } from '$lib/bridge/types'
+  import type { SavedSession, SessionLog, AuthMethod, HostKeyStatus } from '$lib/bridge/types'
+  import HostKeyDialog from './HostKeyDialog.svelte'
+  import TunnelsDialog from './TunnelsDialog.svelte'
+  import SftpDialog from './SftpDialog.svelte'
+  import {
+    broadcast,
+    otherSessionIds,
+    registerSession,
+    unregisterSession,
+  } from '$lib/stores/sessionRuntime.svelte'
+  import { matchAction } from '$lib/stores/keybindings.svelte'
   import { terminalSettings, colorSchemes } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
 
@@ -33,17 +46,71 @@
     try { return JSON.parse(json) as ColorPalette } catch { return DEFAULT_PALETTE }
   }
 
+  /// Per-session color-scheme override stored in `savedSession.options_json`
+  /// under the `color_scheme` key. Falls back to the global active scheme.
+  const sessionColorScheme = $derived.by<string | null>(() => {
+    if (!savedSession?.options_json) return null
+    try {
+      const opts = JSON.parse(savedSession.options_json) as { color_scheme?: string }
+      return typeof opts.color_scheme === 'string' && opts.color_scheme ? opts.color_scheme : null
+    } catch {
+      return null
+    }
+  })
+
+  const activeSchemeName = $derived(sessionColorScheme ?? terminalSettings.activeColorScheme)
+
   const activePalette = $derived<ColorPalette>(
     parsePalette(
-      colorSchemes.find((s) => s.name === terminalSettings.activeColorScheme)?.palette_json ?? null,
+      colorSchemes.find((s) => s.name === activeSchemeName)?.palette_json ?? null,
     ),
   )
+
+  // Host-key (known_hosts) confirmation prompt state.
+  let hostKeyPrompt = $state<{
+    host: string
+    port: number
+    fingerprint: string
+    changed: boolean
+  } | null>(null)
+  let hostKeyResolve: ((ok: boolean) => void) | null = null
+
+  /// Verify a host key before connecting. Returns false if the user declined
+  /// (or the key changed), in which case the connection must be aborted.
+  async function confirmHostKey(host: string, port: number): Promise<boolean> {
+    let status: HostKeyStatus
+    try {
+      status = await sshPreflightHostKey(host, port)
+    } catch {
+      // Preflight failed (e.g. host unreachable) — let the real connect surface it.
+      return true
+    }
+    if (status.status === 'known') return true
+
+    const changed = status.status === 'changed'
+    const approved = await new Promise<boolean>((resolve) => {
+      hostKeyResolve = resolve
+      hostKeyPrompt = { host, port, fingerprint: status.fingerprint, changed }
+    })
+    hostKeyPrompt = null
+    hostKeyResolve = null
+    if (!approved) return false
+
+    // Only "unknown" is approvable; persist trust before connecting.
+    try {
+      await sshTrustHostKey(host, port)
+    } catch (e) {
+      errorMsg = fmtError(e)
+      return false
+    }
+    return true
+  }
 
   interface SshParams {
     host: string
     port: number
     user: string
-    password: string
+    auth: AuthMethod
   }
 
   interface TelnetParams {
@@ -55,6 +122,8 @@
     ssh?: SshParams
     telnet?: TelnetParams
     savedSession?: SavedSession
+    /** Pane id from the host. Used to track focused/broadcasting sessions. */
+    paneId?: number
     hideToolbar?: boolean
     pylonPalette?: ColorPalette
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
@@ -64,7 +133,7 @@
     onNeedPassword?: () => void
   }
 
-  let { ssh, telnet, savedSession, hideToolbar = false, pylonPalette, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose, onNeedPassword }: Props = $props()
+  let { ssh, telnet, savedSession, paneId, hideToolbar = false, pylonPalette, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose, onNeedPassword }: Props = $props()
 
   function isKeyringMissing(e: unknown): boolean {
     const raw = typeof e === 'string' ? e : (e instanceof Error ? e.message : (() => { try { return JSON.stringify(e) } catch { return '' } })())
@@ -100,6 +169,18 @@
   let showSearch = $state(false)
   let searchQuery = $state('')
   let searchAddon: SearchAddon | null = null
+
+  // Port-forwards + SFTP browser (only for SSH sessions)
+  let showTunnels = $state(false)
+  let showSftp = $state(false)
+  const isSsh = $derived(savedSession?.protocol === 'ssh' || ssh != null)
+
+  // Login-automation progress (filled by the `login-script-progress` event).
+  let loginProgress = $state<{ current: number; total: number; status: string } | null>(null)
+
+  /// Pending paste — shown when the clipboard text has more than one line.
+  /// The user explicitly approves before bytes go to the remote shell.
+  let pastePending = $state<string | null>(null)
 
   interface TerminalDataPayload {
     session_id: string
@@ -200,7 +281,39 @@
     term.open(container)
     fitAddon.fit()
 
-    // Ctrl+F opens search bar; other Ctrl shortcuts bubble to App for global handling
+    // ── Clipboard polish ──────────────────────────────────────────────────
+    // Intercept paste at the container level (capture phase, so we run before
+    // xterm's own handler). If the clipboard payload is multi-line, surface
+    // a confirmation dialog — typical foot-gun is pasting a config block and
+    // having every line execute as a separate command.
+    container.addEventListener(
+      'paste',
+      (e: ClipboardEvent) => {
+        const text = e.clipboardData?.getData('text') ?? ''
+        if (!text) return
+        if (/\r|\n/.test(text)) {
+          e.preventDefault()
+          e.stopPropagation()
+          pastePending = text
+        }
+        // Single-line: let xterm handle it (bracketed paste mode is honoured
+        // automatically when the remote shell enables it).
+      },
+      { capture: true },
+    )
+
+    // Copy-on-select: when the user releases the mouse with a non-empty
+    // selection, push it to the clipboard. Silently ignore failures (e.g.
+    // browser denying clipboard access).
+    container.addEventListener('mouseup', () => {
+      if (term?.hasSelection()) {
+        const sel = term.getSelection()
+        if (sel) navigator.clipboard.writeText(sel).catch(() => {})
+      }
+    })
+
+    // Ctrl+F opens search bar; user-bound global shortcuts are forwarded to
+    // App so xterm doesn't consume them as terminal control characters.
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== 'keydown') return true
       if (e.ctrlKey && e.key === 'f') {
@@ -213,12 +326,9 @@
         searchAddon?.clearDecorations()
         return false
       }
-      // Pass global shortcuts to App without xterm consuming them
-      if (
-        e.ctrlKey &&
-        (e.key === 'n' || e.key === 't' || e.key === 'w' || e.key === 'Tab' || e.key === ',')
-      ) {
-        onGlobalShortcut?.(e.key, e)
+      const action = matchAction(e)
+      if (action) {
+        onGlobalShortcut?.(action, e)
         return false
       }
       return true
@@ -227,17 +337,28 @@
     // Open the backend session.
     try {
       await waitForTauri()
+
+      // Verify the SSH host key (known_hosts) before connecting.
+      if (savedSession?.protocol === 'ssh' && savedSession.host) {
+        if (!(await confirmHostKey(savedSession.host, savedSession.port ?? 22))) {
+          if (!errorMsg) errorMsg = 'Host key not trusted'
+          onSessionError?.()
+          term.dispose()
+          return
+        }
+      } else if (ssh) {
+        if (!(await confirmHostKey(ssh.host, ssh.port))) {
+          if (!errorMsg) errorMsg = 'Host key not trusted'
+          onSessionError?.()
+          term.dispose()
+          return
+        }
+      }
+
       if (savedSession) {
         sessionId = await openSavedSession(savedSession.id, term.cols, term.rows)
       } else if (ssh) {
-        sessionId = await invoke<string>('open_ssh_session', {
-          host: ssh.host,
-          port: ssh.port,
-          user: ssh.user,
-          password: ssh.password,
-          cols: term.cols,
-          rows: term.rows,
-        })
+        sessionId = await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
       } else if (telnet) {
         sessionId = await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
       } else {
@@ -255,6 +376,9 @@
       return
     }
 
+    // Make this session discoverable by the snippets / broadcast machinery.
+    if (paneId != null && sessionId) registerSession(paneId, sessionId)
+
     onSessionOpen?.()
 
     // Forward PTY output to xterm.
@@ -266,11 +390,38 @@
       },
     )
 
-    // Forward keyboard input to the PTY.
+    // Login-script progress badge (auto-clears a couple of seconds after
+    // the script completes; sticks on timeout so the user notices).
+    const unlistenLogin: UnlistenFn = await listen<{
+      session_id: string
+      current: number
+      total: number
+      status: string
+    }>('login-script-progress', (event) => {
+      if (event.payload.session_id !== sessionId) return
+      loginProgress = {
+        current: event.payload.current,
+        total: event.payload.total,
+        status: event.payload.status,
+      }
+      if (event.payload.status === 'complete') {
+        setTimeout(() => {
+          if (loginProgress?.status === 'complete') loginProgress = null
+        }, 2500)
+      }
+    })
+
+    // Forward keyboard input to the PTY (and to every other registered
+    // session when MultiExec broadcast is on).
     term.onData((data: string) => {
       if (!sessionId) return
       const bytes = Array.from(new TextEncoder().encode(data))
       invoke('send_input', { sessionId, data: bytes }).catch(console.error)
+      if (broadcast.enabled) {
+        for (const otherId of otherSessionIds(sessionId)) {
+          invoke('send_input', { sessionId: otherId, data: bytes }).catch(console.error)
+        }
+      }
     })
 
     // Resize terminal when the container size changes.
@@ -290,7 +441,9 @@
     onDestroy(async () => {
       observer.disconnect()
       unlisten()
+      unlistenLogin()
       term?.dispose()
+      if (paneId != null) unregisterSession(paneId)
       if (sessionId) {
         if (isLogging) {
           await stopSessionLogging(sessionId).catch(console.error)
@@ -325,6 +478,60 @@
 </script>
 
 <div class="terminal-wrapper">
+  {#if hostKeyPrompt}
+    <HostKeyDialog
+      host={hostKeyPrompt.host}
+      port={hostKeyPrompt.port}
+      fingerprint={hostKeyPrompt.fingerprint}
+      changed={hostKeyPrompt.changed}
+      onTrust={() => hostKeyResolve?.(true)}
+      onCancel={() => hostKeyResolve?.(false)}
+    />
+  {/if}
+  {#if showTunnels && sessionId}
+    <TunnelsDialog
+      sessionId={sessionId}
+      onClose={() => (showTunnels = false)}
+    />
+  {/if}
+  {#if showSftp && sessionId}
+    <SftpDialog
+      sessionId={sessionId}
+      onClose={() => (showSftp = false)}
+    />
+  {/if}
+  {#if pastePending != null}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div
+      class="paste-confirm-overlay"
+      role="dialog"
+      aria-modal="true"
+      onclick={(e) => { if (e.target === e.currentTarget) pastePending = null }}
+    >
+      <div class="paste-confirm">
+        <h3>Paste {pastePending.split(/\r?\n/).length} lines?</h3>
+        <p class="paste-confirm-hint">
+          The clipboard contains line breaks. Each line will be sent — that may
+          execute multiple commands on the remote side.
+        </p>
+        <pre class="paste-confirm-preview">{pastePending.length > 1500
+          ? pastePending.slice(0, 1500) + `\n… (${pastePending.length - 1500} more chars)`
+          : pastePending}</pre>
+        <div class="paste-confirm-actions">
+          <button class="btn" type="button" onclick={() => (pastePending = null)}>Cancel</button>
+          <button
+            class="btn primary"
+            type="button"
+            onclick={() => {
+              const text = pastePending ?? ''
+              pastePending = null
+              term?.paste(text)
+            }}
+          >Send {pastePending.split(/\r?\n/).length} lines</button>
+        </div>
+      </div>
+    </div>
+  {/if}
   <!-- toolbar -->
   {#if !hideToolbar}
   <div class="toolbar">
@@ -349,8 +556,39 @@
       </button>
     {/if}
 
+    {#if isSsh}
+      <button
+        class="toolbar-btn"
+        onclick={() => (showSftp = true)}
+        disabled={!sessionId}
+        title="SFTP file browser"
+      >
+        📁 SFTP
+      </button>
+      <button
+        class="toolbar-btn"
+        onclick={() => (showTunnels = true)}
+        disabled={!sessionId}
+        title="Port forwards (-L / -D)"
+      >
+        ⇆ Tunnels
+      </button>
+    {/if}
+
     {#if logError}
       <span class="toolbar-error">{logError}</span>
+    {/if}
+
+    {#if loginProgress}
+      <span class="login-badge" class:err={loginProgress.status === 'timeout'}>
+        {#if loginProgress.status === 'complete'}
+          ✓ Login complete
+        {:else if loginProgress.status === 'timeout'}
+          ⏱ Login timeout (step {loginProgress.current + 1})
+        {:else}
+          ⟳ Login {loginProgress.current}/{loginProgress.total}
+        {/if}
+      </span>
     {/if}
 
     <span class="flex-1"></span>
@@ -490,6 +728,96 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .login-badge {
+    font-size: 0.7rem;
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .login-badge.err {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* Multi-line paste confirmation */
+  .paste-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 140;
+  }
+  .paste-confirm {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 0.5rem;
+    padding: 1rem 1.2rem 1.1rem;
+    width: 34rem;
+    max-width: 95vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .paste-confirm h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fbbf24;
+  }
+  .paste-confirm-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #a1a1aa;
+    line-height: 1.4;
+  }
+  .paste-confirm-preview {
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 0.3rem;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.78rem;
+    color: #e4e4e7;
+    overflow: auto;
+    max-height: 40vh;
+    white-space: pre-wrap;
+    margin: 0;
+  }
+  .paste-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.2rem;
+  }
+  .paste-confirm-actions .btn {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    border-radius: 0.25rem;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #e4e4e7;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .paste-confirm-actions .btn:hover {
+    background: #3f3f46;
+  }
+  .paste-confirm-actions .btn.primary {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+  }
+  .paste-confirm-actions .btn.primary:hover {
+    background: #2563eb;
   }
 
   .search-bar {

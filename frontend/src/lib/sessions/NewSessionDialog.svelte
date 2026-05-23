@@ -1,32 +1,121 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import {
     createSavedSession,
     createTelnetSession,
     createSerialSession,
     listSerialPorts,
+    listSessions,
+    setLoginScript,
+    updateSavedSession,
+    getLoginScript,
   } from '$lib/bridge/commands'
-  import type { Folder } from '$lib/bridge/types'
+  import type { Folder, AuthMethod, SavedSession, LoginStep } from '$lib/bridge/types'
+  import { colorSchemes } from '$lib/stores/settings.svelte'
 
   type Protocol = 'ssh' | 'telnet' | 'serial'
 
   interface Props {
     folders: Folder[]
+    /// When set, the dialog runs in "edit" mode: editable fields are pre-filled
+    /// and Save calls `updateSavedSession`. Auth/credentials stay frozen — to
+    /// change those, delete and recreate.
+    existing?: SavedSession
     onCreated: (id: number) => void
     onCancel: () => void
   }
 
-  const { folders, onCreated, onCancel }: Props = $props()
+  const { folders, existing, onCreated, onCancel }: Props = $props()
+  const isEdit = $derived(existing != null)
+
+  // SSH sessions available as a jump host (bastion).
+  let bastionCandidates = $state<SavedSession[]>([])
+  onMount(async () => {
+    try {
+      const all = await listSessions()
+      // Exclude self from the bastion list in edit mode.
+      bastionCandidates = all.filter(
+        (s) => s.protocol === 'ssh' && (!existing || s.id !== existing.id),
+      )
+    } catch {
+      bastionCandidates = []
+    }
+    if (existing) {
+      protocol = (existing.protocol as Protocol) ?? 'ssh'
+      name = existing.name
+      host = existing.host ?? ''
+      port = existing.port ?? defaultPort[protocol]
+      username = existing.username ?? ''
+      authType = (existing.auth_method as typeof authType) ?? 'password'
+      folderId = existing.folder_id
+      viaSessionId = existing.via_session_id
+      // Protocol-specific options.
+      try {
+        const opts = JSON.parse(existing.options_json || '{}')
+        if (opts.key_path) keyPath = opts.key_path
+        if (opts.device) device = opts.device
+        if (opts.baud_rate) baudRate = opts.baud_rate
+        if (typeof opts.color_scheme === 'string' && opts.color_scheme) {
+          colorScheme = opts.color_scheme
+        }
+      } catch {
+        // ignore malformed options_json
+      }
+      // Preload the login script.
+      try {
+        loginSteps = await getLoginScript(existing.id)
+        if (loginSteps.length > 0) showLoginScript = true
+      } catch {
+        loginSteps = []
+      }
+    } else if (protocol === 'serial') {
+      loadPorts()
+    }
+  })
 
   let protocol = $state<Protocol>('ssh')
   let name = $state('')
   let host = $state('')
   let port = $state(22)
   let username = $state('')
+  let authType = $state<'password' | 'key' | 'keyboard-interactive' | 'agent'>('password')
   let password = $state('')
+  let keyPath = $state('')
+  let passphrase = $state('')
   let device = $state('')
   let baudRate = $state(9600)
   let folderId = $state<number | null>(null)
+  let viaSessionId = $state<number | null>(null)
+  /// Per-session color scheme override (null = use global default).
+  let colorScheme = $state<string | null>(null)
   let error = $state('')
+
+  // Optional login automation: list of expect/send pairs run after connect.
+  let showLoginScript = $state(false)
+  let loginSteps = $state<LoginStep[]>([])
+  function addStep() {
+    loginSteps.push({ expect: '', is_regex: false, send: '', timeout_ms: 10000 })
+  }
+  function removeStep(idx: number) {
+    loginSteps.splice(idx, 1)
+  }
+
+  /// Native file picker for the SSH private key.
+  async function pickKeyFile() {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        directory: false,
+        title: 'Select SSH private key',
+      })
+      if (typeof selected === 'string' && selected.length > 0) {
+        keyPath = selected
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+  }
   let saving = $state(false)
   let availablePorts = $state<string[]>([])
 
@@ -64,6 +153,10 @@
       error = 'Username is required.'
       return
     }
+    if (protocol === 'ssh' && authType === 'key' && !keyPath.trim()) {
+      error = 'Key file path is required.'
+      return
+    }
     if (protocol === 'serial' && !device.trim()) {
       error = 'Serial device is required.'
       return
@@ -73,19 +166,97 @@
     error = ''
     try {
       let id: number
-      if (protocol === 'ssh') {
+      /// Build the protocol-specific options blob (used in both edit and the
+      /// post-create touch-up when a color_scheme override is set).
+      const buildOptsJson = (): string | null => {
+        const opts: Record<string, unknown> = {}
+        if (protocol === 'ssh' && authType === 'key') opts.key_path = keyPath.trim()
+        if (protocol === 'serial') {
+          opts.device = device.trim()
+          opts.baud_rate = baudRate
+        }
+        if (colorScheme) opts.color_scheme = colorScheme
+        return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
+      }
+      if (existing) {
+        // Edit mode — credentials stay frozen; only metadata + login script
+        // are mutable. For SSH/key, key_path lives in options_json so persist
+        // it back; for serial, refresh device/baud; color_scheme override too.
+        const optsJson = buildOptsJson()
+        await updateSavedSession(
+          existing.id,
+          name.trim(),
+          folderId,
+          protocol === 'serial' ? null : host.trim(),
+          protocol === 'serial' ? null : port,
+          protocol === 'ssh' ? username.trim() : null,
+          protocol === 'ssh' ? viaSessionId : null,
+          optsJson,
+        )
+        id = existing.id
+      } else if (protocol === 'ssh') {
+        const auth: AuthMethod =
+          authType === 'key'
+            ? { type: 'key', keyPath: keyPath.trim(), passphrase: passphrase || null }
+            : authType === 'agent'
+              ? { type: 'agent' }
+              : authType === 'keyboard-interactive'
+                ? { type: 'keyboard-interactive' }
+                : { type: 'password', password }
         id = await createSavedSession(
           name.trim(),
           folderId,
           host.trim(),
           port,
           username.trim(),
-          password,
+          auth,
+          viaSessionId,
         )
       } else if (protocol === 'telnet') {
         id = await createTelnetSession(name.trim(), folderId, host.trim(), port)
       } else {
         id = await createSerialSession(name.trim(), folderId, device.trim(), baudRate)
+      }
+      // Post-create touch-up: if a color-scheme override was selected, persist
+      // it into options_json. We rebuild the same blob the backend would have
+      // written so nothing protocol-specific is lost.
+      if (!existing && colorScheme) {
+        await updateSavedSession(
+          id,
+          name.trim(),
+          folderId,
+          protocol === 'serial' ? null : host.trim(),
+          protocol === 'serial' ? null : port,
+          protocol === 'ssh' ? username.trim() : null,
+          protocol === 'ssh' ? viaSessionId : null,
+          buildOptsJson(),
+        )
+      }
+      // Attach the optional login automation script (works for any protocol).
+      // Interpret `\n`, `\r`, `\t` and `\\` in the send field so users can write
+      // newlines without a multi-line input. Implemented as a small parser
+      // (a chained string.replace would have to dodge the order-of-operations
+      // trap for the backslash-escape itself).
+      const unescape = (s: string): string => {
+        let out = ''
+        for (let i = 0; i < s.length; i += 1) {
+          if (s[i] === '\\' && i + 1 < s.length) {
+            const next = s[i + 1]
+            if (next === 'n')  { out += '\n'; i += 1; continue }
+            if (next === 'r')  { out += '\r'; i += 1; continue }
+            if (next === 't')  { out += '\t'; i += 1; continue }
+            if (next === '\\') { out += '\\'; i += 1; continue }
+          }
+          out += s[i]
+        }
+        return out
+      }
+      const cleanSteps = loginSteps
+        .filter((s) => s.expect.trim() || s.send)
+        .map((s) => ({ ...s, send: unescape(s.send) }))
+      // In edit mode push unconditionally so clearing all steps takes effect.
+      if (existing || cleanSteps.length > 0) {
+        await setLoginScript(id, cleanSteps)
       }
       onCreated(id)
     } catch (e) {
@@ -109,11 +280,11 @@
   onkeydown={onkeydown}
 >
   <form class="dialog" onsubmit={(e) => { e.preventDefault(); submit() }}>
-    <h2>New Session</h2>
+    <h2>{isEdit ? 'Edit Session' : 'New Session'}</h2>
 
     <label>
       Protocol
-      <select bind:value={protocol} onchange={onProtocolChange}>
+      <select bind:value={protocol} onchange={onProtocolChange} disabled={isEdit}>
         <option value="ssh">SSH</option>
         <option value="telnet">Telnet</option>
         <option value="serial">Serial</option>
@@ -144,9 +315,52 @@
         <input bind:value={username} placeholder="admin" required />
       </label>
       <label>
-        Password
-        <input type="password" bind:value={password} placeholder="(optional if using key auth)" />
+        Authentication
+        <select bind:value={authType} disabled={isEdit}>
+          <option value="password">Password</option>
+          <option value="key">Private key file</option>
+          <option value="keyboard-interactive">Keyboard-interactive (2FA / OTP)</option>
+          <option value="agent">SSH agent</option>
+        </select>
       </label>
+      {#if isEdit}
+        <p class="hint">
+          Credentials stay frozen on edit. To rotate password / passphrase /
+          switch auth method, delete and recreate the session.
+        </p>
+      {/if}
+      {#if !isEdit && authType === 'password'}
+        <label>
+          Password
+          <input type="password" bind:value={password} />
+        </label>
+      {:else if authType === 'key'}
+        <label>
+          Key file
+          <span class="row-input">
+            <input bind:value={keyPath} placeholder="~/.ssh/id_ed25519" spellcheck="false" />
+            <button type="button" class="pick-btn" onclick={pickKeyFile}>Browse…</button>
+          </span>
+        </label>
+        {#if !isEdit}
+          <label>
+            Passphrase (if any)
+            <input type="password" bind:value={passphrase} />
+          </label>
+        {/if}
+      {/if}
+
+      {#if bastionCandidates.length > 0}
+        <label>
+          Connect through (jump host)
+          <select bind:value={viaSessionId}>
+            <option value={null}>— Direct connection —</option>
+            {#each bastionCandidates as b (b.id)}
+              <option value={b.id}>{b.name}{b.host ? ` (${b.host})` : ''}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
     {/if}
 
     {#if protocol === 'serial'}
@@ -184,6 +398,53 @@
       </label>
     {/if}
 
+    {#if colorSchemes.length > 0}
+      <label>
+        Color scheme
+        <select bind:value={colorScheme}>
+          <option value={null}>— Use global default —</option>
+          {#each colorSchemes as cs (cs.id)}
+            <option value={cs.name}>{cs.name}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+
+    <details class="login-script" bind:open={showLoginScript}>
+      <summary>Login automation ({loginSteps.length} step{loginSteps.length === 1 ? '' : 's'})</summary>
+      <p class="hint">
+        On connect, wait for each <strong>expect</strong> pattern in the output and then
+        send the corresponding text. Use <code>\n</code> for a newline in the send field.
+      </p>
+      {#each loginSteps as step, idx (idx)}
+        <div class="step">
+          <span class="step-num">{idx + 1}</span>
+          <input
+            class="step-expect"
+            placeholder="expect (e.g. Password:)"
+            bind:value={step.expect}
+            spellcheck="false"
+          />
+          <input
+            class="step-send"
+            placeholder="send"
+            bind:value={step.send}
+            spellcheck="false"
+          />
+          <input
+            class="step-timeout"
+            type="number"
+            min={500}
+            step={500}
+            bind:value={step.timeout_ms}
+            title="timeout (ms)"
+          />
+          <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step">✕</button>
+        </div>
+      {/each}
+      <button type="button" class="add-step" onclick={addStep}>+ Add step</button>
+    </details>
+
     {#if error}
       <p class="error">{error}</p>
     {/if}
@@ -191,7 +452,7 @@
     <div class="actions">
       <button type="button" class="cancel" onclick={onCancel}>Cancel</button>
       <button type="submit" class="save" disabled={saving}>
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save'}
       </button>
     </div>
   </form>
@@ -310,5 +571,130 @@
   .save:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .row-input {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .row-input input {
+    flex: 1;
+  }
+
+  .pick-btn {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 0.25rem;
+    color: #e4e4e7;
+    font-family: inherit;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .pick-btn:hover {
+    background: #3f3f46;
+  }
+
+  /* Login automation editor */
+  .login-script {
+    background: #0a0a0b;
+    border: 1px solid #27272a;
+    border-radius: 0.3rem;
+    padding: 0.5rem 0.7rem;
+  }
+
+  .login-script summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: #a1a1aa;
+    user-select: none;
+  }
+
+  .hint {
+    font-size: 0.74rem;
+    color: #71717a;
+    margin: 0;
+    line-height: 1.4;
+    padding: 0.25rem 0.45rem;
+    background: rgba(251, 191, 36, 0.08);
+    border-left: 2px solid rgba(251, 191, 36, 0.4);
+    border-radius: 0.2rem;
+  }
+
+  .login-script .hint {
+    font-size: 0.72rem;
+    color: #71717a;
+    margin: 0.4rem 0 0.55rem;
+    line-height: 1.5;
+  }
+
+  .login-script .hint code {
+    background: #09090b;
+    padding: 0 0.2rem;
+    border-radius: 0.2rem;
+    color: #e4e4e7;
+  }
+
+  .step {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.3rem;
+  }
+
+  .step-num {
+    width: 1.3rem;
+    text-align: center;
+    color: #52525b;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .step-expect,
+  .step-send {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.78rem;
+  }
+
+  .step-timeout {
+    width: 4.5rem;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+
+  .step-rm {
+    background: transparent;
+    color: #52525b;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 0.35rem;
+    border-radius: 0.2rem;
+  }
+
+  .step-rm:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+  }
+
+  .add-step {
+    background: transparent;
+    color: #a1a1aa;
+    border: 1px dashed #3f3f46;
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 0.3rem;
+  }
+
+  .add-step:hover {
+    color: #e4e4e7;
+    border-color: #3b82f6;
   }
 </style>

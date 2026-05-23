@@ -1,8 +1,8 @@
 <script lang="ts">
   import TerminalTab from './TerminalTab.svelte'
-  import type { SavedSession } from '$lib/bridge/types'
+  import type { SavedSession, AuthMethod } from '$lib/bridge/types'
 
-  interface SshParams { host: string; port: number; user: string; password: string }
+  interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
 
   export interface PaneInfo {
@@ -96,6 +96,7 @@
       savedSession={pane.savedSession}
       ssh={pane.ssh}
       telnet={pane.telnet}
+      paneId={pane.id}
       {onGlobalShortcut}
       onSessionOpen={() => handleStatusChange('connected')}
       onSessionError={() => handleStatusChange('error')}

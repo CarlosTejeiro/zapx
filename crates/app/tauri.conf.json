@@ -25,8 +25,29 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all",
-    "icon": []
+    "category": "DeveloperTool",
+    "shortDescription": "Cross-platform multi-protocol terminal — SSH/Telnet/Serial with SFTP, tunnels, snippets and login automation.",
+    "longDescription": "zapx is a modern terminal client for network engineers and developers. SSH (password / public key / agent / 2FA) with ProxyJump and port forwarding, Telnet (RFC 854), Serial, SFTP browser, multi-exec broadcast, persistent snippets, automated login scripts, and a recursive split-pane workspace.",
+    "copyright": "© 2026 zapx contributors",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://example.com/zapx/updates/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4N0I3QTY2NjE3NjFDNTUKUldSVkhIWmhabnA3eUZSaEVZL1Z0b1JSMS9pcE5iMCtIdWc4WGtwQ2tKbUk2UEtEb2x1cmpLVHAK"
+    }
   }
 }

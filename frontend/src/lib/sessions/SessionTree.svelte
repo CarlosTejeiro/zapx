@@ -5,9 +5,15 @@
   interface Props {
     onOpen: (session: SavedSession) => void
     onAdd: () => void
+    onEdit?: (session: SavedSession) => void
   }
 
-  const { onOpen, onAdd }: Props = $props()
+  const { onOpen, onAdd, onEdit }: Props = $props()
+
+  function edit(e: MouseEvent, session: SavedSession) {
+    e.stopPropagation()
+    onEdit?.(session)
+  }
 
   let sessions = $state<SavedSession[]>([])
   let folders = $state<Folder[]>([])
@@ -71,6 +77,16 @@
           <button class="session-row" onclick={() => onOpen(s)}>
             <span class="proto-dot" style:background={protocolColor(s.protocol)}></span>
             <span class="session-name">{s.name}</span>
+            {#if onEdit}
+              <!-- svelte-ignore a11y_interactive_supports_focus -->
+              <span
+                class="edit-btn"
+                role="button"
+                title="Edit session"
+                onclick={(e) => edit(e, s)}
+                onkeydown={(e) => e.key === 'Enter' && edit(e as unknown as MouseEvent, s)}
+              >✎</span>
+            {/if}
             <!-- svelte-ignore a11y_interactive_supports_focus -->
             <span
               class="del-btn"
@@ -203,11 +219,12 @@
     white-space: nowrap;
   }
 
-  .del-btn {
+  .del-btn,
+  .edit-btn {
     color: #52525b;
     font-size: 0.85rem;
     cursor: pointer;
-    padding: 0 0.1rem;
+    padding: 0 0.15rem;
     opacity: 0;
     flex-shrink: 0;
     background: none;
@@ -216,12 +233,17 @@
     font-family: inherit;
   }
 
-  .session-row:hover .del-btn {
+  .session-row:hover .del-btn,
+  .session-row:hover .edit-btn {
     opacity: 1;
   }
 
   .del-btn:hover {
     color: #ef4444;
+  }
+
+  .edit-btn:hover {
+    color: #3b82f6;
   }
 
   .hint {

@@ -7,11 +7,35 @@
   import type { TabEntry } from '$lib/pylon/TabBar.svelte'
   import Pane from '$lib/pylon/Pane.svelte'
   import type { PaneData } from '$lib/pylon/Pane.svelte'
+  import SplitTree from '$lib/pylon/SplitTree.svelte'
+  import {
+    type PaneTreeNode,
+    type SplitDirection,
+    eachLeaf,
+    firstLeafId,
+    leaf as leafNode,
+    leafCount,
+    removeLeaf,
+    setRatio,
+    splitLeaf,
+  } from '$lib/pylon/paneTree'
+  import { SvelteMap } from 'svelte/reactivity'
   import StatusBar from '$lib/pylon/StatusBar.svelte'
   import NewSessionDialog from '$lib/sessions/NewSessionDialog.svelte'
+  import QuickConnectDialog from '$lib/sessions/QuickConnectDialog.svelte'
+  import type { ConnectParams } from '$lib/sessions/QuickConnectDialog.svelte'
   import ResizeHandles from '$lib/pylon/ResizeHandles.svelte'
   import SettingsModal from '$lib/settings/SettingsModal.svelte'
-  import { listSessions, listFolders } from '$lib/bridge/commands'
+  import KeyboardInteractiveDialog from '$lib/terminal/KeyboardInteractiveDialog.svelte'
+  import SnippetsDialog from '$lib/sessions/SnippetsDialog.svelte'
+  import { broadcast, sessionRuntime } from '$lib/stores/sessionRuntime.svelte'
+  import {
+    loadBindings,
+    matchAction,
+    type ShortcutAction,
+  } from '$lib/stores/keybindings.svelte'
+  import { listSessions, listFolders, moveSavedSession } from '$lib/bridge/commands'
+  import { check as checkUpdate } from '@tauri-apps/plugin-updater'
   import { loadSettings } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder } from '$lib/bridge/types'
 
@@ -21,11 +45,13 @@
 
   interface AppTab {
     id: number
-    pane: PaneData
-    pane2?: PaneData
-    splitRatio: number
-    status: PaneStatus
-    status2: PaneStatus
+    /** Recursive split-pane tree. A new tab starts as a single leaf. */
+    root: PaneTreeNode
+    /** Pane status keyed by paneId. Reactive map for fine-grained updates. */
+    statuses: SvelteMap<number, PaneStatus>
+    /** Stable label/colour for the tab (mirrors the first leaf at creation). */
+    label: string
+    color: string
   }
 
   // ── theme ────────────────────────────────────────────────────────────────────
@@ -61,51 +87,78 @@
   }
 
   function mkTab(pane: PaneData): AppTab {
-    return { id: nextId++, pane, splitRatio: 0.5, status: 'connecting', status2: 'connecting' }
+    return {
+      id: nextId++,
+      root: leafNode(pane),
+      statuses: new SvelteMap<number, PaneStatus>([[pane.id, 'connecting']]),
+      label: pane.label,
+      color: pane.color,
+    }
   }
 
   const firstPane = mkPane('shell')
   const firstTab = mkTab(firstPane)
 
   let tabs = $state<AppTab[]>([firstTab])
-  let splitContainerEl = $state<HTMLDivElement | null>(null)
   let activeTabId = $state(firstTab.id)
   let focusedPaneId = $state(firstPane.id)
   let sessions = $state<SavedSession[]>([])
   let folders = $state<Folder[]>([])
   let showNewSession = $state(false)
+  let showQuickConnect = $state(false)
   let showSettings = $state(false)
+  let showSnippets = $state(false)
   let showAbout = $state(false)
-  let splitOn = $state(false)
+  /// When set, opens NewSessionDialog in edit mode with the given session pre-filled.
+  let editingSession = $state<SavedSession | null>(null)
   let multiOn = $state(false)
+
+  // Mirror focusedPaneId + multi-exec toggle into the shared runtime store so
+  // snippets / broadcast can act on the currently focused session.
+  $effect(() => {
+    sessionRuntime.focusedPaneId = focusedPaneId
+  })
+  $effect(() => {
+    broadcast.enabled = multiOn
+  })
 
   // ── derived ──────────────────────────────────────────────────────────────────
 
   const activeTab = $derived(tabs.find((t) => t.id === activeTabId))
 
+  /// Returns the first leaf's status as a coarse summary for the tab strip.
+  function summaryStatus(tab: AppTab): PaneStatus {
+    const id = firstLeafId(tab.root)
+    return tab.statuses.get(id) ?? 'connecting'
+  }
+
   const tabEntries = $derived<TabEntry[]>(
     tabs.map((t) => ({
       id: t.id,
-      label: t.pane.label,
-      color: t.pane.color,
-      status: t.status,
+      label: t.label,
+      color: t.color,
+      status: summaryStatus(t),
     }))
   )
 
-  const activePaneData = $derived(activeTab?.pane)
+  /// Find a leaf by id in the active tab's tree.
+  function findActiveLeaf(paneId: number): PaneData | null {
+    if (!activeTab) return null
+    let found: PaneData | null = null
+    eachLeaf(activeTab.root, (p) => {
+      if (p.id === paneId) found = p
+    })
+    return found
+  }
 
-  // Focused pane may be the split pane2; derive connection info from it
-  const focusedPaneData = $derived(
-    activeTab?.pane2 && focusedPaneId === activeTab.pane2.id
-      ? activeTab.pane2
-      : activeTab?.pane
+  const focusedPaneData = $derived<PaneData | null>(findActiveLeaf(focusedPaneId))
+
+  const focusedStatus = $derived<PaneStatus>(
+    activeTab?.statuses.get(focusedPaneId) ?? 'connecting',
   )
 
-  const focusedStatus = $derived(
-    activeTab?.pane2 && focusedPaneId === activeTab.pane2.id
-      ? (activeTab.status2 ?? 'connecting')
-      : (activeTab?.status ?? 'connecting')
-  )
+  const splitOn = $derived(!!activeTab && leafCount(activeTab.root) > 1)
+  const canClosePanes = $derived(splitOn)
 
   const statusHost = $derived(
     focusedPaneData?.ssh?.host ??
@@ -124,9 +177,7 @@
     (focusedPaneData?.ssh ? 'SSH' : focusedPaneData?.telnet ? 'TELNET' : 'LOCAL')
   )
 
-  const activeSessionName = $derived(
-    activeTab?.pane.label ?? ''
-  )
+  const activeSessionName = $derived(activeTab?.label ?? '')
 
   // ── data loading ─────────────────────────────────────────────────────────────
 
@@ -141,6 +192,7 @@
   $effect(() => {
     load()
     loadSettings()
+    loadBindings()
   })
 
   // ── tab management ────────────────────────────────────────────────────────────
@@ -174,48 +226,51 @@
   function activateTab(id: number) {
     activeTabId = id
     const tab = tabs.find((t) => t.id === id)
-    if (tab) focusedPaneId = tab.pane.id
+    if (tab) focusedPaneId = firstLeafId(tab.root)
   }
 
   function handleStatusChange(tabId: number, paneId: number, status: PaneStatus) {
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
-    if (paneId === tab.pane.id) {
-      tab.status = status
-    } else if (tab.pane2 && paneId === tab.pane2.id) {
-      tab.status2 = status
-    }
-    tabs = tabs
+    tab.statuses.set(paneId, status)
   }
 
-  function handleSplitToggle() {
-    splitOn = !splitOn
-    if (splitOn) {
-      const tab = tabs.find((t) => t.id === activeTabId)
-      if (tab && !tab.pane2) {
-        tab.pane2 = mkPane('shell')
-        tabs = tabs
-      }
+  /// Split the focused leaf in the active tab in `direction`.
+  function handleSplit(paneId: number, direction: SplitDirection) {
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    const newPane = mkPane('shell')
+    tab.root = splitLeaf(tab.root, paneId, direction, newPane)
+    tab.statuses.set(newPane.id, 'connecting')
+    focusedPaneId = newPane.id
+  }
+
+  /// Close a single leaf. If it was the last leaf, close the whole tab.
+  function handleClosePane(paneId: number) {
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    const next = removeLeaf(tab.root, paneId)
+    tab.statuses.delete(paneId)
+    if (next === null) {
+      closeTab(tab.id)
+      return
+    }
+    tab.root = next
+    if (focusedPaneId === paneId) {
+      focusedPaneId = firstLeafId(tab.root)
     }
   }
 
-  function startSplitResize(e: MouseEvent) {
-    e.preventDefault()
-    const container = splitContainerEl
-    if (!container) return
-    const onMove = (me: MouseEvent) => {
-      const tab = tabs.find((t) => t.id === activeTabId)
-      if (!tab) return
-      const rect = container.getBoundingClientRect()
-      tab.splitRatio = Math.max(0.2, Math.min(0.8, (me.clientX - rect.left) / rect.width))
-      tabs = tabs
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+  /// Drag-resize a divider — `path` walks the tree from the root.
+  function handleResize(path: number[], ratio: number) {
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    tab.root = setRatio(tab.root, path, ratio)
+  }
+
+  /// TabBar's "Split" button: split the currently focused pane horizontally.
+  function handleSplitFocused() {
+    handleSplit(focusedPaneId, 'h')
   }
 
   function handleSessionAdded() {
@@ -225,34 +280,100 @@
 
   // ── keyboard shortcuts ────────────────────────────────────────────────────────
 
-  function handleGlobalShortcut(key: string, e: KeyboardEvent) {
-    switch (key) {
-      case 'n': showNewSession = true; break
-      case 't': addLocalTab(); break
-      case 'w': closeTab(activeTabId); break
-      case 'Tab': {
-        const dir = e.shiftKey ? -1 : 1
+  /// Execute the handler tied to a [`ShortcutAction`]. Called both from the
+  /// global document listener and from xterm's custom key handler (via
+  /// `onGlobalShortcut`), so xterm-focused panes route shortcuts identically.
+  function dispatchAction(action: ShortcutAction) {
+    switch (action) {
+      case 'new-session': showNewSession = true; break
+      case 'new-tab':     addLocalTab(); break
+      case 'close-tab':   closeTab(activeTabId); break
+      case 'next-tab':
+      case 'prev-tab': {
+        const dir = action === 'prev-tab' ? -1 : 1
         const idx = tabs.findIndex((t) => t.id === activeTabId)
         const next = tabs[(idx + dir + tabs.length) % tabs.length]
         if (next) activateTab(next.id)
         break
       }
-      case ',': showSettings = true; break
-      case '\\': handleSplitToggle(); break
+      case 'settings':    showSettings = true; break
+      case 'snippets':    showSnippets = true; break
+      case 'split-h':     handleSplit(focusedPaneId, 'h'); break
+      case 'split-v':     handleSplit(focusedPaneId, 'v'); break
+      case 'multi-exec':  multiOn = !multiOn; break
+      case 'quick-connect': showQuickConnect = true; break
     }
+  }
+
+  /// Check the configured update endpoint, ask the user, and install on confirm.
+  /// Requires the updater plugin to be `active` in tauri.conf.json with a valid
+  /// signing pubkey + endpoint — until then this surfaces a clear error.
+  async function handleCheckUpdates() {
+    try {
+      const update = await checkUpdate()
+      if (!update) {
+        window.alert('zapx is up to date.')
+        return
+      }
+      const proceed = window.confirm(
+        `Update ${update.version} available (current: ${update.currentVersion}).\n\n` +
+          `${update.body ?? ''}\n\nDownload and install now?`,
+      )
+      if (!proceed) return
+      await update.downloadAndInstall()
+      window.alert('Update installed. Please restart zapx to use it.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      window.alert(`Could not check for updates: ${msg}`)
+    }
+  }
+
+  /// Open a new tab from a [`QuickConnectDialog`] submission. Connections are
+  /// in-memory only (no SQLite row), so closing the tab cleans up everything.
+  function handleQuickConnect(params: ConnectParams) {
+    showQuickConnect = false
+    if (params.type === 'local') {
+      addLocalTab()
+      return
+    }
+    if (params.type === 'ssh') {
+      const pane = mkPane(`${params.user}@${params.host}`, {
+        ssh: {
+          host: params.host,
+          port: params.port,
+          user: params.user,
+          auth: { type: 'password', password: params.password },
+        },
+      } as Partial<PaneData>)
+      const tab = mkTab(pane)
+      tabs = [...tabs, tab]
+      activeTabId = tab.id
+      focusedPaneId = pane.id
+      return
+    }
+    // telnet
+    const pane = mkPane(`telnet://${params.host}`, {
+      telnet: { host: params.host, port: params.port },
+    } as Partial<PaneData>)
+    const tab = mkTab(pane)
+    tabs = [...tabs, tab]
+    activeTabId = tab.id
+    focusedPaneId = pane.id
+  }
+
+  /// xterm forwards `(action, e)` here when its custom key handler matches a
+  /// binding. `action` is the [`ShortcutAction`] id (typed as string for the
+  /// existing callback signature).
+  function handleGlobalShortcut(action: string, _e: KeyboardEvent) {
+    dispatchAction(action as ShortcutAction)
   }
 
   onMount(() => {
     function onKeydown(e: KeyboardEvent) {
-      if (!e.ctrlKey) return
-      switch (e.key) {
-        case 'n':    e.preventDefault(); showNewSession = true;        break
-        case 't':    e.preventDefault(); addLocalTab();                break
-        case 'w':    e.preventDefault(); closeTab(activeTabId);        break
-        case 'Tab':  e.preventDefault(); handleGlobalShortcut('Tab', e); break
-        case ',':    e.preventDefault(); showSettings = true;          break
-        case '\\':   e.preventDefault(); handleSplitToggle();           break
-      }
+      const action = matchAction(e)
+      if (!action) return
+      e.preventDefault()
+      dispatchAction(action)
     }
     document.addEventListener('keydown', onKeydown)
     return () => document.removeEventListener('keydown', onKeydown)
@@ -270,7 +391,10 @@
     sessionName={activeSessionName}
     themeName={theme.name}
     onNewSession={() => showNewSession = true}
+    onQuickConnect={() => (showQuickConnect = true)}
     onSettings={() => showSettings = true}
+    onSnippets={() => showSnippets = true}
+    onCheckUpdates={handleCheckUpdates}
     onToggleTheme={toggleTheme}
     onSetTheme={(k) => setTheme(k)}
     onAbout={() => showAbout = true}
@@ -282,8 +406,17 @@
       {theme}
       {sessions}
       {folders}
-      activeSessionId={activePaneData?.savedSession?.id}
+      activeSessionId={focusedPaneData?.savedSession?.id}
       onSelect={openSavedSessionTab}
+      onEdit={(s) => (editingSession = s)}
+      onMove={async (sessionId, folderId) => {
+        try {
+          await moveSavedSession(sessionId, folderId)
+          await load()
+        } catch (e) {
+          console.error('move session failed:', e)
+        }
+      }}
       onAddSession={() => showNewSession = true}
       onSettings={() => showSettings = true}
       onToggleTheme={toggleTheme}
@@ -300,7 +433,7 @@
         onActivate={activateTab}
         onAdd={addLocalTab}
         onClose={closeTab}
-        onToggleSplit={handleSplitToggle}
+        onToggleSplit={handleSplitFocused}
         onToggleMulti={() => multiOn = !multiOn}
       />
 
@@ -308,46 +441,18 @@
         {#each tabs as tab (tab.id)}
           <div class="pane-slot" class:hidden={tab.id !== activeTabId}>
             {#if tab.id === activeTabId}
-              {#if splitOn && tab.pane2}
-                <!-- Split view -->
-                <div class="split-container" bind:this={splitContainerEl}>
-                  <div class="split-pane" style:flex={tab.splitRatio}>
-                    <Pane
-                      {theme}
-                      pane={tab.pane}
-                      focused={focusedPaneId === tab.pane.id}
-                      onFocus={() => focusedPaneId = tab.pane.id}
-                      onStatusChange={(s) => handleStatusChange(tab.id, tab.pane.id, s)}
-                      onGlobalShortcut={handleGlobalShortcut}
-                    />
-                  </div>
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div
-                    class="split-handle"
-                    style:background={theme.border}
-                    onmousedown={startSplitResize}
-                  ></div>
-                  <div class="split-pane" style:flex={1 - tab.splitRatio}>
-                    <Pane
-                      {theme}
-                      pane={tab.pane2}
-                      focused={focusedPaneId === tab.pane2.id}
-                      onFocus={() => { if (tab.pane2) focusedPaneId = tab.pane2.id }}
-                      onStatusChange={(s) => { if (tab.pane2) handleStatusChange(tab.id, tab.pane2.id, s) }}
-                      onGlobalShortcut={handleGlobalShortcut}
-                    />
-                  </div>
-                </div>
-              {:else}
-                <Pane
-                  {theme}
-                  pane={tab.pane}
-                  focused={focusedPaneId === tab.pane.id}
-                  onFocus={() => focusedPaneId = tab.pane.id}
-                  onStatusChange={(s) => handleStatusChange(tab.id, tab.pane.id, s)}
-                  onGlobalShortcut={handleGlobalShortcut}
-                />
-              {/if}
+              <SplitTree
+                node={tab.root}
+                {theme}
+                {focusedPaneId}
+                {canClosePanes}
+                onFocus={(id) => (focusedPaneId = id)}
+                onSplit={(id, dir) => handleSplit(id, dir)}
+                onClosePane={(id) => handleClosePane(id)}
+                onStatusChange={(id, s) => handleStatusChange(tab.id, id, s)}
+                onGlobalShortcut={handleGlobalShortcut}
+                onResize={(path, ratio) => handleResize(path, ratio)}
+              />
             {/if}
           </div>
         {/each}
@@ -373,6 +478,28 @@
     onCancel={() => showNewSession = false}
     onCreated={(_id) => handleSessionAdded()}
   />
+{/if}
+
+{#if editingSession}
+  <NewSessionDialog
+    {folders}
+    existing={editingSession}
+    onCancel={() => (editingSession = null)}
+    onCreated={() => { editingSession = null; load() }}
+  />
+{/if}
+
+{#if showQuickConnect}
+  <QuickConnectDialog
+    onCancel={() => (showQuickConnect = false)}
+    onConnect={handleQuickConnect}
+  />
+{/if}
+
+<KeyboardInteractiveDialog />
+
+{#if showSnippets}
+  <SnippetsDialog onClose={() => (showSnippets = false)} />
 {/if}
 
 {#if showSettings}
@@ -466,33 +593,6 @@
 
   .pane-slot.hidden {
     display: none;
-  }
-
-  .split-container {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .split-pane {
-    display: flex;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    flex-basis: 0;
-  }
-
-  .split-handle {
-    width: 4px;
-    flex-shrink: 0;
-    cursor: col-resize;
-    opacity: 0.4;
-    transition: opacity 0.15s;
-  }
-
-  .split-handle:hover {
-    opacity: 1;
   }
 
   .about-backdrop {

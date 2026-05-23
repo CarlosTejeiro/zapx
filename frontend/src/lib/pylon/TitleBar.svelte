@@ -13,7 +13,10 @@
     theme: PylonTheme
     sessionName?: string
     onNewSession?: () => void
+    onQuickConnect?: () => void
     onSettings?: () => void
+    onSnippets?: () => void
+    onCheckUpdates?: () => void
     onToggleTheme?: () => void
     onSetTheme?: (key: string) => void
     onAbout?: () => void
@@ -24,7 +27,10 @@
     theme,
     sessionName = '',
     onNewSession,
+    onQuickConnect,
     onSettings,
+    onSnippets,
+    onCheckUpdates,
     onToggleTheme,
     onSetTheme,
     onAbout,
@@ -46,12 +52,15 @@
     ],
     Session: [
       { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
+      { label: 'Quick Connect  Ctrl+Shift+N', action: () => { onQuickConnect?.(); openMenu = null } },
     ],
     Tools: [
+      { label: 'Snippets…', action: () => { onSnippets?.(); openMenu = null } },
       { label: 'Settings  Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
     ],
     Help: [
-      { label: 'About zapx', action: () => { onAbout?.(); openMenu = null } },
+      { label: 'Check for updates…', action: () => { onCheckUpdates?.(); openMenu = null } },
+      { label: 'About zapx', action: () => { onAbout?.(); openMenu = null }},
     ],
   })
 

@@ -8,12 +8,64 @@
     folders: Folder[]
     activeSessionId?: number
     onSelect: (session: SavedSession) => void
+    onEdit?: (session: SavedSession) => void
+    /** Reparent a session via drag-and-drop. `folderId = null` drops at root. */
+    onMove?: (sessionId: number, folderId: number | null) => void
     onAddSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
   }
 
-  const { theme, sessions, folders, activeSessionId, onSelect, onAddSession, onSettings, onToggleTheme }: Props = $props()
+  const {
+    theme,
+    sessions,
+    folders,
+    activeSessionId,
+    onSelect,
+    onEdit,
+    onMove,
+    onAddSession,
+    onSettings,
+    onToggleTheme,
+  }: Props = $props()
+
+  // ── Drag-and-drop (native HTML5) ────────────────────────────────────────
+  /// Session id currently being dragged. `dragOver` is the drop target's id
+  /// (`null` = root). Both reset on dragend.
+  let draggingSessionId = $state<number | null>(null)
+  let dragOver = $state<number | null | 'none'>('none')
+
+  function onDragStart(e: DragEvent, sessionId: number) {
+    draggingSessionId = sessionId
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      // Pass via DataTransfer too so we can survive cross-frame edge cases.
+      e.dataTransfer.setData('application/x-zapx-session', String(sessionId))
+    }
+  }
+
+  function onDragOver(e: DragEvent, targetFolderId: number | null) {
+    if (draggingSessionId == null) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    dragOver = targetFolderId
+  }
+
+  function onDrop(e: DragEvent, targetFolderId: number | null) {
+    if (draggingSessionId == null) return
+    e.preventDefault()
+    const id = draggingSessionId
+    // Skip when dropped on its current folder.
+    const current = sessions.find((s) => s.id === id)?.folder_id ?? null
+    if (current !== targetFolderId) onMove?.(id, targetFolderId)
+    draggingSessionId = null
+    dragOver = 'none'
+  }
+
+  function onDragEnd() {
+    draggingSessionId = null
+    dragOver = 'none'
+  }
 
   let search = $state('')
   let expandedSections = $state<Set<string>>(new Set(['pinned', 'sessions']))
@@ -114,25 +166,47 @@
       </div>
 
       {#if expandedSections.has('sessions')}
-        {#each rootSessions as s (s.id)}
-          {@const color = sessionColor(s)}
-          {@const isActive = s.id === activeSessionId}
-          <button
-            class="sb-row"
-            class:active={isActive}
-            style:background={isActive ? theme.itemActiveBg : ''}
-            style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
-            onclick={() => onSelect(s)}
-          >
-            <span class="sb-dot" style:background={color}></span>
-            <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
-            {#if s.protocol !== 'local'}
-              <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
-                {s.protocol.toUpperCase()}
-              </span>
-            {/if}
-          </button>
-        {/each}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="sb-droparea"
+          class:dragover={dragOver === null && draggingSessionId != null}
+          ondragover={(e) => onDragOver(e, null)}
+          ondrop={(e) => onDrop(e, null)}
+        >
+          {#each rootSessions as s (s.id)}
+            {@const color = sessionColor(s)}
+            {@const isActive = s.id === activeSessionId}
+            <button
+              class="sb-row"
+              class:active={isActive}
+              class:dragging={draggingSessionId === s.id}
+              draggable="true"
+              ondragstart={(e) => onDragStart(e, s.id)}
+              ondragend={onDragEnd}
+              style:background={isActive ? theme.itemActiveBg : ''}
+              style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
+              onclick={() => onSelect(s)}
+            >
+              <span class="sb-dot" style:background={color}></span>
+              <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
+              {#if s.protocol !== 'local'}
+                <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
+                  {s.protocol.toUpperCase()}
+                </span>
+              {/if}
+              {#if onEdit}
+                <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                <span
+                  class="sb-edit"
+                  role="button"
+                  title="Edit session"
+                  style:color={theme.textDim}
+                  onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
+                >✎</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
       {/if}
     </div>
 
@@ -156,28 +230,50 @@
           </button>
 
           {#if expandedFolders.has(folder.id)}
-            {#each folderSessions as s (s.id)}
-              {@const color = sessionColor(s)}
-              {@const isActive = s.id === activeSessionId}
-              <button
-                class="sb-row sb-row-indented"
-                class:active={isActive}
-                style:background={isActive ? theme.itemActiveBg : ''}
-                style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
-                onclick={() => onSelect(s)}
-              >
-                <span class="sb-dot" style:background={color}></span>
-                <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
-                {#if s.protocol !== 'local'}
-                  <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
-                    {s.protocol.toUpperCase()}
-                  </span>
-                {/if}
-              </button>
-            {/each}
-            {#if folderSessions.length === 0}
-              <span class="sb-empty" style:color={theme.textDim}>empty</span>
-            {/if}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="sb-droparea"
+              class:dragover={dragOver === folder.id && draggingSessionId != null}
+              ondragover={(e) => onDragOver(e, folder.id)}
+              ondrop={(e) => onDrop(e, folder.id)}
+            >
+              {#each folderSessions as s (s.id)}
+                {@const color = sessionColor(s)}
+                {@const isActive = s.id === activeSessionId}
+                <button
+                  class="sb-row sb-row-indented"
+                  class:active={isActive}
+                  class:dragging={draggingSessionId === s.id}
+                  draggable="true"
+                  ondragstart={(e) => onDragStart(e, s.id)}
+                  ondragend={onDragEnd}
+                  style:background={isActive ? theme.itemActiveBg : ''}
+                  style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
+                  onclick={() => onSelect(s)}
+                >
+                  <span class="sb-dot" style:background={color}></span>
+                  <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
+                  {#if s.protocol !== 'local'}
+                    <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
+                      {s.protocol.toUpperCase()}
+                    </span>
+                  {/if}
+                  {#if onEdit}
+                    <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                    <span
+                      class="sb-edit"
+                      role="button"
+                      title="Edit session"
+                      style:color={theme.textDim}
+                      onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
+                    >✎</span>
+                  {/if}
+                </button>
+              {/each}
+              {#if folderSessions.length === 0}
+                <span class="sb-empty" style:color={theme.textDim}>empty — drop a session here</span>
+              {/if}
+            </div>
           {/if}
         </div>
       {/if}
@@ -380,6 +476,43 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     transition: color 0.1s;
+  }
+
+  .sb-droparea {
+    display: flex;
+    flex-direction: column;
+    border: 1px dashed transparent;
+    border-radius: 4px;
+    transition: border-color 0.1s, background 0.1s;
+    padding: 1px;
+    margin: 0 4px;
+  }
+
+  .sb-droparea.dragover {
+    border-color: rgba(59, 130, 246, 0.6);
+    background: rgba(59, 130, 246, 0.08);
+  }
+
+  .sb-row.dragging {
+    opacity: 0.5;
+  }
+
+  .sb-edit {
+    margin-left: 4px;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s, background 0.1s;
+  }
+  .sb-row:hover .sb-edit {
+    opacity: 0.6;
+  }
+  .sb-edit:hover {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .sb-tag {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { AuthMethod } from '../bridge/types'
+
   interface Props {
     onConnect: (params: SshParams) => void
     onCancel: () => void
@@ -8,7 +10,7 @@
     host: string
     port: number
     user: string
-    password: string
+    auth: AuthMethod
   }
 
   let { onConnect, onCancel }: Props = $props()
@@ -16,14 +18,27 @@
   let host = $state('')
   let port = $state(22)
   let user = $state('')
+  let authType = $state<'password' | 'key' | 'keyboard-interactive' | 'agent'>('password')
   let password = $state('')
+  let keyPath = $state('')
+  let passphrase = $state('')
   let error = $state('')
+
+  function buildAuth(): AuthMethod | null {
+    if (authType === 'password') return { type: 'password', password }
+    if (authType === 'agent') return { type: 'agent' }
+    if (authType === 'keyboard-interactive') return { type: 'keyboard-interactive' }
+    if (!keyPath.trim()) { error = 'Key file path is required'; return null }
+    return { type: 'key', keyPath: keyPath.trim(), passphrase: passphrase || null }
+  }
 
   function submit() {
     error = ''
     if (!host.trim()) { error = 'Host is required'; return }
     if (!user.trim()) { error = 'Username is required'; return }
-    onConnect({ host: host.trim(), port, user: user.trim(), password })
+    const auth = buildAuth()
+    if (!auth) return
+    onConnect({ host: host.trim(), port, user: user.trim(), auth })
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -53,9 +68,30 @@
     </div>
 
     <label class="field">
-      <span>Password</span>
-      <input type="password" bind:value={password} placeholder="(empty = key auth later)" autocomplete="off" />
+      <span>Authentication</span>
+      <select bind:value={authType}>
+        <option value="password">Password</option>
+        <option value="key">Private key file</option>
+        <option value="keyboard-interactive">Keyboard-interactive (2FA / OTP)</option>
+        <option value="agent">SSH agent</option>
+      </select>
     </label>
+
+    {#if authType === 'password'}
+      <label class="field">
+        <span>Password</span>
+        <input type="password" bind:value={password} autocomplete="off" />
+      </label>
+    {:else if authType === 'key'}
+      <label class="field">
+        <span>Key file</span>
+        <input bind:value={keyPath} placeholder="~/.ssh/id_ed25519" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Passphrase (if any)</span>
+        <input type="password" bind:value={passphrase} autocomplete="off" />
+      </label>
+    {/if}
 
     {#if error}
       <p class="error">{error}</p>
@@ -116,7 +152,8 @@
     letter-spacing: 0.05em;
   }
 
-  .field input {
+  .field input,
+  .field select {
     background: #09090b;
     border: 1px solid #3f3f46;
     border-radius: 0.25rem;
@@ -129,7 +166,8 @@
     box-sizing: border-box;
   }
 
-  .field input:focus {
+  .field input:focus,
+  .field select:focus {
     border-color: #3b82f6;
   }
 

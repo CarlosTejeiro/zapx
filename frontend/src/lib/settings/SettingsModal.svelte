@@ -1,6 +1,14 @@
 <script lang="ts">
   import TerminalSettingsPanel from './TerminalSettingsPanel.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
+  import {
+    SHORTCUT_ACTIONS,
+    bindings,
+    eventToCombo,
+    resetBinding,
+    saveBinding,
+    type ShortcutAction,
+  } from '$lib/stores/keybindings.svelte'
 
   interface Props {
     onClose: () => void
@@ -11,24 +19,42 @@
   type Tab = 'appearance' | 'highlight' | 'shortcuts'
   let activeTab = $state<Tab>('appearance')
 
-  const shortcuts = [
-    { key: 'Ctrl+N', desc: 'Quick Connect — open a new session without saving' },
-    { key: 'Ctrl+T', desc: 'New Tab — open a local shell tab' },
-    { key: 'Ctrl+W', desc: 'Close Tab — close the current tab' },
-    { key: 'Ctrl+Tab', desc: 'Next Tab — cycle tabs forward' },
-    { key: 'Ctrl+Shift+Tab', desc: 'Prev Tab — cycle tabs backward' },
-    { key: 'Ctrl+F', desc: 'Search — open the in-terminal search bar' },
-    { key: 'Escape', desc: 'Close Search — close the search bar' },
-  ]
+  /// While recording, swallow keys instead of dispatching them globally.
+  let recordingAction = $state<ShortcutAction | null>(null)
+
+  function beginRecord(id: ShortcutAction) {
+    recordingAction = id
+  }
+
+  async function onRecordKeydown(e: KeyboardEvent) {
+    if (!recordingAction) return
+    // Escape exits recording without changing the binding.
+    if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      recordingAction = null
+      return
+    }
+    const combo = eventToCombo(e)
+    if (!combo) return // modifier-only press, keep waiting
+    e.preventDefault()
+    e.stopPropagation()
+    const id = recordingAction
+    recordingAction = null
+    await saveBinding(id, combo)
+  }
 
   function handleOverlayClick(e: MouseEvent) {
     if (e.target === e.currentTarget) onClose()
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (recordingAction) return // recorder handles its own keys
     if (e.key === 'Escape') onClose()
   }
 </script>
+
+<svelte:window onkeydown={onRecordKeydown} />
 
 <div
   class="overlay"
@@ -77,10 +103,24 @@
           <HighlightRulesPanel />
         {:else}
           <div class="shortcuts-list">
-            {#each shortcuts as s}
+            <p class="hint">
+              Click a binding to record a new keystroke. Press <kbd class="kbd">Esc</kbd> to cancel.
+            </p>
+            {#each SHORTCUT_ACTIONS as a (a.id)}
               <div class="shortcut-row">
-                <kbd class="kbd">{s.key}</kbd>
-                <span class="shortcut-desc">{s.desc}</span>
+                <span class="shortcut-desc">{a.label}</span>
+                {#if recordingAction === a.id}
+                  <kbd class="kbd recording">press a key…</kbd>
+                {:else}
+                  <button class="kbd kbd-btn" onclick={() => beginRecord(a.id)}>
+                    {bindings[a.id] || '(unbound)'}
+                  </button>
+                {/if}
+                <button
+                  class="reset-btn"
+                  title="Reset to default ({a.default})"
+                  onclick={() => resetBinding(a.id)}
+                >↺</button>
               </div>
             {/each}
           </div>
@@ -222,5 +262,51 @@
     font-size: 0.78rem;
     color: #a1a1aa;
     line-height: 1.4;
+    flex: 1;
+  }
+
+  .hint {
+    font-size: 0.74rem;
+    color: #71717a;
+    margin: 0 0 0.5rem;
+  }
+
+  .kbd-btn {
+    cursor: pointer;
+    font-family: monospace;
+  }
+
+  .kbd-btn:hover {
+    background: #3f3f46;
+    border-color: #52525b;
+  }
+
+  .kbd.recording {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+    color: #fff;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .reset-btn {
+    background: transparent;
+    border: none;
+    color: #52525b;
+    font-size: 0.95rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.2rem;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+
+  .reset-btn:hover {
+    color: #e4e4e7;
+    background: #27272a;
   }
 </style>

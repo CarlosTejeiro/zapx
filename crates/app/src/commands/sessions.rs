@@ -9,16 +9,63 @@ use core_persistence::SavedSession;
 use core_transport::{SerialTransport, SessionCmd, TelnetTransport};
 
 use crate::error::AppError;
+use crate::login_script::{LoginRunner, LoginStep};
 use crate::state::{ActiveLog, ActiveSession, AppState};
+
+/// Shared, late-filled slot so `make_on_data` can route bytes to a
+/// [`LoginRunner`] that is only constructed AFTER `start_io_loop` yields its
+/// command sender. For sessions without a script we use an always-empty slot.
+type LoginRunnerSlot = Arc<Mutex<Option<Arc<LoginRunner>>>>;
+
+fn empty_login_slot() -> LoginRunnerSlot {
+    Arc::new(Mutex::new(None))
+}
+
+fn parse_login_script(json: Option<&str>) -> Option<Vec<LoginStep>> {
+    let raw = json?;
+    let steps: Vec<LoginStep> = serde_json::from_str(raw).ok()?;
+    if steps.is_empty() {
+        None
+    } else {
+        Some(steps)
+    }
+}
+
+/// Build and store a [`LoginRunner`] into `slot` (no-op if `script_json` is
+/// `None` or parses to an empty array). The runner forwards progress events
+/// to the frontend as `login-script-progress`.
+fn maybe_install_login_runner(
+    slot: &LoginRunnerSlot,
+    script_json: Option<&str>,
+    session_id: &str,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<core_transport::SessionCmd>,
+    app: &AppHandle,
+) {
+    let Some(steps) = parse_login_script(script_json) else {
+        return;
+    };
+    let app_for_progress = app.clone();
+    let runner = Arc::new(LoginRunner::new(
+        session_id.to_string(),
+        steps,
+        cmd_tx,
+        Box::new(move |p| {
+            let _ = app_for_progress.emit("login-script-progress", p);
+        }),
+    ));
+    *slot.lock().unwrap() = Some(runner);
+}
 
 /// Wrap an `on_data` callback to:
 /// 1. Write raw bytes to the session log (if logging is active).
-/// 2. Apply keyword highlighting.
-/// 3. Emit highlighted bytes to the frontend.
+/// 2. Feed the (raw, pre-highlight) bytes to the login-script runner, if any.
+/// 3. Apply keyword highlighting.
+/// 4. Emit highlighted bytes to the frontend.
 fn make_on_data<F>(
     session_id: String,
     loggers: Arc<Mutex<HashMap<String, ActiveLog>>>,
     highlighter: Arc<RwLock<core_highlight::Highlighter>>,
+    login_slot: LoginRunnerSlot,
     inner: F,
 ) -> impl Fn(Vec<u8>) + Send + 'static
 where
@@ -29,6 +76,12 @@ where
             if let Some(active) = map.get_mut(&session_id) {
                 let _ = active.logger.write(&data);
             }
+        }
+        // Feed the login runner (if any) BEFORE highlight so pattern matching
+        // sees the raw bytes the server actually sent.
+        let runner = login_slot.lock().unwrap().clone();
+        if let Some(r) = runner {
+            r.feed(&data);
         }
         let highlighted = highlighter.read().unwrap().apply(&data);
         inner(highlighted);
@@ -88,6 +141,8 @@ pub async fn open_local_session(
             cmd_tx,
             cols: 80,
             rows: 24,
+            ssh_handle: None,
+            sftp: None,
         },
     );
 
@@ -99,6 +154,129 @@ pub async fn open_local_session(
 // SSH session
 // ---------------------------------------------------------------------------
 
+/// How the frontend specifies SSH authentication. Discriminated by `type`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AuthMethodArg {
+    Password {
+        password: String,
+    },
+    Key {
+        #[serde(rename = "keyPath")]
+        key_path: String,
+        passphrase: Option<String>,
+    },
+    #[serde(rename = "keyboard-interactive")]
+    KeyboardInteractive,
+    Agent,
+}
+
+/// Event payload for `ssh-ki-prompt`. The frontend renders the prompts and
+/// then calls `respond_keyboard_interactive` with the matching `interactionId`.
+#[derive(serde::Serialize, Clone)]
+struct KiPromptPayload {
+    #[serde(rename = "interactionId")]
+    interaction_id: String,
+    name: String,
+    instructions: String,
+    prompts: Vec<core_transport::KiPrompt>,
+}
+
+/// Build a keyboard-interactive responder that bridges to the UI: for each
+/// `InfoRequest` from the server, emit a `ssh-ki-prompt` event with a fresh
+/// interaction id and await a oneshot fired by [`respond_keyboard_interactive`].
+fn build_ki_responder(
+    app: AppHandle,
+    ki_pending: crate::state::KiPending,
+) -> core_transport::KiResponder {
+    Arc::new(move |req: core_transport::KiRequest| {
+        let app = app.clone();
+        let ki_pending = Arc::clone(&ki_pending);
+        Box::pin(async move {
+            let interaction_id = Uuid::new_v4().to_string();
+            let (tx, rx) = tokio::sync::oneshot::channel::<Vec<String>>();
+            ki_pending
+                .lock()
+                .unwrap()
+                .insert(interaction_id.clone(), tx);
+            let _ = app.emit(
+                "ssh-ki-prompt",
+                KiPromptPayload {
+                    interaction_id: interaction_id.clone(),
+                    name: req.name,
+                    instructions: req.instructions,
+                    prompts: req.prompts,
+                },
+            );
+            match rx.await {
+                Ok(responses) => responses,
+                Err(_) => {
+                    // Sender dropped (e.g. session torn down) — clean up and
+                    // return an empty Vec which will fail auth cleanly.
+                    ki_pending.lock().unwrap().remove(&interaction_id);
+                    Vec::new()
+                }
+            }
+        })
+    })
+}
+
+/// Convert an [`AuthMethodArg`] from the frontend into a [`core_transport::SshAuth`].
+fn build_ssh_auth(
+    arg: AuthMethodArg,
+    app: &AppHandle,
+    ki_pending: &crate::state::KiPending,
+) -> core_transport::SshAuth {
+    match arg {
+        AuthMethodArg::Password { password } => core_transport::SshAuth::Password(password),
+        AuthMethodArg::Key {
+            key_path,
+            passphrase,
+        } => core_transport::SshAuth::PublicKey {
+            key_path,
+            passphrase,
+        },
+        AuthMethodArg::KeyboardInteractive => core_transport::SshAuth::KeyboardInteractive {
+            responder: build_ki_responder(app.clone(), Arc::clone(ki_pending)),
+        },
+        AuthMethodArg::Agent => core_transport::SshAuth::Agent,
+    }
+}
+
+/// Fire the user's answers into the oneshot for an in-flight KI prompt.
+#[tauri::command]
+pub async fn respond_keyboard_interactive(
+    state: State<'_, AppState>,
+    interaction_id: String,
+    responses: Vec<String>,
+) -> Result<(), AppError> {
+    let sender = state.ki_pending.lock().unwrap().remove(&interaction_id);
+    if let Some(tx) = sender {
+        let _ = tx.send(responses);
+    }
+    Ok(())
+}
+
+/// Fetch the server's host key and classify it against `~/.ssh/known_hosts`.
+/// Run before [`open_ssh_session`] so the UI can prompt for TOFU/mismatch.
+#[tauri::command]
+pub async fn ssh_preflight_host_key(
+    host: String,
+    port: u16,
+) -> Result<core_transport::HostKeyStatus, AppError> {
+    core_transport::preflight_host_key(host, port)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Persist trust for a host key (writes `~/.ssh/known_hosts`).
+#[tauri::command]
+pub async fn ssh_trust_host_key(host: String, port: u16) -> Result<(), AppError> {
+    core_transport::trust_host_key(host, port)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Connect to an SSH host, open a PTY shell, and return the session UUID.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -108,17 +286,18 @@ pub async fn open_ssh_session(
     host: String,
     port: u16,
     user: String,
-    password: String,
+    auth: AuthMethodArg,
     cols: u16,
     rows: u16,
 ) -> Result<String, AppError> {
     let session_id = Uuid::new_v4().to_string();
 
+    let auth = build_ssh_auth(auth, &app, &state.ki_pending);
     let transport = core_transport::SshTransport::open_shell(
         host.clone(),
         port,
         user.clone(),
-        password,
+        auth,
         cols,
         rows,
     )
@@ -129,21 +308,32 @@ pub async fn open_ssh_session(
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
-    let cmd_tx = transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
-        let _ = app_handle.emit(
-            "terminal-data",
-            TerminalDataPayload {
-                session_id: sid.clone(),
-                data,
-            },
-        );
-    }));
+    let (cmd_tx, ssh_handle) = transport.start_io_loop(make_on_data(
+        session_id.clone(),
+        lg,
+        hl,
+        empty_login_slot(),
+        move |data| {
+            let _ = app_handle.emit(
+                "terminal-data",
+                TerminalDataPayload {
+                    session_id: sid.clone(),
+                    data,
+                },
+            );
+        },
+    ));
 
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+    state.sessions.lock().unwrap().insert(
+        session_id.clone(),
+        ActiveSession {
+            cmd_tx,
+            cols,
+            rows,
+            ssh_handle: Some(ssh_handle),
+            sftp: Some(core_transport::empty_sftp_slot()),
+        },
+    );
 
     tracing::debug!(session_id, host, port, user, "ssh session opened");
     Ok(session_id)
@@ -192,6 +382,9 @@ pub async fn resize_terminal(
 #[tauri::command]
 pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Result<(), AppError> {
     let removed = state.sessions.lock().unwrap().remove(&session_id);
+    // Drop any port-forwards bound to this session — Drop on ForwardController
+    // aborts each listener task.
+    state.forwards.lock().unwrap().remove(&session_id);
     if removed.is_some() {
         tracing::debug!(session_id, "session closed");
     }
@@ -248,7 +441,8 @@ fn reader_loop(
 // Saved session CRUD (persisted in SQLite via core-persistence)
 // ---------------------------------------------------------------------------
 
-/// Save a new SSH session (stores password in keyring, never in SQLite).
+/// Save a new SSH session. Secrets (password, key passphrase) go to the OS
+/// keyring; the key file path is not a secret and is stored in `options_json`.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_saved_session(
@@ -258,30 +452,73 @@ pub async fn create_saved_session(
     host: String,
     port: u16,
     username: String,
-    password: String,
+    auth: AuthMethodArg,
+    via_session_id: Option<i64>,
 ) -> Result<i64, AppError> {
-    // Generate a unique, opaque keyring key — never derived from user data.
-    let keyring_key = format!("ssh:{}", Uuid::new_v4());
-
-    core_vault::Vault::store(&keyring_key, &password)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let cred_id = state
-        .db
-        .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    // Sanity-check the bastion reference now so we fail fast on create, not
+    // only when opening the connection.
+    if let Some(via_id) = via_session_id {
+        let bastion = state
+            .db
+            .get_session(via_id)
+            .map_err(|e| AppError::Internal(format!("via_session_id {via_id}: {e}")))?;
+        if bastion.protocol != "ssh" {
+            return Err(AppError::Internal(format!(
+                "via_session_id {via_id} is not an SSH session"
+            )));
+        }
+    }
+    // (auth_method, credential_id, options_json) derived per auth type.
+    let (auth_method, credential_id, options_json) = match auth {
+        AuthMethodArg::Password { password } => {
+            let keyring_key = format!("ssh:{}", Uuid::new_v4());
+            core_vault::Vault::store(&keyring_key, &password)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let cred_id = state
+                .db
+                .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            ("password", Some(cred_id), "{}".to_string())
+        }
+        AuthMethodArg::Key {
+            key_path,
+            passphrase,
+        } => {
+            // Only the passphrase is a secret; store it in the vault if present.
+            let cred_id = match passphrase {
+                Some(pp) if !pp.is_empty() => {
+                    let keyring_key = format!("ssh:{}", Uuid::new_v4());
+                    core_vault::Vault::store(&keyring_key, &pp)
+                        .map_err(|e| AppError::Internal(e.to_string()))?;
+                    Some(
+                        state
+                            .db
+                            .create_credential(&name, "ssh_key", Some(&username), &keyring_key)
+                            .map_err(|e| AppError::Internal(e.to_string()))?,
+                    )
+                }
+                _ => None,
+            };
+            let options = serde_json::json!({ "key_path": key_path }).to_string();
+            ("key", cred_id, options)
+        }
+        AuthMethodArg::KeyboardInteractive => ("keyboard-interactive", None, "{}".to_string()),
+        AuthMethodArg::Agent => ("agent", None, "{}".to_string()),
+    };
 
     state
         .db
-        .create_session(
+        .create_session_full(
             folder_id,
             &name,
             "ssh",
             Some(&host),
             Some(port),
             Some(&username),
-            Some(cred_id),
-            "{}",
+            credential_id,
+            &options_json,
+            Some(auth_method),
+            via_session_id,
         )
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -292,6 +529,73 @@ pub async fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SavedSessio
     state
         .db
         .list_sessions()
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Update editable fields of a saved session. Credentials (auth method,
+/// password, key passphrase) are intentionally NOT touched — change them by
+/// recreating the session.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn update_saved_session(
+    state: State<'_, AppState>,
+    id: i64,
+    name: String,
+    folder_id: Option<i64>,
+    host: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    via_session_id: Option<i64>,
+    // `options_json`: protocol-specific options blob (e.g. ssh `key_path`,
+    // serial `baud_rate`). Passed through to the DB when `Some`, preserved
+    // otherwise — see persistence::update_session_fields.
+    options_json: Option<String>,
+) -> Result<(), AppError> {
+    if name.trim().is_empty() {
+        return Err(AppError::Internal("name is required".into()));
+    }
+    // Cycle / self-reference check for via_session_id.
+    if let Some(vid) = via_session_id {
+        if vid == id {
+            return Err(AppError::Internal(
+                "session cannot use itself as a jump host".into(),
+            ));
+        }
+        let bastion = state
+            .db
+            .get_session(vid)
+            .map_err(|e| AppError::Internal(format!("via_session_id {vid}: {e}")))?;
+        if bastion.protocol != "ssh" {
+            return Err(AppError::Internal(format!(
+                "via_session_id {vid} is not an SSH session"
+            )));
+        }
+    }
+    state
+        .db
+        .update_session_fields(
+            id,
+            name.trim(),
+            folder_id,
+            host.as_deref(),
+            port,
+            username.as_deref(),
+            via_session_id,
+            options_json.as_deref(),
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Move a saved session to a different folder (or to the root with `None`).
+#[tauri::command]
+pub async fn move_saved_session(
+    state: State<'_, AppState>,
+    id: i64,
+    folder_id: Option<i64>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_session_folder(id, folder_id)
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -316,6 +620,118 @@ pub async fn delete_saved_session(state: State<'_, AppState>, id: i64) -> Result
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Build the [`core_transport::SshAuth`] for a saved SSH session, pulling its
+/// secret from the vault if applicable. Shared by direct connects and every
+/// hop of a ProxyJump chain.
+fn resolve_ssh_auth_for_session(
+    session: &SavedSession,
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<core_transport::SshAuth, AppError> {
+    let secret = match session.credential_id {
+        Some(cred_id) => {
+            let key = state
+                .db
+                .get_credential_keyring_key(cred_id)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            Some(core_vault::Vault::retrieve(&key).map_err(|e| AppError::Internal(e.to_string()))?)
+        }
+        None => None,
+    };
+
+    Ok(match session.auth_method.as_deref() {
+        Some("key") => {
+            let opts: serde_json::Value =
+                serde_json::from_str(&session.options_json).unwrap_or(serde_json::json!({}));
+            let key_path = opts["key_path"]
+                .as_str()
+                .ok_or_else(|| AppError::Internal("missing key_path".into()))?
+                .to_string();
+            core_transport::SshAuth::PublicKey {
+                key_path,
+                passphrase: secret,
+            }
+        }
+        Some("agent") => core_transport::SshAuth::Agent,
+        Some("keyboard-interactive") => core_transport::SshAuth::KeyboardInteractive {
+            responder: build_ki_responder(app.clone(), Arc::clone(&state.ki_pending)),
+        },
+        // None / "password" — legacy behaviour.
+        _ => core_transport::SshAuth::Password(
+            secret.ok_or_else(|| AppError::Internal("missing credential".into()))?,
+        ),
+    })
+}
+
+/// Walk the `via_session_id` chain starting at `start_id` and return the list
+/// of saved-session ids from outermost (no `via`) to innermost (just before
+/// the target). Detects cycles.
+fn collect_chain_ids(start_id: i64, state: &AppState) -> Result<Vec<i64>, AppError> {
+    let mut chain_ids = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut current = Some(start_id);
+    while let Some(id) = current {
+        if !visited.insert(id) {
+            return Err(AppError::Internal(format!(
+                "circular via_session_id chain at session {id}"
+            )));
+        }
+        let saved = state
+            .db
+            .get_session(id)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        if saved.protocol != "ssh" {
+            return Err(AppError::Internal(format!(
+                "via_session_id {id} points to non-SSH session"
+            )));
+        }
+        current = saved.via_session_id;
+        chain_ids.push(id);
+    }
+    chain_ids.reverse();
+    Ok(chain_ids)
+}
+
+/// Build the chain of authenticated bastion handles required to reach a
+/// target whose `via_session_id` is `Some(via_start)`. The last element of
+/// the returned Vec is the bastion through which the target is tunneled.
+async fn build_bastion_chain(
+    via_start: i64,
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<Vec<core_transport::SshHandle>, AppError> {
+    let chain_ids = collect_chain_ids(via_start, state)?;
+    let mut handles: Vec<core_transport::SshHandle> = Vec::with_capacity(chain_ids.len());
+    for id in chain_ids {
+        let saved = state
+            .db
+            .get_session(id)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let host = saved
+            .host
+            .clone()
+            .ok_or_else(|| AppError::Internal(format!("bastion {id} missing host")))?;
+        let port = saved.port.unwrap_or(22);
+        let user = saved
+            .username
+            .clone()
+            .ok_or_else(|| AppError::Internal(format!("bastion {id} missing username")))?;
+        let auth = resolve_ssh_auth_for_session(&saved, app, state)?;
+
+        let handle = if let Some(prev) = handles.last() {
+            core_transport::connect_authenticated_via(prev, host, port, user, auth)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+        } else {
+            core_transport::connect_authenticated(host, port, user, auth)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+        };
+        handles.push(handle);
+    }
+    Ok(handles)
+}
+
 /// Open a saved session: load config from DB, retrieve password from keyring,
 /// establish the connection, and return the live session UUID.
 #[tauri::command]
@@ -331,40 +747,51 @@ pub async fn open_saved_session(
         .get_session(saved_session_id)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    // Pull the (optional) login script out once so the per-protocol arms can
+    // freely move fields out of `session` without holding a borrow.
+    let login_script_json = session.login_script_json.clone();
+
     match session.protocol.as_str() {
         "ssh" => {
             let host = session
                 .host
+                .clone()
                 .ok_or_else(|| AppError::Internal("missing host".into()))?;
             let port = session.port.unwrap_or(22);
             let username = session
                 .username
+                .clone()
                 .ok_or_else(|| AppError::Internal("missing username".into()))?;
 
-            let password = {
-                let cred_id = session
-                    .credential_id
-                    .ok_or_else(|| AppError::Internal("missing credential".into()))?;
-                let key = state
-                    .db
-                    .get_credential_keyring_key(cred_id)
-                    .map_err(|e| AppError::Internal(e.to_string()))?;
-                core_vault::Vault::retrieve(&key).map_err(|e| AppError::Internal(e.to_string()))?
-            };
+            let auth = resolve_ssh_auth_for_session(&session, &app, &state)?;
 
             let session_id = Uuid::new_v4().to_string();
-            let transport = core_transport::SshTransport::open_shell(
-                host, port, username, password, cols, rows,
-            )
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+            let transport = if let Some(via_id) = session.via_session_id {
+                // Build the bastion chain, then tunnel to the target through it.
+                let chain = build_bastion_chain(via_id, &app, &state).await?;
+                core_transport::SshTransport::open_shell_via(
+                    chain, host, port, username, auth, cols, rows,
+                )
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+            } else {
+                core_transport::SshTransport::open_shell(host, port, username, auth, cols, rows)
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+            };
 
             let sid = session_id.clone();
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
-            let cmd_tx =
-                transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
+            let login_slot: LoginRunnerSlot = empty_login_slot();
+            let login_slot_for_closure = Arc::clone(&login_slot);
+            let (cmd_tx, ssh_handle) = transport.start_io_loop(make_on_data(
+                session_id.clone(),
+                lg,
+                hl,
+                login_slot_for_closure,
+                move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
                         TerminalDataPayload {
@@ -372,13 +799,28 @@ pub async fn open_saved_session(
                             data,
                         },
                     );
-                }));
+                },
+            ));
 
-            state
-                .sessions
-                .lock()
-                .unwrap()
-                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+            // Wire up the optional login automation (no-op if the session has no script).
+            maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                cmd_tx.clone(),
+                &app,
+            );
+
+            state.sessions.lock().unwrap().insert(
+                session_id.clone(),
+                ActiveSession {
+                    cmd_tx,
+                    cols,
+                    rows,
+                    ssh_handle: Some(ssh_handle),
+                    sftp: Some(core_transport::empty_sftp_slot()),
+                },
+            );
 
             state.db.touch_session(saved_session_id).ok();
             tracing::debug!(session_id, saved_session_id, "saved session opened");
@@ -399,25 +841,46 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
+            let login_slot: LoginRunnerSlot = empty_login_slot();
+            let login_slot_for_closure = Arc::clone(&login_slot);
             let cmd_tx = transport.start_io_loop(
                 cols,
                 rows,
-                make_on_data(session_id.clone(), lg, hl, move |data| {
-                    let _ = app_handle.emit(
-                        "terminal-data",
-                        TerminalDataPayload {
-                            session_id: sid.clone(),
-                            data,
-                        },
-                    );
-                }),
+                make_on_data(
+                    session_id.clone(),
+                    lg,
+                    hl,
+                    login_slot_for_closure,
+                    move |data| {
+                        let _ = app_handle.emit(
+                            "terminal-data",
+                            TerminalDataPayload {
+                                session_id: sid.clone(),
+                                data,
+                            },
+                        );
+                    },
+                ),
             );
 
-            state
-                .sessions
-                .lock()
-                .unwrap()
-                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+            maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                cmd_tx.clone(),
+                &app,
+            );
+
+            state.sessions.lock().unwrap().insert(
+                session_id.clone(),
+                ActiveSession {
+                    cmd_tx,
+                    cols,
+                    rows,
+                    ssh_handle: None,
+                    sftp: None,
+                },
+            );
 
             state.db.touch_session(saved_session_id).ok();
             tracing::debug!(
@@ -451,8 +914,14 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
-            let cmd_tx =
-                transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
+            let login_slot: LoginRunnerSlot = empty_login_slot();
+            let login_slot_for_closure = Arc::clone(&login_slot);
+            let cmd_tx = transport.start_io_loop(make_on_data(
+                session_id.clone(),
+                lg,
+                hl,
+                login_slot_for_closure,
+                move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
                         TerminalDataPayload {
@@ -460,13 +929,27 @@ pub async fn open_saved_session(
                             data,
                         },
                     );
-                }));
+                },
+            ));
 
-            state
-                .sessions
-                .lock()
-                .unwrap()
-                .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+            maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                cmd_tx.clone(),
+                &app,
+            );
+
+            state.sessions.lock().unwrap().insert(
+                session_id.clone(),
+                ActiveSession {
+                    cmd_tx,
+                    cols,
+                    rows,
+                    ssh_handle: None,
+                    sftp: None,
+                },
+            );
 
             state.db.touch_session(saved_session_id).ok();
             tracing::debug!(
@@ -506,22 +989,33 @@ pub async fn open_telnet_session(
     let cmd_tx = transport.start_io_loop(
         cols,
         rows,
-        make_on_data(session_id.clone(), lg, hl, move |data| {
-            let _ = app_handle.emit(
-                "terminal-data",
-                TerminalDataPayload {
-                    session_id: sid.clone(),
-                    data,
-                },
-            );
-        }),
+        make_on_data(
+            session_id.clone(),
+            lg,
+            hl,
+            empty_login_slot(),
+            move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            },
+        ),
     );
 
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(session_id.clone(), ActiveSession { cmd_tx, cols, rows });
+    state.sessions.lock().unwrap().insert(
+        session_id.clone(),
+        ActiveSession {
+            cmd_tx,
+            cols,
+            rows,
+            ssh_handle: None,
+            sftp: None,
+        },
+    );
 
     tracing::debug!(session_id, host, port, "telnet session opened");
     Ok(session_id)
@@ -548,15 +1042,21 @@ pub async fn open_serial_session(
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
-    let cmd_tx = transport.start_io_loop(make_on_data(session_id.clone(), lg, hl, move |data| {
-        let _ = app_handle.emit(
-            "terminal-data",
-            TerminalDataPayload {
-                session_id: sid.clone(),
-                data,
-            },
-        );
-    }));
+    let cmd_tx = transport.start_io_loop(make_on_data(
+        session_id.clone(),
+        lg,
+        hl,
+        empty_login_slot(),
+        move |data| {
+            let _ = app_handle.emit(
+                "terminal-data",
+                TerminalDataPayload {
+                    session_id: sid.clone(),
+                    data,
+                },
+            );
+        },
+    ));
 
     // Serial sessions get a default size; resize is ignored by the transport.
     state.sessions.lock().unwrap().insert(
@@ -565,6 +1065,8 @@ pub async fn open_serial_session(
             cmd_tx,
             cols: 80,
             rows: 24,
+            ssh_handle: None,
+            sftp: None,
         },
     );
 
