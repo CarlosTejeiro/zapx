@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.zapx.app",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "cd ../../frontend && pnpm build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../../frontend/dist"
   },
   "app": {
