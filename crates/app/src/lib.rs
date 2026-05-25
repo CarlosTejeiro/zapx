@@ -90,6 +90,7 @@ pub fn run() {
                 log_dir,
                 ki_pending: Arc::new(Mutex::new(HashMap::new())),
                 forwards: Mutex::new(HashMap::new()),
+                password_cache: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -122,6 +123,7 @@ pub fn run() {
             commands::sessions::resize_terminal,
             commands::sessions::close_session,
             commands::sessions::create_saved_session,
+            commands::sessions::cache_session_password,
             commands::sessions::update_saved_session,
             commands::sessions::move_saved_session,
             commands::sessions::list_sessions,

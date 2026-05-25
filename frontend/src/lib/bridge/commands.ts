@@ -379,4 +379,13 @@ export async function clearCommandHistory(savedSessionId: number | null): Promis
   return invoke<void>('clear_command_history', { savedSessionId })
 }
 
+// Persist the user-typed password into the backend in-memory cache. Used by
+// the reconnect dialog when the OS keychain denies access on dev builds.
+export async function cacheSessionPassword(
+  savedSessionId: number,
+  password: string,
+): Promise<void> {
+  return invoke<void>('cache_session_password', { savedSessionId, password })
+}
+
 export type { SavedSession, Folder, HighlightRule, SessionLog, ColorScheme, AuthMethod, HostKeyStatus }

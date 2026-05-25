@@ -176,11 +176,14 @@
           {#each rootSessions as s (s.id)}
             {@const color = sessionColor(s)}
             {@const isActive = s.id === activeSessionId}
-            <button
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
+            <div
               class="sb-row"
               class:active={isActive}
               class:dragging={draggingSessionId === s.id}
               draggable="true"
+              role="button"
+              tabindex="0"
               ondragstart={(e) => onDragStart(e, s.id)}
               ondragend={onDragEnd}
               style:background={isActive ? theme.itemActiveBg : ''}
@@ -204,7 +207,7 @@
                   onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                 >✎</span>
               {/if}
-            </button>
+            </div>
           {/each}
         </div>
       {/if}
@@ -254,11 +257,14 @@
               {#each folderSessions as s (s.id)}
                 {@const color = sessionColor(s)}
                 {@const isActive = s.id === activeSessionId}
-                <button
+                <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
+                <div
                   class="sb-row sb-row-indented"
                   class:active={isActive}
                   class:dragging={draggingSessionId === s.id}
                   draggable="true"
+                  role="button"
+                  tabindex="0"
                   ondragstart={(e) => onDragStart(e, s.id)}
                   ondragend={onDragEnd}
                   style:background={isActive ? theme.itemActiveBg : ''}
@@ -282,7 +288,7 @@
                       onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                     >✎</span>
                   {/if}
-                </button>
+                </div>
               {/each}
               {#if folderSessions.length === 0}
                 <span class="sb-empty" style:color={theme.textDim}>empty — drop a session here</span>

@@ -3,6 +3,7 @@
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, ColorPalette, AuthMethod } from '$lib/bridge/types'
   import { getCachedPassword, setCachedPassword } from '$lib/credentialCache'
+  import { cacheSessionPassword } from '$lib/bridge/commands'
 
   interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
@@ -83,6 +84,8 @@
     if (!s) return
     const pw = passwordInput
     setCachedPassword(s.id, pw)
+    // Also persist on the Rust side so it survives Cmd+R (webview reload).
+    cacheSessionPassword(s.id, pw).catch(console.error)
     sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', auth: { type: 'password', password: pw } }
     passwordInput = ''
     needsPassword = false

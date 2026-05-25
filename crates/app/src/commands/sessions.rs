@@ -521,8 +521,13 @@ pub async fn create_saved_session(
             )));
         }
     }
-    // (auth_method, credential_id, options_json) derived per auth type.
-    let (auth_method, credential_id, options_json) = match auth {
+    // (auth_method, credential_id, options_json, password_to_cache) derived per type.
+    let (auth_method, credential_id, options_json, password_to_cache): (
+        &str,
+        Option<i64>,
+        String,
+        Option<String>,
+    ) = match auth {
         AuthMethodArg::Password { password } => {
             let keyring_key = format!("ssh:{}", Uuid::new_v4());
             core_vault::Vault::store(&keyring_key, &password)
@@ -531,7 +536,7 @@ pub async fn create_saved_session(
                 .db
                 .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
                 .map_err(|e| AppError::Internal(e.to_string()))?;
-            ("password", Some(cred_id), "{}".to_string())
+            ("password", Some(cred_id), "{}".to_string(), Some(password))
         }
         AuthMethodArg::Key {
             key_path,
@@ -553,13 +558,15 @@ pub async fn create_saved_session(
                 _ => None,
             };
             let options = serde_json::json!({ "key_path": key_path }).to_string();
-            ("key", cred_id, options)
+            ("key", cred_id, options, None)
         }
-        AuthMethodArg::KeyboardInteractive => ("keyboard-interactive", None, "{}".to_string()),
-        AuthMethodArg::Agent => ("agent", None, "{}".to_string()),
+        AuthMethodArg::KeyboardInteractive => {
+            ("keyboard-interactive", None, "{}".to_string(), None)
+        }
+        AuthMethodArg::Agent => ("agent", None, "{}".to_string(), None),
     };
 
-    state
+    let id = state
         .db
         .create_session_full(
             folder_id,
@@ -573,7 +580,15 @@ pub async fn create_saved_session(
             Some(auth_method),
             via_session_id,
         )
-        .map_err(|e| AppError::Internal(e.to_string()))
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Seed the in-memory cache so the first reopen works even if the
+    // dev-mode Keychain denies us read access later.
+    if let Some(pw) = password_to_cache {
+        state.password_cache.lock().unwrap().insert(id, pw);
+    }
+
+    Ok(id)
 }
 
 /// List all saved sessions.
@@ -681,14 +696,29 @@ fn resolve_ssh_auth_for_session(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<core_transport::SshAuth, AppError> {
+    // Try the OS keyring first. On macOS dev builds the unsigned binary may
+    // be denied access to its own entry — in that case fall back to the
+    // in-process password cache populated by the reconnect dialog.
     let secret = match session.credential_id {
-        Some(cred_id) => {
-            let key = state
-                .db
-                .get_credential_keyring_key(cred_id)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-            Some(core_vault::Vault::retrieve(&key).map_err(|e| AppError::Internal(e.to_string()))?)
-        }
+        Some(cred_id) => match state.db.get_credential_keyring_key(cred_id) {
+            Ok(key) => match core_vault::Vault::retrieve(&key) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    tracing::debug!(
+                        session_id = session.id,
+                        "keyring retrieve failed ({e}); falling back to in-memory cache",
+                    );
+                    state.password_cache.lock().unwrap().get(&session.id).cloned()
+                }
+            },
+            Err(e) => {
+                tracing::debug!(
+                    session_id = session.id,
+                    "credential lookup failed ({e}); falling back to in-memory cache",
+                );
+                state.password_cache.lock().unwrap().get(&session.id).cloned()
+            }
+        },
         None => None,
     };
 
@@ -714,6 +744,23 @@ fn resolve_ssh_auth_for_session(
             secret.ok_or_else(|| AppError::Internal("missing credential".into()))?,
         ),
     })
+}
+
+/// Persist the user-typed password for `saved_session_id` in the process-
+/// lifetime cache. The reconnect dialog calls this after the user reauths
+/// successfully so subsequent reopens skip the keyring round-trip.
+#[tauri::command]
+pub async fn cache_session_password(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+    password: String,
+) -> Result<(), AppError> {
+    state
+        .password_cache
+        .lock()
+        .unwrap()
+        .insert(saved_session_id, password);
+    Ok(())
 }
 
 /// Walk the `via_session_id` chain starting at `start_id` and return the list

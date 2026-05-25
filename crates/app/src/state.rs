@@ -14,6 +14,16 @@ use std::sync::atomic::AtomicU64;
 
 use core_transport::{ForwardController, SessionCmd};
 
+/// Process-lifetime password cache keyed by saved-session id.
+///
+/// We need this because on macOS *unsigned* dev builds the OS Keychain often
+/// denies the binary access to its own entry — so even though
+/// `Vault::store` succeeded at create time, `Vault::retrieve` later returns
+/// "no matching entry". The user-typed password is parked here on first
+/// successful auth so subsequent reopens of the same session don't prompt.
+/// Cleared on app exit.
+pub type PasswordCache = Arc<Mutex<HashMap<i64, String>>>;
+
 /// A live terminal session (local PTY or SSH).
 pub struct ActiveSession {
     /// Send keyboard input or resize events to the session's I/O task.
@@ -61,4 +71,7 @@ pub struct AppState {
     /// Active port-forwards keyed by SSH session UUID. Dropping a
     /// [`ForwardController`] stops its listener task.
     pub forwards: Mutex<HashMap<String, Vec<ForwardController>>>,
+    /// In-memory password cache (see [`PasswordCache`]). Survives Cmd+R
+    /// because it lives in the Rust process, not the webview.
+    pub password_cache: PasswordCache,
 }
