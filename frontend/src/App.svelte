@@ -38,7 +38,19 @@
     matchAction,
     type ShortcutAction,
   } from '$lib/stores/keybindings.svelte'
-  import { listSessions, listFolders, moveSavedSession, deleteSavedSession } from '$lib/bridge/commands'
+  import {
+    listSessions,
+    listFolders,
+    moveSavedSession,
+    deleteSavedSession,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    listSnippets as listSnippetsApi,
+    sendInputText,
+  } from '$lib/bridge/commands'
+  import type { Snippet } from '$lib/bridge/types'
+  import { getFocusedSessionId } from '$lib/stores/sessionRuntime.svelte'
   import { check as checkUpdate } from '@tauri-apps/plugin-updater'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
@@ -110,6 +122,7 @@
   let focusedPaneId = $state(firstPane.id)
   let sessions = $state<SavedSession[]>([])
   let folders = $state<Folder[]>([])
+  let snippets = $state<Snippet[]>([])
   let showNewSession = $state(false)
   let showQuickConnect = $state(false)
   let showSettings = $state(false)
@@ -193,11 +206,10 @@
   // ── data loading ─────────────────────────────────────────────────────────────
 
   async function load() {
-    try {
-      ;[sessions, folders] = await Promise.all([listSessions(), listFolders()])
-    } catch (_) {
-      // non-fatal — user can retry via sidebar
-    }
+    // Each call independent so a single failure doesn't blank the whole tree.
+    listSessions().then((v) => (sessions = v)).catch((e) => console.error('listSessions', e))
+    listFolders().then((v) => (folders = v)).catch((e) => console.error('listFolders', e))
+    listSnippetsApi().then((v) => (snippets = v)).catch((e) => console.error('listSnippets', e))
   }
 
   $effect(() => {
@@ -489,6 +501,35 @@
           console.error('delete session failed:', e)
         }
       }}
+      onCreateFolder={async () => {
+        const name = prompt('Nombre de la carpeta:')?.trim()
+        if (!name) return
+        try {
+          await createFolder(name, null)
+          await load()
+        } catch (e) {
+          console.error('create folder failed:', e)
+        }
+      }}
+      onRenameFolder={async (folder) => {
+        const name = prompt('Nuevo nombre:', folder.name)?.trim()
+        if (!name || name === folder.name) return
+        try {
+          await renameFolder(folder.id, name)
+          await load()
+        } catch (e) {
+          console.error('rename folder failed:', e)
+        }
+      }}
+      onDeleteFolder={async (folder) => {
+        if (!confirm(`Borrar la carpeta "${folder.name}"? Las sesiones de dentro pasan a la raíz.`)) return
+        try {
+          await deleteFolder(folder.id)
+          await load()
+        } catch (e) {
+          console.error('delete folder failed:', e)
+        }
+      }}
       onMove={async (sessionId, folderId) => {
         try {
           await moveSavedSession(sessionId, folderId)
@@ -500,6 +541,13 @@
       onAddSession={() => showNewSession = true}
       onSettings={() => showSettings = true}
       onToggleTheme={toggleTheme}
+      {snippets}
+      onSendSnippet={async (s) => {
+        const sid = getFocusedSessionId()
+        if (!sid) return
+        try { await sendInputText(sid, s.content) } catch (e) { console.error(e) }
+      }}
+      onOpenSnippets={() => (showSnippets = true)}
     />
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>

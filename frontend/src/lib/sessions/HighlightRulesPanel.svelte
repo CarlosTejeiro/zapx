@@ -153,7 +153,7 @@
   {:else}
     <ul class="flex flex-col gap-1">
       {#each rules as rule (rule.id)}
-        <li class="flex items-center gap-2 rounded bg-zinc-800 px-2 py-1">
+        <li class="rule-row">
           <input
             type="checkbox"
             checked={rule.enabled}
@@ -161,18 +161,20 @@
             class="accent-green-500"
             aria-label="Enable {rule.name}"
           />
+          <span class="rule-name">{rule.name}</span>
           <span
-            class="flex-1 font-mono truncate"
-            style:color={rule.fg_color ?? undefined}
-            style:background-color={rule.bg_color ?? undefined}
+            class="rule-chip"
+            style:color={rule.fg_color ?? '#e4e4e7'}
+            style:background-color={rule.bg_color ?? 'rgba(255,255,255,0.06)'}
             style:font-weight={rule.bold ? 'bold' : undefined}
             style:text-decoration={rule.underline ? 'underline' : undefined}
-          >{rule.name}</span>
-          <span class="text-zinc-500 font-mono text-xs truncate max-w-32">{rule.pattern}</span>
-          <span class="text-zinc-600 text-xs">{rule.is_regex ? 'rx' : 'str'}</span>
+            title="Preview"
+          >Aa</span>
+          <code class="rule-pattern" title={rule.pattern}>{rule.pattern}</code>
+          <span class="rule-kind">{rule.is_regex ? 'rx' : 'str'}</span>
           <button
             onclick={() => handleDelete(rule.id)}
-            class="text-zinc-500 hover:text-red-400 text-xs px-1"
+            class="rule-del"
             aria-label="Delete {rule.name}"
           >✕</button>
         </li>
@@ -257,3 +259,73 @@
     </form>
   </details>
 </div>
+
+<style>
+  .rule-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto auto;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.35rem 0.6rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+  }
+
+  .rule-name {
+    color: #e4e4e7;
+    font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rule-chip {
+    display: inline-block;
+    padding: 0.05rem 0.5rem;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    line-height: 1.3;
+    min-width: 2rem;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .rule-pattern {
+    color: #a1a1aa;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.7rem;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+  }
+
+  .rule-kind {
+    font-size: 0.62rem;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.05rem 0.35rem;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 3px;
+  }
+
+  .rule-del {
+    background: transparent;
+    border: 0;
+    color: #71717a;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 0.25rem;
+    border-radius: 3px;
+  }
+  .rule-del:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+</style>

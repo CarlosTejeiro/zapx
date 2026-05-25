@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PylonTheme } from '$lib/themes/index'
-  import type { SavedSession, Folder } from '$lib/bridge/types'
+  import type { SavedSession, Folder, Snippet } from '$lib/bridge/types'
 
   interface Props {
     theme: PylonTheme
@@ -10,11 +10,18 @@
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
     onDelete?: (session: SavedSession) => void
+    onCreateFolder?: () => void
+    onRenameFolder?: (folder: Folder) => void
+    onDeleteFolder?: (folder: Folder) => void
     /** Reparent a session via drag-and-drop. `folderId = null` drops at root. */
     onMove?: (sessionId: number, folderId: number | null) => void
     onAddSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
+    /** Quick-snippet row: shows the first few snippets as one-click buttons. */
+    snippets?: Snippet[]
+    onSendSnippet?: (snippet: Snippet) => void
+    onOpenSnippets?: () => void
   }
 
   const {
@@ -25,10 +32,16 @@
     onSelect,
     onEdit,
     onDelete,
+    onCreateFolder,
+    onRenameFolder,
+    onDeleteFolder,
     onMove,
     onAddSession,
     onSettings,
     onToggleTheme,
+    snippets = [],
+    onSendSnippet,
+    onOpenSnippets,
   }: Props = $props()
 
   // ── Drag-and-drop (native HTML5) ────────────────────────────────────────
@@ -159,6 +172,14 @@
           SESSIONS
           <span class="sb-count" style:color={theme.textDim}>{rootSessions.length}</span>
         </button>
+        {#if onCreateFolder}
+          <button
+            class="sb-add-btn"
+            title="New folder"
+            style:color={theme.textDim}
+            onclick={onCreateFolder}
+          >📁</button>
+        {/if}
         <button
           class="sb-add-btn"
           title="New session"
@@ -244,8 +265,11 @@
           }}
           role="group"
         >
-          <button
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
+          <div
             class="sb-section-header"
+            role="button"
+            tabindex="0"
             style:color={theme.textDim}
             onclick={() => toggleFolder(folder.id)}
           >
@@ -254,9 +278,29 @@
               class:expanded={expandedFolders.has(folder.id)}
               style:color={theme.textDim}
             >▸</span>
-            {folder.name.toUpperCase()}
+            <span class="sb-folder-name">{folder.name.toUpperCase()}</span>
             <span class="sb-count" style:color={theme.textDim}>{folderSessions.length}</span>
-          </button>
+            {#if onRenameFolder}
+              <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+              <span
+                class="sb-edit"
+                role="button"
+                title="Rename folder"
+                style:color={theme.textDim}
+                onclick={(e) => { e.stopPropagation(); onRenameFolder?.(folder) }}
+              >✎</span>
+            {/if}
+            {#if onDeleteFolder}
+              <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+              <span
+                class="sb-edit sb-del"
+                role="button"
+                title="Delete folder"
+                style:color={theme.textDim}
+                onclick={(e) => { e.stopPropagation(); onDeleteFolder?.(folder) }}
+              >✕</span>
+            {/if}
+          </div>
 
           {#if expandedFolders.has(folder.id)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -315,6 +359,34 @@
       <p class="sb-hint" style:color={theme.textDim}>No sessions yet.</p>
     {/if}
   </div>
+
+  <!-- Snippets quick row: one-click sends to the focused terminal. -->
+  {#if snippets.length > 0 && onSendSnippet}
+    <div class="sb-snippets" style:border-top="1px solid {theme.border}">
+      <div class="sb-snippets-head">
+        <span class="sb-snippets-label" style:color={theme.textDim}>SNIPPETS</span>
+        {#if onOpenSnippets}
+          <button
+            class="sb-snippets-more"
+            title="Manage snippets (Ctrl+Shift+S)"
+            style:color={theme.textDim}
+            onclick={onOpenSnippets}
+          >⋯</button>
+        {/if}
+      </div>
+      <div class="sb-snippets-row">
+        {#each snippets.slice(0, 8) as s (s.id)}
+          <button
+            class="sb-snippet-chip"
+            title={s.content}
+            style:border="1px solid {theme.border}"
+            style:color={theme.textMuted}
+            onclick={() => onSendSnippet?.(s)}
+          >{s.name}</button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <!-- Footer: user chip + settings -->
   <div class="sb-footer" style:border-top="1px solid {theme.border}">
@@ -451,6 +523,19 @@
     letter-spacing: 0.6px;
     text-transform: uppercase;
     font-family: inherit;
+    user-select: none;
+  }
+
+  .sb-folder-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Reveal rename/delete icons on hover over the folder row. */
+  .sb-section-header:hover .sb-edit {
+    opacity: 0.6;
   }
 
   .sb-caret {
@@ -556,6 +641,56 @@
   .sb-del:hover {
     color: #ef4444 !important;
     background: rgba(239, 68, 68, 0.1) !important;
+  }
+
+  /* ── Quick snippet row above the footer ──────────────────────────────── */
+  .sb-snippets {
+    padding: 6px 10px 8px;
+    flex-shrink: 0;
+  }
+  .sb-snippets-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .sb-snippets-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+  }
+  .sb-snippets-more {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+    border-radius: 3px;
+    line-height: 1;
+  }
+  .sb-snippets-more:hover { background: rgba(255,255,255,0.06); }
+
+  .sb-snippets-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .sb-snippet-chip {
+    background: transparent;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 10.5px;
+    font-family: inherit;
+    cursor: pointer;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+  }
+  .sb-snippet-chip:hover {
+    background: rgba(255,255,255,0.06);
+    color: #e4e4e7 !important;
   }
 
   .sb-tag {
