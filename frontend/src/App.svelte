@@ -38,7 +38,7 @@
     matchAction,
     type ShortcutAction,
   } from '$lib/stores/keybindings.svelte'
-  import { listSessions, listFolders, moveSavedSession } from '$lib/bridge/commands'
+  import { listSessions, listFolders, moveSavedSession, deleteSavedSession } from '$lib/bridge/commands'
   import { check as checkUpdate } from '@tauri-apps/plugin-updater'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
@@ -480,6 +480,15 @@
       activeSessionId={focusedPaneData?.savedSession?.id}
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
+      onDelete={async (s) => {
+        if (!confirm(`Borrar "${s.name}"? Esta acción no se puede deshacer.`)) return
+        try {
+          await deleteSavedSession(s.id)
+          await load()
+        } catch (e) {
+          console.error('delete session failed:', e)
+        }
+      }}
       onMove={async (sessionId, folderId) => {
         try {
           await moveSavedSession(sessionId, folderId)

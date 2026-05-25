@@ -9,6 +9,7 @@
     activeSessionId?: number
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
+    onDelete?: (session: SavedSession) => void
     /** Reparent a session via drag-and-drop. `folderId = null` drops at root. */
     onMove?: (sessionId: number, folderId: number | null) => void
     onAddSession?: () => void
@@ -23,6 +24,7 @@
     activeSessionId,
     onSelect,
     onEdit,
+    onDelete,
     onMove,
     onAddSession,
     onSettings,
@@ -206,6 +208,16 @@
                   style:color={theme.textDim}
                   onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                 >✎</span>
+              {/if}
+              {#if onDelete}
+                <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                <span
+                  class="sb-edit sb-del"
+                  role="button"
+                  title="Delete session"
+                  style:color={theme.textDim}
+                  onclick={(e) => { e.stopPropagation(); onDelete?.(s) }}
+                >✕</span>
               {/if}
             </div>
           {/each}
@@ -540,6 +552,10 @@
   .sb-edit:hover {
     opacity: 1 !important;
     background: rgba(255, 255, 255, 0.08);
+  }
+  .sb-del:hover {
+    color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.1) !important;
   }
 
   .sb-tag {
