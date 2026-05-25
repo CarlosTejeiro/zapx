@@ -49,6 +49,7 @@
       { label: themeName === 'parchment' ? '● Parchment' : '  Parchment', action: () => { onSetTheme?.('parchment'); openMenu = null } },
       { label: themeName === 'graphite'  ? '● Graphite'  : '  Graphite',  action: () => { onSetTheme?.('graphite');  openMenu = null } },
       { label: themeName === 'neon-noir' ? '● Neon Noir' : '  Neon Noir', action: () => { onSetTheme?.('neonNoir'); openMenu = null } },
+      { label: themeName === 'aurora'    ? '● Aurora'    : '  Aurora',    action: () => { onSetTheme?.('aurora');   openMenu = null } },
     ],
     Session: [
       { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },

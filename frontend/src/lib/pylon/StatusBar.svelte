@@ -10,6 +10,7 @@
     port?: number
     protocol?: string
     latencyMs?: number
+    bytesPerSec?: number
     layout?: string
   }
 
@@ -20,8 +21,15 @@
     port,
     protocol = 'SSH',
     latencyMs,
+    bytesPerSec,
     layout = '1×1',
   }: Props = $props()
+
+  function formatRate(bps: number): string {
+    if (bps < 1024) return `${bps} B/s`
+    if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`
+    return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`
+  }
 
   const statusLabel = $derived(
     status === 'connected'  ? 'CONNECTED'
@@ -101,6 +109,13 @@
     {#if latencyMs !== undefined && status === 'connected'}
       <span class="sb-divider">|</span>
       <span class="sb-seg sb-mono" style:color={theme.textMuted}>{latencyMs}ms</span>
+    {/if}
+
+    {#if bytesPerSec !== undefined && status === 'connected'}
+      <span class="sb-divider">|</span>
+      <span class="sb-seg sb-mono" style:color={theme.textMuted}>
+        ↓ {formatRate(bytesPerSec)}
+      </span>
     {/if}
   </div>
 

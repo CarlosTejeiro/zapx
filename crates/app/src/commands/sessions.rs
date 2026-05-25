@@ -66,12 +66,15 @@ fn make_on_data<F>(
     loggers: Arc<Mutex<HashMap<String, ActiveLog>>>,
     highlighter: Arc<RwLock<core_highlight::Highlighter>>,
     login_slot: LoginRunnerSlot,
+    rx_total: Arc<std::sync::atomic::AtomicU64>,
     inner: F,
 ) -> impl Fn(Vec<u8>) + Send + 'static
 where
     F: Fn(Vec<u8>) + Send + 'static,
 {
     move |data: Vec<u8>| {
+        // Count raw bytes (pre-highlight) — the StatusBar shows the wire rate.
+        rx_total.fetch_add(data.len() as u64, std::sync::atomic::Ordering::Relaxed);
         if let Ok(mut map) = loggers.lock() {
             if let Some(active) = map.get_mut(&session_id) {
                 let _ = active.logger.write(&data);
@@ -86,6 +89,40 @@ where
         let highlighted = highlighter.read().unwrap().apply(&data);
         inner(highlighted);
     }
+}
+
+/// Spawn a task that emits `session-stats { session_id, bytes_per_sec }`
+/// every second. Returns the JoinHandle so the session close path can abort
+/// it (otherwise the task would keep ticking for a dead UUID).
+fn spawn_stats_emitter(
+    app: AppHandle,
+    session_id: String,
+    rx_total: Arc<std::sync::atomic::AtomicU64>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut last = 0u64;
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+        tick.tick().await; // discard the immediate first tick
+        loop {
+            tick.tick().await;
+            let total = rx_total.load(std::sync::atomic::Ordering::Relaxed);
+            let delta = total.saturating_sub(last);
+            last = total;
+            let _ = app.emit(
+                "session-stats",
+                SessionStatsPayload {
+                    session_id: session_id.clone(),
+                    bytes_per_sec: delta,
+                },
+            );
+        }
+    })
+}
+
+#[derive(serde::Serialize, Clone)]
+struct SessionStatsPayload {
+    session_id: String,
+    bytes_per_sec: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +172,11 @@ pub async fn open_local_session(
         reader_loop(reader, pty, resize_rx, sid, app_handle);
     });
 
+    // Local PTY doesn't route through make_on_data, so we don't track
+    // throughput for it yet. The StatusBar will simply show 0 B/s.
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let stats_task: Option<tokio::task::JoinHandle<()>> = None;
+
     state.sessions.lock().unwrap().insert(
         session_id.clone(),
         ActiveSession {
@@ -143,6 +185,8 @@ pub async fn open_local_session(
             rows: 24,
             ssh_handle: None,
             sftp: None,
+            rx_total,
+            stats_task,
         },
     );
 
@@ -308,11 +352,13 @@ pub async fn open_ssh_session(
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (cmd_tx, ssh_handle) = transport.start_io_loop(make_on_data(
         session_id.clone(),
         lg,
         hl,
         empty_login_slot(),
+        Arc::clone(&rx_total),
         move |data| {
             let _ = app_handle.emit(
                 "terminal-data",
@@ -323,6 +369,8 @@ pub async fn open_ssh_session(
             );
         },
     ));
+    let stats_task =
+        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
 
     state.sessions.lock().unwrap().insert(
         session_id.clone(),
@@ -332,6 +380,8 @@ pub async fn open_ssh_session(
             rows,
             ssh_handle: Some(ssh_handle),
             sftp: Some(core_transport::empty_sftp_slot()),
+            rx_total,
+            stats_task,
         },
     );
 
@@ -385,7 +435,10 @@ pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Re
     // Drop any port-forwards bound to this session — Drop on ForwardController
     // aborts each listener task.
     state.forwards.lock().unwrap().remove(&session_id);
-    if removed.is_some() {
+    if let Some(active) = removed {
+        if let Some(task) = active.stats_task {
+            task.abort();
+        }
         tracing::debug!(session_id, "session closed");
     }
     Ok(())
@@ -784,6 +837,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let (cmd_tx, ssh_handle) = transport.start_io_loop(make_on_data(
@@ -791,6 +845,7 @@ pub async fn open_saved_session(
                 lg,
                 hl,
                 login_slot_for_closure,
+                Arc::clone(&rx_total),
                 move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
@@ -810,6 +865,8 @@ pub async fn open_saved_session(
                 cmd_tx.clone(),
                 &app,
             );
+            let stats_task =
+                spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total));
 
             state.sessions.lock().unwrap().insert(
                 session_id.clone(),
@@ -819,6 +876,8 @@ pub async fn open_saved_session(
                     rows,
                     ssh_handle: Some(ssh_handle),
                     sftp: Some(core_transport::empty_sftp_slot()),
+                    rx_total,
+                    stats_task: Some(stats_task),
                 },
             );
 
@@ -841,6 +900,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let cmd_tx = transport.start_io_loop(
@@ -851,6 +911,7 @@ pub async fn open_saved_session(
                     lg,
                     hl,
                     login_slot_for_closure,
+                    Arc::clone(&rx_total),
                     move |data| {
                         let _ = app_handle.emit(
                             "terminal-data",
@@ -870,6 +931,8 @@ pub async fn open_saved_session(
                 cmd_tx.clone(),
                 &app,
             );
+            let stats_task =
+                spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total));
 
             state.sessions.lock().unwrap().insert(
                 session_id.clone(),
@@ -879,6 +942,8 @@ pub async fn open_saved_session(
                     rows,
                     ssh_handle: None,
                     sftp: None,
+                    rx_total,
+                    stats_task: Some(stats_task),
                 },
             );
 
@@ -914,6 +979,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let cmd_tx = transport.start_io_loop(make_on_data(
@@ -921,6 +987,7 @@ pub async fn open_saved_session(
                 lg,
                 hl,
                 login_slot_for_closure,
+                Arc::clone(&rx_total),
                 move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
@@ -939,6 +1006,8 @@ pub async fn open_saved_session(
                 cmd_tx.clone(),
                 &app,
             );
+            let stats_task =
+                spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total));
 
             state.sessions.lock().unwrap().insert(
                 session_id.clone(),
@@ -948,6 +1017,8 @@ pub async fn open_saved_session(
                     rows,
                     ssh_handle: None,
                     sftp: None,
+                    rx_total,
+                    stats_task: Some(stats_task),
                 },
             );
 
@@ -986,6 +1057,7 @@ pub async fn open_telnet_session(
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let cmd_tx = transport.start_io_loop(
         cols,
         rows,
@@ -994,6 +1066,7 @@ pub async fn open_telnet_session(
             lg,
             hl,
             empty_login_slot(),
+            Arc::clone(&rx_total),
             move |data| {
                 let _ = app_handle.emit(
                     "terminal-data",
@@ -1005,6 +1078,8 @@ pub async fn open_telnet_session(
             },
         ),
     );
+    let stats_task =
+        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
 
     state.sessions.lock().unwrap().insert(
         session_id.clone(),
@@ -1014,6 +1089,8 @@ pub async fn open_telnet_session(
             rows,
             ssh_handle: None,
             sftp: None,
+            rx_total,
+            stats_task,
         },
     );
 
@@ -1042,11 +1119,13 @@ pub async fn open_serial_session(
     let app_handle = app.clone();
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
+    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let cmd_tx = transport.start_io_loop(make_on_data(
         session_id.clone(),
         lg,
         hl,
         empty_login_slot(),
+        Arc::clone(&rx_total),
         move |data| {
             let _ = app_handle.emit(
                 "terminal-data",
@@ -1057,6 +1136,8 @@ pub async fn open_serial_session(
             );
         },
     ));
+    let stats_task =
+        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
 
     // Serial sessions get a default size; resize is ignored by the transport.
     state.sessions.lock().unwrap().insert(
@@ -1067,6 +1148,8 @@ pub async fn open_serial_session(
             rows: 24,
             ssh_handle: None,
             sftp: None,
+            rx_total,
+            stats_task,
         },
     );
 

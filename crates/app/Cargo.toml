@@ -32,5 +32,7 @@ core-transport     = { path = "../core-transport" }
 core-persistence   = { path = "../core-persistence" }
 core-vault         = { path = "../core-vault" }
 core-highlight     = { path = "../core-highlight" }
+core-hints         = { path = "../core-hints" }
 core-logging       = { path = "../core-logging" }
+window-vibrancy    = "0.6"
 chrono             = { workspace = true }

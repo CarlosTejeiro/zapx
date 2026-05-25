@@ -31,6 +31,12 @@
   import { matchAction } from '$lib/stores/keybindings.svelte'
   import { terminalSettings, colorSchemes } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
+  import { HintController } from '$lib/hints/controller.svelte'
+  import GhostText from '$lib/hints/GhostText.svelte'
+  import HintPopup from '$lib/hints/HintPopup.svelte'
+  import { hintsSettings } from '$lib/hints/store.svelte'
+  import { recordCommand } from '$lib/bridge/commands'
+  import { showToast } from '$lib/ui/toast-store.svelte'
 
   const DEFAULT_PALETTE: ColorPalette = {
     background: '#282c34', foreground: '#abb2bf', cursor: '#528bff',
@@ -154,6 +160,7 @@
   let errorMsg = $state<string | null>(null)
   // Held for $effect theme/font reactivity — set inside onMount.
   let term: InstanceType<typeof Terminal> | null = null
+  let hintController = $state<HintController | null>(null)
 
   // Logging state
   let isLogging = $state(false)
@@ -326,6 +333,34 @@
         searchAddon?.clearDecorations()
         return false
       }
+
+      // ── Hint keybindings ────────────────────────────────────────────────
+      const hc = hintController
+      if (hc) {
+        if (hc.popupOpen) {
+          if (e.key === 'ArrowDown') { hc.movePopup(1); return false }
+          if (e.key === 'ArrowUp')   { hc.movePopup(-1); return false }
+          if (e.key === 'Escape')    { hc.closePopup(); return false }
+          if (e.key === 'Tab' || e.key === 'Enter') {
+            hc.acceptIndex(hc.selected)
+            return false
+          }
+        }
+        // Ctrl+Space opens the popup; some terminals send Ctrl+@ on macOS.
+        if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+          hc.openPopup()
+          return false
+        }
+        if ((e.key === 'ArrowRight' || e.key === 'End') && hc.ghost) {
+          hc.acceptGhost()
+          return false
+        }
+        if (e.key === 'Escape' && hc.ghost) {
+          hc.clear()
+          return false
+        }
+      }
+
       const action = matchAction(e)
       if (action) {
         onGlobalShortcut?.(action, e)
@@ -379,6 +414,22 @@
     // Make this session discoverable by the snippets / broadcast machinery.
     if (paneId != null && sessionId) registerSession(paneId, sessionId)
 
+    // Wire up the hint controller now that the session is live.
+    hintController = new HintController({
+      savedSessionId: savedSession?.id ?? null,
+      sendBytes: (data: Uint8Array) => {
+        if (!sessionId) return
+        invoke('send_input', { sessionId, data: Array.from(data) }).catch(console.error)
+      },
+      term,
+      ghostEnabled: () => hintsSettings.ghostEnabled,
+      popupEnabled: () => hintsSettings.popupEnabled,
+    })
+
+    {
+      const label = savedSession?.name ?? ssh?.host ?? telnet?.host ?? 'local'
+      showToast({ kind: 'success', title: 'Conectado', detail: label })
+    }
     onSessionOpen?.()
 
     // Forward PTY output to xterm.
@@ -386,7 +437,9 @@
       'terminal-data',
       (event) => {
         if (!term || event.payload.session_id !== sessionId) return
-        term.write(new Uint8Array(event.payload.data))
+        term.write(new Uint8Array(event.payload.data), () => {
+          hintController?.onIncomingFlushed()
+        })
       },
     )
 
@@ -415,7 +468,15 @@
     // session when MultiExec broadcast is on).
     term.onData((data: string) => {
       if (!sessionId) return
-      const bytes = Array.from(new TextEncoder().encode(data))
+      const u8 = new TextEncoder().encode(data)
+      // Feed the hint buffer first so it sees the bytes BEFORE the PTY
+      // round-trip. The returned non-null value is a flushed command line
+      // which we record asynchronously.
+      const submitted = hintController?.onOutgoing(u8) ?? null
+      if (submitted) {
+        recordCommand(savedSession?.id ?? null, submitted).catch(console.error)
+      }
+      const bytes = Array.from(u8)
       invoke('send_input', { sessionId, data: bytes }).catch(console.error)
       if (broadcast.enabled) {
         for (const otherId of otherSessionIds(sessionId)) {
@@ -442,6 +503,8 @@
       observer.disconnect()
       unlisten()
       unlistenLogin()
+      hintController?.clear()
+      hintController = null
       term?.dispose()
       if (paneId != null) unregisterSession(paneId)
       if (sessionId) {
@@ -654,7 +717,22 @@
     </div>
   {/if}
 
-  <div bind:this={container} class="terminal-container"></div>
+  <div class="terminal-stage">
+    <div bind:this={container} class="terminal-container"></div>
+    {#if hintController}
+      <GhostText
+        controller={hintController}
+        color={effectivePalette.brightBlack || 'rgba(255,255,255,0.32)'}
+        fontFamily={terminalSettings.fontFamily}
+        fontSize={terminalSettings.fontSize}
+      />
+      <HintPopup
+        controller={hintController}
+        fontFamily={terminalSettings.fontFamily}
+        accentColor={pylonPalette?.cursor ?? '#22d3ee'}
+      />
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -897,8 +975,16 @@
   .log-path { flex: 1; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .log-active { color: #22c55e; font-size: 0.65rem; flex-shrink: 0; }
 
-  .terminal-container {
+  .terminal-stage {
+    position: relative;
     flex: 1;
+    overflow: hidden;
+    background: var(--term-bg, #09090b);
+  }
+
+  .terminal-container {
+    position: absolute;
+    inset: 0;
     overflow: hidden;
     background: var(--term-bg, #09090b);
   }

@@ -101,6 +101,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "core-highlight",
+ "core-hints",
  "core-logging",
  "core-persistence",
  "core-transport",
@@ -116,6 +117,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "window-vibrancy",
 ]
 
 [[package]]
@@ -579,6 +581,17 @@ version = "0.0.1"
 dependencies = [
  "regex",
  "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "core-hints"
+version = "0.0.1"
+dependencies = [
+ "core-persistence",
+ "regex",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

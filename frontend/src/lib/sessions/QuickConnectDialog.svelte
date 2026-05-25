@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { fade, scale } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+
   export type ConnectParams =
     | { type: 'local' }
     | { type: 'ssh'; host: string; port: number; user: string; password: string }
@@ -62,8 +65,9 @@
   aria-label="Quick Connect"
   tabindex="-1"
   onkeydown={handleKeydown}
+  transition:fade={{ duration: 140 }}
 >
-  <div class="dialog">
+  <div class="dialog" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="dialog-header">
       <h2 class="dialog-title">Quick Connect</h2>
       <button class="close-btn" onclick={onCancel} aria-label="Close">✕</button>

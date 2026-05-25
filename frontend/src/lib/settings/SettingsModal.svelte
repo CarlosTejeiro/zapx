@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { fade, scale } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import TerminalSettingsPanel from './TerminalSettingsPanel.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
+  import HintsPanel from './HintsPanel.svelte'
   import {
     SHORTCUT_ACTIONS,
     bindings,
@@ -16,7 +19,7 @@
 
   let { onClose }: Props = $props()
 
-  type Tab = 'appearance' | 'highlight' | 'shortcuts'
+  type Tab = 'appearance' | 'highlight' | 'hints' | 'shortcuts'
   let activeTab = $state<Tab>('appearance')
 
   /// While recording, swallow keys instead of dispatching them globally.
@@ -64,8 +67,9 @@
   tabindex="-1"
   onclick={handleOverlayClick}
   onkeydown={handleKeydown}
+  transition:fade={{ duration: 140 }}
 >
-  <div class="modal">
+  <div class="modal" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="modal-header">
       <h2 class="modal-title">Settings</h2>
       <button class="close-btn" onclick={onClose} aria-label="Close">✕</button>
@@ -89,6 +93,13 @@
         </button>
         <button
           class="tab-btn"
+          class:active={activeTab === 'hints'}
+          onclick={() => (activeTab = 'hints')}
+        >
+          Hints
+        </button>
+        <button
+          class="tab-btn"
           class:active={activeTab === 'shortcuts'}
           onclick={() => (activeTab = 'shortcuts')}
         >
@@ -101,6 +112,8 @@
           <TerminalSettingsPanel />
         {:else if activeTab === 'highlight'}
           <HighlightRulesPanel />
+        {:else if activeTab === 'hints'}
+          <HintsPanel />
         {:else}
           <div class="shortcuts-list">
             <p class="hint">

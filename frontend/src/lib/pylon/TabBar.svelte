@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import type { PylonTheme } from '$lib/themes/index'
 
   export interface TabEntry {
@@ -61,6 +63,7 @@
       <div
         class="tab"
         class:tab-active={active}
+        in:fly={{ y: -8, duration: 180, easing: cubicOut }}
         style:background={active ? theme.tabActiveBg : theme.tabIdleBg}
         style:border={active ? `1px solid ${theme.border}` : `1px solid transparent`}
         style:border-bottom={active ? `1px solid ${theme.tabActiveBg}` : 'none'}

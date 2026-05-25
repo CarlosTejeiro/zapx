@@ -13,6 +13,29 @@ use tauri::Manager;
 pub use error::AppError;
 pub use state::AppState;
 
+#[cfg(target_os = "macos")]
+fn apply_vibrancy(window: &tauri::WebviewWindow) {
+    use window_vibrancy::{apply_vibrancy as ns_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+    if let Err(e) = ns_vibrancy(
+        window,
+        NSVisualEffectMaterial::HudWindow,
+        Some(NSVisualEffectState::Active),
+        Some(8.0),
+    ) {
+        tracing::warn!("vibrancy failed: {e}");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_vibrancy(window: &tauri::WebviewWindow) {
+    if let Err(e) = window_vibrancy::apply_acrylic(window, Some((18, 18, 18, 180))) {
+        tracing::warn!("acrylic failed: {e}");
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn apply_vibrancy(_window: &tauri::WebviewWindow) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -26,6 +49,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // Native window vibrancy (translucent chrome) — best effort.
+            // macOS: HUD-style sidebar effect; Windows 11: acrylic; Linux: noop.
+            if let Some(win) = app.get_webview_window("main") {
+                apply_vibrancy(&win);
+            }
+
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("zapx.db");
@@ -119,6 +148,12 @@ pub fn run() {
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::list_color_schemes,
+            commands::hints::get_hints,
+            commands::hints::record_command,
+            commands::hints::set_session_platform,
+            commands::hints::get_session_platform,
+            commands::hints::list_platforms,
+            commands::hints::clear_command_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running zapx");

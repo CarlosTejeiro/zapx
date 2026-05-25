@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { fade, scale } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import {
     createSavedSession,
@@ -278,8 +280,13 @@
   aria-label="New session"
   tabindex="-1"
   onkeydown={onkeydown}
+  transition:fade={{ duration: 140 }}
 >
-  <form class="dialog" onsubmit={(e) => { e.preventDefault(); submit() }}>
+  <form
+    class="dialog"
+    onsubmit={(e) => { e.preventDefault(); submit() }}
+    transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}
+  >
     <h2>{isEdit ? 'Edit Session' : 'New Session'}</h2>
 
     <label>

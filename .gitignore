@@ -33,3 +33,6 @@ desktop.ini
 
 # Build logs
 *.log
+
+# npm lockfile — pnpm-lock.yaml is canonical in this repo
+frontend/package-lock.json

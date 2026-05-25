@@ -4,6 +4,7 @@ members = [
     "crates/app",
     "crates/core-config",
     "crates/core-highlight",
+    "crates/core-hints",
     "crates/core-logging",
     "crates/core-persistence",
     "crates/core-session",

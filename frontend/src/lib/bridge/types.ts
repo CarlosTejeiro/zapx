@@ -150,3 +150,24 @@ export interface SessionLog {
   bytes: number
   format: string
 }
+
+// ---------------------------------------------------------------------------
+// Hints — command suggestion engine
+// ---------------------------------------------------------------------------
+
+export type HintSource =
+  | { kind: 'history' }
+  | { kind: 'catalog'; platform: string }
+  | { kind: 'snippet' }
+
+export interface Hint {
+  text: string
+  source: HintSource
+  score: number
+  label: string | null
+}
+
+export interface PlatformInfo {
+  id: string
+  name: string
+}

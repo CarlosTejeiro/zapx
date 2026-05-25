@@ -54,6 +54,15 @@ pub struct Snippet {
     pub created_at: String,
 }
 
+/// One row from `command_history`, used by the hint engine for
+/// frecency-scored suggestions.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CommandHistoryEntry {
+    pub command: String,
+    pub freq: i64,
+    pub last_used: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HighlightRule {
     pub id: i64,
@@ -145,6 +154,9 @@ impl Database {
         }
         if version < 8 {
             conn.execute_batch(include_str!("migrations/008_login_script.sql"))?;
+        }
+        if version < 9 {
+            conn.execute_batch(include_str!("migrations/009_hints.sql"))?;
         }
         Ok(())
     }
@@ -720,4 +732,140 @@ impl Database {
         conn.execute("DELETE FROM snippets WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Command history (powers the ghost-text / popup hints)
+    // -----------------------------------------------------------------------
+
+    /// Insert-or-bump: if (session_id, command) already exists, increment
+    /// freq and refresh last_used. Otherwise insert a new row.
+    pub fn record_command(
+        &self,
+        session_id: Option<i64>,
+        command: &str,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let updated = conn.execute(
+            "UPDATE command_history
+                SET freq = freq + 1, last_used = datetime('now')
+              WHERE command = ?1
+                AND ((?2 IS NULL AND session_id IS NULL)
+                  OR session_id = ?2)",
+            rusqlite::params![command, session_id],
+        )?;
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO command_history (session_id, command) VALUES (?1, ?2)",
+                rusqlite::params![session_id, command],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Return history entries matching `prefix` (case-insensitive). Pulls
+    /// both session-scoped and global rows so generic commands stay useful
+    /// in fresh sessions.
+    pub fn history_by_prefix(
+        &self,
+        session_id: Option<i64>,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<CommandHistoryEntry>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT command, freq, last_used FROM command_history
+              WHERE (session_id = ?1 OR session_id IS NULL)
+                AND command LIKE ?2 || '%' ESCAPE '\\'
+              ORDER BY last_used DESC
+              LIMIT ?3",
+        )?;
+        let escaped = escape_like(prefix);
+        let rows = stmt.query_map(
+            rusqlite::params![session_id, escaped, limit as i64],
+            |row| {
+                Ok(CommandHistoryEntry {
+                    command: row.get(0)?,
+                    freq: row.get(1)?,
+                    last_used: row.get(2)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn clear_history(&self, session_id: Option<i64>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        match session_id {
+            Some(id) => conn.execute(
+                "DELETE FROM command_history WHERE session_id = ?1",
+                rusqlite::params![id],
+            )?,
+            None => conn.execute("DELETE FROM command_history", [])?,
+        };
+        Ok(())
+    }
+
+    /// Read global snippets (managed by the dedicated snippets dialog).
+    /// The hint engine surfaces these in the popup alongside history.
+    pub fn list_snippet_contents_by_prefix(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String)>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT name, content FROM snippets
+              WHERE content LIKE ?1 || '%' ESCAPE '\\'
+              ORDER BY sort_order, name
+              LIMIT ?2",
+        )?;
+        let escaped = escape_like(prefix);
+        let rows = stmt.query_map(rusqlite::params![escaped, limit as i64], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-session platform override (for hint catalogs)
+    // -----------------------------------------------------------------------
+
+    pub fn set_session_platform(&self, session_id: i64, platform: &str) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO session_platforms (session_id, platform) VALUES (?1, ?2)
+             ON CONFLICT(session_id) DO UPDATE SET
+                 platform = excluded.platform,
+                 updated_at = datetime('now')",
+            rusqlite::params![session_id, platform],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_session_platform(&self, session_id: i64) -> Result<Option<String>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT platform FROM session_platforms WHERE session_id = ?1",
+            rusqlite::params![session_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+/// Escape LIKE wildcards (%, _, \) in user input so a prefix containing a
+/// literal % does not behave as a wildcard.
+fn escape_like(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch == '\\' || ch == '%' || ch == '_' {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }

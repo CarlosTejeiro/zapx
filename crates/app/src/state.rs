@@ -10,6 +10,8 @@ use tokio::sync::oneshot;
 /// receiver; the `respond_keyboard_interactive` Tauri command fires it.
 pub type KiPending = Arc<Mutex<HashMap<String, oneshot::Sender<Vec<String>>>>>;
 
+use std::sync::atomic::AtomicU64;
+
 use core_transport::{ForwardController, SessionCmd};
 
 /// A live terminal session (local PTY or SSH).
@@ -25,6 +27,12 @@ pub struct ActiveSession {
     /// Tauri command. `None` outer = no SFTP yet attempted; `Some(None)` = slot
     /// exists for an SSH session; `Some(Some(_))` = SFTP active.
     pub sftp: Option<core_transport::SftpSlot>,
+    /// Cumulative bytes received from the remote since session start. The
+    /// stats emitter task reads this once per second to compute the rolling
+    /// throughput rate without holding the sessions lock.
+    pub rx_total: Arc<AtomicU64>,
+    /// Handle for the periodic stats task — aborted on session close.
+    pub stats_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// A running session log: the logger plus the DB row id for later finalisation.

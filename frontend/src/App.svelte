@@ -28,7 +28,11 @@
   import SettingsModal from '$lib/settings/SettingsModal.svelte'
   import KeyboardInteractiveDialog from '$lib/terminal/KeyboardInteractiveDialog.svelte'
   import SnippetsDialog from '$lib/sessions/SnippetsDialog.svelte'
-  import { broadcast, sessionRuntime } from '$lib/stores/sessionRuntime.svelte'
+  import CommandPalette from '$lib/palette/CommandPalette.svelte'
+  import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
+  import Toasts from '$lib/ui/Toasts.svelte'
+  import { loadHintsSettings } from '$lib/hints/store.svelte'
+  import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import {
     loadBindings,
     matchAction,
@@ -36,6 +40,7 @@
   } from '$lib/stores/keybindings.svelte'
   import { listSessions, listFolders, moveSavedSession } from '$lib/bridge/commands'
   import { check as checkUpdate } from '@tauri-apps/plugin-updater'
+  import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder } from '$lib/bridge/types'
 
@@ -61,7 +66,8 @@
   const themeKeyMap: Record<string, string> = {
     'parchment': 'graphite',
     'graphite':  'neonNoir',
-    'neon-noir': 'parchment',
+    'neon-noir': 'aurora',
+    'aurora':    'parchment',
   }
 
   function toggleTheme() {
@@ -109,6 +115,11 @@
   let showSettings = $state(false)
   let showSnippets = $state(false)
   let showAbout = $state(false)
+  let showPalette = $state(false)
+
+  // Live throughput stats keyed by runtime session UUID, refreshed every
+  // second from the backend's session-stats event.
+  let bytesPerSecBySession = $state<Record<string, number>>({})
   /// When set, opens NewSessionDialog in edit mode with the given session pre-filled.
   let editingSession = $state<SavedSession | null>(null)
   let multiOn = $state(false)
@@ -193,6 +204,7 @@
     load()
     loadSettings()
     loadBindings()
+    loadHintsSettings()
   })
 
   // ── tab management ────────────────────────────────────────────────────────────
@@ -368,15 +380,68 @@
     dispatchAction(action as ShortcutAction)
   }
 
+  // Build the command-palette item list. Re-derives whenever sessions or
+  // theme change. Mirrors the existing dispatchAction surface plus theme
+  // switching + the "open saved session" shortcut.
+  const paletteItems = $derived<PaletteItem[]>([
+    ...sessions.map((s) => ({
+      id: `session-${s.id}`,
+      label: s.name,
+      subtitle: `${s.protocol.toUpperCase()} · ${s.host ?? ''}${s.port ? ':' + s.port : ''}${s.username ? ' · ' + s.username : ''}`,
+      icon: s.protocol === 'ssh' ? '🔐' : s.protocol === 'telnet' ? '📡' : s.protocol === 'serial' ? '🔌' : '▶',
+      section: 'Sessions' as const,
+      run: () => openSavedSessionTab(s),
+    })),
+    { id: 'act-new-tab',       label: 'Nuevo tab local',           icon: '＋', section: 'Actions' as const, run: addLocalTab },
+    { id: 'act-new-session',   label: 'Nueva sesión guardada',     icon: '🆕', section: 'Actions' as const, run: () => (showNewSession = true) },
+    { id: 'act-quick',         label: 'Quick Connect',             icon: '⚡', section: 'Actions' as const, run: () => (showQuickConnect = true) },
+    { id: 'act-snippets',      label: 'Abrir Snippets',            icon: '✂', section: 'Actions' as const, run: () => (showSnippets = true) },
+    { id: 'act-settings',      label: 'Abrir Settings',            icon: '⚙', section: 'Actions' as const, run: () => (showSettings = true) },
+    { id: 'act-split-h',       label: 'Split horizontal',          icon: '◫', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'h') },
+    { id: 'act-split-v',       label: 'Split vertical',            icon: '⬓', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'v') },
+    { id: 'act-multi',         label: 'Toggle multi-exec',         icon: '⇶', section: 'Actions' as const, run: () => (multiOn = !multiOn) },
+    { id: 'act-close-tab',     label: 'Cerrar tab actual',         icon: '✕', section: 'Actions' as const, run: () => closeTab(activeTabId) },
+    { id: 'act-about',         label: 'Acerca de zapx',            icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
+    { id: 'theme-neon-noir',   label: 'Tema · Neon Noir', icon: '◐', section: 'Themes' as const, run: () => setTheme('neonNoir') },
+    { id: 'theme-graphite',    label: 'Tema · Graphite',  icon: '◐', section: 'Themes' as const, run: () => setTheme('graphite') },
+    { id: 'theme-parchment',   label: 'Tema · Parchment', icon: '◑', section: 'Themes' as const, run: () => setTheme('parchment') },
+    { id: 'theme-aurora',      label: 'Tema · Aurora',    icon: '✨', section: 'Themes' as const, run: () => setTheme('aurora') },
+  ])
+
+  // Throughput in the StatusBar reflects the runtime session of the focused
+  // pane. paneToSession is the runtime-store map updated by TerminalTab.
+  const focusedRuntimeSessionId = $derived(
+    paneToSession.get(focusedPaneId) ?? null,
+  )
+
   onMount(() => {
     function onKeydown(e: KeyboardEvent) {
+      // Command palette: Ctrl+K or Cmd+K — handled BEFORE the keybindings
+      // matcher so user overrides don't conflict.
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k' && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        showPalette = true
+        return
+      }
       const action = matchAction(e)
       if (!action) return
       e.preventDefault()
       dispatchAction(action)
     }
     document.addEventListener('keydown', onKeydown)
-    return () => document.removeEventListener('keydown', onKeydown)
+
+    let unlistenStats: UnlistenFn | null = null
+    listen<{ session_id: string; bytes_per_sec: number }>('session-stats', (e) => {
+      bytesPerSecBySession = {
+        ...bytesPerSecBySession,
+        [e.payload.session_id]: e.payload.bytes_per_sec,
+      }
+    }).then((fn) => { unlistenStats = fn })
+
+    return () => {
+      document.removeEventListener('keydown', onKeydown)
+      if (unlistenStats) unlistenStats()
+    }
   })
 </script>
 
@@ -384,7 +449,13 @@
 <ResizeHandles />
 
 <!-- ── PYLON shell ──────────────────────────────────────────────────────────── -->
-<div class="pylon-shell" style:background={theme.appBg}>
+<div
+  class="pylon-shell"
+  style:background={theme.appBg}
+  style:--cursor-glow={theme.terminal.cursor}
+  data-glow={theme.glows ? 'true' : 'false'}
+  data-theme={theme.name}
+>
 
   <TitleBar
     {theme}
@@ -464,6 +535,7 @@
         host={statusHost || undefined}
         port={statusPort ?? undefined}
         protocol={statusProtocol}
+        bytesPerSec={focusedRuntimeSessionId ? bytesPerSecBySession[focusedRuntimeSessionId] : undefined}
       />
 
     </div>
@@ -505,6 +577,16 @@
 {#if showSettings}
   <SettingsModal onClose={() => showSettings = false} />
 {/if}
+
+{#if showPalette}
+  <CommandPalette
+    items={paletteItems}
+    accent={theme.accent}
+    onClose={() => (showPalette = false)}
+  />
+{/if}
+
+<Toasts />
 
 {#if showAbout}
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->

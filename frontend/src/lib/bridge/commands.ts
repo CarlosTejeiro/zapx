@@ -339,4 +339,44 @@ export async function openTelnetSession(
   return invoke<string>('open_telnet_session', { host, port, cols, rows })
 }
 
+// ---------------------------------------------------------------------------
+// Hints
+// ---------------------------------------------------------------------------
+
+import type { Hint, PlatformInfo } from './types'
+
+export async function getHints(
+  savedSessionId: number | null,
+  prefix: string,
+  limit: number = 5,
+): Promise<Hint[]> {
+  return invoke<Hint[]>('get_hints', { savedSessionId, prefix, limit })
+}
+
+export async function recordCommand(
+  savedSessionId: number | null,
+  command: string,
+): Promise<void> {
+  return invoke<void>('record_command', { savedSessionId, command })
+}
+
+export async function setSessionPlatform(
+  savedSessionId: number,
+  platform: string,
+): Promise<void> {
+  return invoke<void>('set_session_platform', { savedSessionId, platform })
+}
+
+export async function getSessionPlatform(savedSessionId: number): Promise<string | null> {
+  return invoke<string | null>('get_session_platform', { savedSessionId })
+}
+
+export async function listPlatforms(): Promise<PlatformInfo[]> {
+  return invoke<PlatformInfo[]>('list_platforms')
+}
+
+export async function clearCommandHistory(savedSessionId: number | null): Promise<void> {
+  return invoke<void>('clear_command_history', { savedSessionId })
+}
+
 export type { SavedSession, Folder, HighlightRule, SessionLog, ColorScheme, AuthMethod, HostKeyStatus }
