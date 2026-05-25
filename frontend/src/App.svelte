@@ -31,6 +31,8 @@
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
   import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
   import Toasts from '$lib/ui/Toasts.svelte'
+  import PromptDialog from '$lib/ui/PromptDialog.svelte'
+  import { ask } from '@tauri-apps/plugin-dialog'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import {
@@ -129,6 +131,15 @@
   let showSnippets = $state(false)
   let showAbout = $state(false)
   let showPalette = $state(false)
+  // Lightweight text-prompt dialog (replaces window.prompt which Tauri blocks).
+  let prompt = $state<{
+    title: string
+    initial?: string
+    placeholder?: string
+    submitLabel?: string
+    onSubmit: (v: string) => void
+  } | null>(null)
+  function openPrompt(p: NonNullable<typeof prompt>) { prompt = p }
 
   // Live throughput stats keyed by runtime session UUID, refreshed every
   // second from the backend's session-stats event.
@@ -493,7 +504,11 @@
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
       onDelete={async (s) => {
-        if (!confirm(`Borrar "${s.name}"? Esta acción no se puede deshacer.`)) return
+        const ok = await ask(`Borrar "${s.name}"? Esta acción no se puede deshacer.`, {
+          title: 'Borrar sesión',
+          kind: 'warning',
+        })
+        if (!ok) return
         try {
           await deleteSavedSession(s.id)
           await load()
@@ -501,28 +516,45 @@
           console.error('delete session failed:', e)
         }
       }}
-      onCreateFolder={async () => {
-        const name = prompt('Nombre de la carpeta:')?.trim()
-        if (!name) return
-        try {
-          await createFolder(name, null)
-          await load()
-        } catch (e) {
-          console.error('create folder failed:', e)
-        }
+      onCreateFolder={() => {
+        openPrompt({
+          title: 'Nueva carpeta',
+          placeholder: 'Mi carpeta',
+          submitLabel: 'Crear',
+          onSubmit: async (name) => {
+            prompt = null
+            try {
+              await createFolder(name, null)
+              await load()
+            } catch (e) {
+              console.error('create folder failed:', e)
+            }
+          },
+        })
       }}
-      onRenameFolder={async (folder) => {
-        const name = prompt('Nuevo nombre:', folder.name)?.trim()
-        if (!name || name === folder.name) return
-        try {
-          await renameFolder(folder.id, name)
-          await load()
-        } catch (e) {
-          console.error('rename folder failed:', e)
-        }
+      onRenameFolder={(folder) => {
+        openPrompt({
+          title: `Renombrar "${folder.name}"`,
+          initial: folder.name,
+          submitLabel: 'Renombrar',
+          onSubmit: async (name) => {
+            prompt = null
+            if (name === folder.name) return
+            try {
+              await renameFolder(folder.id, name)
+              await load()
+            } catch (e) {
+              console.error('rename folder failed:', e)
+            }
+          },
+        })
       }}
       onDeleteFolder={async (folder) => {
-        if (!confirm(`Borrar la carpeta "${folder.name}"? Las sesiones de dentro pasan a la raíz.`)) return
+        const ok = await ask(
+          `Borrar la carpeta "${folder.name}"? Las sesiones de dentro pasan a la raíz.`,
+          { title: 'Borrar carpeta', kind: 'warning' },
+        )
+        if (!ok) return
         try {
           await deleteFolder(folder.id)
           await load()
@@ -640,6 +672,17 @@
     items={paletteItems}
     accent={theme.accent}
     onClose={() => (showPalette = false)}
+  />
+{/if}
+
+{#if prompt}
+  <PromptDialog
+    title={prompt.title}
+    placeholder={prompt.placeholder}
+    initial={prompt.initial}
+    submitLabel={prompt.submitLabel}
+    onSubmit={prompt.onSubmit}
+    onCancel={() => (prompt = null)}
   />
 {/if}
 

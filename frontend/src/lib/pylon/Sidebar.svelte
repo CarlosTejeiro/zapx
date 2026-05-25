@@ -156,8 +156,24 @@
   <!-- Tree -->
   <div class="sb-tree">
 
-    <!-- Favorites / pinned (root sessions without folder) -->
-    <div class="sb-section">
+    <!-- Favorites / pinned (root sessions without folder).
+         Drop handlers live on the outer .sb-section so dropping at root
+         works even when the section is collapsed. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="sb-section"
+      class:dragover={dragOver === null && draggingSessionId != null}
+      ondragover={(e) => onDragOver(e, null)}
+      ondrop={(e) => onDrop(e, null)}
+      ondragenter={() => {
+        // Auto-expand on hover so the user sees their drop registered.
+        if (draggingSessionId != null && !expandedSections.has('sessions')) {
+          const next = new Set(expandedSections)
+          next.add('sessions')
+          expandedSections = next
+        }
+      }}
+    >
       <div class="sb-section-row">
         <button
           class="sb-section-header"
@@ -189,13 +205,7 @@
       </div>
 
       {#if expandedSections.has('sessions')}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="sb-droparea"
-          class:dragover={dragOver === null && draggingSessionId != null}
-          ondragover={(e) => onDragOver(e, null)}
-          ondrop={(e) => onDrop(e, null)}
-        >
+        <div class="sb-droparea">
           {#each rootSessions as s (s.id)}
             {@const color = sessionColor(s)}
             {@const isActive = s.id === activeSessionId}
