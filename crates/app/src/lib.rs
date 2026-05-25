@@ -82,6 +82,7 @@ pub fn run() {
                     .collect(),
             )));
 
+            let vault_seed = data_dir.to_string_lossy().into_owned();
             app.manage(AppState {
                 sessions: Mutex::new(HashMap::new()),
                 db,
@@ -91,6 +92,7 @@ pub fn run() {
                 ki_pending: Arc::new(Mutex::new(HashMap::new())),
                 forwards: Mutex::new(HashMap::new()),
                 password_cache: Arc::new(Mutex::new(HashMap::new())),
+                vault_seed,
             });
             Ok(())
         })

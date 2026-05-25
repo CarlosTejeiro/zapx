@@ -74,4 +74,8 @@ pub struct AppState {
     /// In-memory password cache (see [`PasswordCache`]). Survives Cmd+R
     /// because it lives in the Rust process, not the webview.
     pub password_cache: PasswordCache,
+    /// Stable, per-installation seed used to derive the AES key for the
+    /// SQLite `session_secrets` fallback. Currently the app data
+    /// directory's path — same for every launch by the same OS user.
+    pub vault_seed: String,
 }

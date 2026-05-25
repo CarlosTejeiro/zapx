@@ -158,6 +158,9 @@ impl Database {
         if version < 9 {
             conn.execute_batch(include_str!("migrations/009_hints.sql"))?;
         }
+        if version < 10 {
+            conn.execute_batch(include_str!("migrations/010_session_secrets.sql"))?;
+        }
         Ok(())
     }
 
@@ -397,6 +400,45 @@ impl Database {
         conn.execute(
             "UPDATE sessions SET last_used_at=datetime('now') WHERE id=?1",
             rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Session secrets (encrypted local-fallback password cache)
+    // -----------------------------------------------------------------------
+
+    pub fn set_session_secret(&self, session_id: i64, ciphertext: &[u8]) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO session_secrets (session_id, ciphertext) VALUES (?1, ?2)
+             ON CONFLICT(session_id) DO UPDATE SET
+                 ciphertext = excluded.ciphertext,
+                 updated_at = datetime('now')",
+            rusqlite::params![session_id, ciphertext],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_session_secret(&self, session_id: i64) -> Result<Option<Vec<u8>>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT ciphertext FROM session_secrets WHERE session_id = ?1",
+            rusqlite::params![session_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn delete_session_secret(&self, session_id: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM session_secrets WHERE session_id = ?1",
+            rusqlite::params![session_id],
         )?;
         Ok(())
     }

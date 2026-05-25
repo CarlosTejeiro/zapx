@@ -582,10 +582,13 @@ pub async fn create_saved_session(
         )
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    // Seed the in-memory cache so the first reopen works even if the
-    // dev-mode Keychain denies us read access later.
+    // Seed both caches so the first reopen works even if the dev-mode
+    // Keychain denies us read access later.
     if let Some(pw) = password_to_cache {
-        state.password_cache.lock().unwrap().insert(id, pw);
+        state.password_cache.lock().unwrap().insert(id, pw.clone());
+        if let Ok(blob) = core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
+            let _ = state.db.set_session_secret(id, &blob);
+        }
     }
 
     Ok(id)
@@ -696,31 +699,42 @@ fn resolve_ssh_auth_for_session(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<core_transport::SshAuth, AppError> {
-    // Try the OS keyring first. On macOS dev builds the unsigned binary may
-    // be denied access to its own entry — in that case fall back to the
-    // in-process password cache populated by the reconnect dialog.
+    // Resolve the password through a fallback chain:
+    //   1. OS keyring (primary; works in signed/production builds).
+    //   2. Process-lifetime in-memory cache (survives Cmd+R).
+    //   3. Encrypted local store in SQLite (survives app restart — used on
+    //      macOS dev builds where the unsigned binary is denied keyring read).
     let secret = match session.credential_id {
-        Some(cred_id) => match state.db.get_credential_keyring_key(cred_id) {
-            Ok(key) => match core_vault::Vault::retrieve(&key) {
-                Ok(s) => Some(s),
-                Err(e) => {
-                    tracing::debug!(
-                        session_id = session.id,
-                        "keyring retrieve failed ({e}); falling back to in-memory cache",
-                    );
-                    state.password_cache.lock().unwrap().get(&session.id).cloned()
-                }
-            },
-            Err(e) => {
-                tracing::debug!(
-                    session_id = session.id,
-                    "credential lookup failed ({e}); falling back to in-memory cache",
-                );
-                state.password_cache.lock().unwrap().get(&session.id).cloned()
-            }
-        },
+        Some(cred_id) => {
+            let from_keyring = state
+                .db
+                .get_credential_keyring_key(cred_id)
+                .ok()
+                .and_then(|key| core_vault::Vault::retrieve(&key).ok());
+            from_keyring
+                .or_else(|| state.password_cache.lock().unwrap().get(&session.id).cloned())
+                .or_else(|| {
+                    state
+                        .db
+                        .get_session_secret(session.id)
+                        .ok()
+                        .flatten()
+                        .and_then(|blob| {
+                            core_vault::decrypt_with_seed(&state.vault_seed, &blob).ok()
+                        })
+                })
+        }
         None => None,
     };
+    // Warm the in-memory cache if we resolved via DB (saves a decrypt+SQL
+    // round-trip on subsequent opens).
+    if let Some(ref pw) = secret {
+        state
+            .password_cache
+            .lock()
+            .unwrap()
+            .insert(session.id, pw.clone());
+    }
 
     Ok(match session.auth_method.as_deref() {
         Some("key") => {
@@ -746,9 +760,15 @@ fn resolve_ssh_auth_for_session(
     })
 }
 
-/// Persist the user-typed password for `saved_session_id` in the process-
-/// lifetime cache. The reconnect dialog calls this after the user reauths
-/// successfully so subsequent reopens skip the keyring round-trip.
+/// Persist the user-typed password for `saved_session_id`.
+///
+/// Writes to BOTH:
+///  * the in-memory cache (fast, survives Cmd+R),
+///  * the encrypted `session_secrets` table (survives app restart).
+///
+/// Called by the reconnect dialog after a successful re-auth so the user
+/// stops being prompted on every relaunch when the OS keyring is unusable
+/// (typical for macOS dev builds without code-signing).
 #[tauri::command]
 pub async fn cache_session_password(
     state: State<'_, AppState>,
@@ -759,7 +779,19 @@ pub async fn cache_session_password(
         .password_cache
         .lock()
         .unwrap()
-        .insert(saved_session_id, password);
+        .insert(saved_session_id, password.clone());
+
+    // Best-effort encrypted persistence — surface failures as a warning,
+    // not a hard error, so a missing aes-gcm dep on some platform doesn't
+    // break the reconnect flow.
+    match core_vault::encrypt_with_seed(&state.vault_seed, &password) {
+        Ok(blob) => {
+            if let Err(e) = state.db.set_session_secret(saved_session_id, &blob) {
+                tracing::warn!(saved_session_id, "persist session_secret failed: {e}");
+            }
+        }
+        Err(e) => tracing::warn!(saved_session_id, "encrypt session_secret failed: {e}"),
+    }
     Ok(())
 }
 

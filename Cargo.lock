@@ -651,7 +651,10 @@ dependencies = [
 name = "core-vault"
 version = "0.0.1"
 dependencies = [
+ "aes-gcm",
  "keyring",
+ "rand",
+ "sha2",
  "thiserror 2.0.18",
  "zeroize",
 ]
