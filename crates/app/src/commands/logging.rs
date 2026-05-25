@@ -41,7 +41,18 @@ pub async fn start_session_logging(
         }
     }
 
-    let logger = core_logging::SessionLogger::open(&state.log_dir, &session_name)
+    // Honour the user's "logging.format" setting (plain | raw). Plain is the
+    // default and strips ANSI/VT escape sequences so the file reads as text.
+    let format = state
+        .db
+        .get_setting("logging.format")
+        .ok()
+        .flatten()
+        .as_deref()
+        .map(core_logging::LogFormat::parse)
+        .unwrap_or(core_logging::LogFormat::Plain);
+
+    let logger = core_logging::SessionLogger::open_with_format(&state.log_dir, &session_name, format)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let path_str = logger

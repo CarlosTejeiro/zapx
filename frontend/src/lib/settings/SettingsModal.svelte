@@ -4,6 +4,7 @@
   import TerminalSettingsPanel from './TerminalSettingsPanel.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
   import HintsPanel from './HintsPanel.svelte'
+  import LoggingPanel from './LoggingPanel.svelte'
   import {
     SHORTCUT_ACTIONS,
     bindings,
@@ -19,7 +20,7 @@
 
   let { onClose }: Props = $props()
 
-  type Tab = 'appearance' | 'highlight' | 'hints' | 'shortcuts'
+  type Tab = 'appearance' | 'highlight' | 'hints' | 'logging' | 'shortcuts'
   let activeTab = $state<Tab>('appearance')
 
   /// While recording, swallow keys instead of dispatching them globally.
@@ -100,6 +101,13 @@
         </button>
         <button
           class="tab-btn"
+          class:active={activeTab === 'logging'}
+          onclick={() => (activeTab = 'logging')}
+        >
+          Logging
+        </button>
+        <button
+          class="tab-btn"
           class:active={activeTab === 'shortcuts'}
           onclick={() => (activeTab = 'shortcuts')}
         >
@@ -114,6 +122,8 @@
           <HighlightRulesPanel />
         {:else if activeTab === 'hints'}
           <HintsPanel />
+        {:else if activeTab === 'logging'}
+          <LoggingPanel />
         {:else}
           <div class="shortcuts-list">
             <p class="hint">

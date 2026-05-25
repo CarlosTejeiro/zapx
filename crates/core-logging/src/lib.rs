@@ -2,10 +2,17 @@
 
 //! `core-logging` — per-session loggers with size-based rotation.
 //!
-//! Each `SessionLogger` writes raw terminal bytes to a file in the app log
+//! Each `SessionLogger` writes terminal output to a file in the app log
 //! directory. When the file reaches 50 MB a new part file is opened
 //! transparently (e.g., `session_20240101_120000.log` →
 //! `session_20240101_120000.1.log`).
+//!
+//! Two modes:
+//!  * [`LogFormat::Plain`] (default) — strips ANSI/VT escape sequences and
+//!    OS-specific control codes so the file reads like a transcript.
+//!  * [`LogFormat::Raw`]  — verbatim byte stream as the server sent it,
+//!    including color codes, title sets, bracketed-paste markers, etc.
+//!    Useful for replaying with `cat` into a real terminal.
 
 pub mod error;
 pub use error::Error;
@@ -19,6 +26,30 @@ use chrono::{DateTime, Local, Utc};
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB per part
 const BUF_CAP: usize = 64 * 1024; // 64 KB write buffer
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogFormat {
+    /// Strip ANSI/VT escape sequences and most C0 control chars; keep
+    /// `\n`, `\r`, `\t`. This is the SecureCRT "log session" default.
+    Plain,
+    /// Pass bytes through verbatim. Useful for debugging or replaying.
+    Raw,
+}
+
+impl LogFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LogFormat::Plain => "plain",
+            LogFormat::Raw => "raw",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "raw" => LogFormat::Raw,
+            _ => LogFormat::Plain,
+        }
+    }
+}
+
 pub struct SessionLogger {
     writer: BufWriter<File>,
     path: PathBuf,
@@ -27,15 +58,26 @@ pub struct SessionLogger {
     part: u32,
     bytes_written: u64,
     started_at: DateTime<Utc>,
+    format: LogFormat,
+    stripper: AnsiStripper,
 }
 
 impl SessionLogger {
-    /// Open a new log file inside `log_dir`.
+    /// Open a new log file inside `log_dir`. Defaults to [`LogFormat::Plain`].
+    pub fn open(log_dir: &Path, base_name: &str) -> Result<Self, Error> {
+        Self::open_with_format(log_dir, base_name, LogFormat::Plain)
+    }
+
+    /// Open a new log file inside `log_dir` with an explicit format.
     ///
     /// `base_name` becomes the filename prefix (invalid filesystem chars are
     /// replaced with `_`). The actual filename is
     /// `<base_name>_YYYYMMDD_HHMMSS.log`.
-    pub fn open(log_dir: &Path, base_name: &str) -> Result<Self, Error> {
+    pub fn open_with_format(
+        log_dir: &Path,
+        base_name: &str,
+        format: LogFormat,
+    ) -> Result<Self, Error> {
         std::fs::create_dir_all(log_dir)?;
         let safe_name = sanitize(base_name);
         let (file, path) = open_part(log_dir, &safe_name, 0)?;
@@ -47,16 +89,26 @@ impl SessionLogger {
             part: 0,
             bytes_written: 0,
             started_at: Utc::now(),
+            format,
+            stripper: AnsiStripper::new(),
         })
     }
 
-    /// Write raw terminal bytes. Rotates to a new part file when ≥50 MB.
+    /// Write terminal bytes. In [`LogFormat::Plain`] mode escape sequences
+    /// are dropped before writing. Rotates to a new part file when ≥50 MB.
     pub fn write(&mut self, data: &[u8]) -> Result<(), Error> {
         if data.is_empty() {
             return Ok(());
         }
-        self.writer.write_all(data)?;
-        self.bytes_written += data.len() as u64;
+        let payload: &[u8] = match self.format {
+            LogFormat::Raw => data,
+            LogFormat::Plain => &self.stripper.strip(data),
+        };
+        if payload.is_empty() {
+            return Ok(());
+        }
+        self.writer.write_all(payload)?;
+        self.bytes_written += payload.len() as u64;
 
         if self.bytes_written >= MAX_FILE_BYTES {
             self.writer.flush()?;
@@ -101,6 +153,90 @@ fn open_part(dir: &Path, base: &str, part: u32) -> Result<(File, PathBuf), Error
     Ok((file, path))
 }
 
+/// Byte-stream state machine that strips ANSI/VT escape sequences and most
+/// C0 control characters, keeping the printable subset plus `\n`, `\r`, `\t`.
+///
+/// Handles sequences that span calls to [`Self::strip`] by parking the state
+/// between invocations — important because a single OSC title set can
+/// straddle several PTY chunks.
+///
+/// Covers, in order of frequency on a real shell:
+///  * CSI:  ESC `[` … final-byte 0x40..=0x7e  (colors, cursor moves, modes)
+///  * OSC:  ESC `]` … BEL (0x07) | ESC \\     (title, hyperlinks)
+///  * SS2/SS3, DCS, PM, APC, single-byte ESC X — drop the sequence.
+///  * Bracketed-paste markers (already CSI, so covered).
+struct AnsiStripper {
+    state: StripState,
+}
+
+#[derive(Clone, Copy)]
+enum StripState {
+    Normal,
+    /// Just saw ESC (0x1b); waiting for the introducer.
+    AfterEsc,
+    /// Inside a CSI (ESC `[`); consume until a final byte 0x40..=0x7e.
+    Csi,
+    /// Inside an OSC (ESC `]`); consume until BEL or ESC \\.
+    Osc,
+    /// Inside an OSC and just saw ESC — next byte must be \\ to terminate.
+    OscEsc,
+}
+
+impl AnsiStripper {
+    fn new() -> Self {
+        Self { state: StripState::Normal }
+    }
+
+    fn strip(&mut self, data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(data.len());
+        for &b in data {
+            match self.state {
+                StripState::Normal => {
+                    if b == 0x1b {
+                        self.state = StripState::AfterEsc;
+                    } else if b >= 0x20 || b == b'\n' || b == b'\r' || b == b'\t' || b == 0x08 {
+                        // Printable ASCII, UTF-8 continuation byte (≥0x80),
+                        // or one of the whitespace controls we keep.
+                        // Also keep backspace (0x08) so prompt edits survive.
+                        out.push(b);
+                    } else {
+                        // BEL, NUL, etc — drop.
+                    }
+                }
+                StripState::AfterEsc => match b {
+                    b'[' => self.state = StripState::Csi,
+                    b']' => self.state = StripState::Osc,
+                    // ESC \\ terminator (string terminator) outside OSC — just drop.
+                    b'\\' | b'P' | b'X' | b'^' | b'_' => {
+                        // DCS / SOS / PM / APC start: same OSC-style termination.
+                        self.state = StripState::Osc;
+                    }
+                    _ => {
+                        // Single-byte ESC sequence (e.g. ESC = / >). Drop.
+                        self.state = StripState::Normal;
+                    }
+                },
+                StripState::Csi => {
+                    if (0x40..=0x7e).contains(&b) {
+                        self.state = StripState::Normal;
+                    }
+                    // else: parameter / intermediate byte, keep consuming.
+                }
+                StripState::Osc => match b {
+                    0x07 => self.state = StripState::Normal, // BEL terminator
+                    0x1b => self.state = StripState::OscEsc,
+                    _ => { /* keep consuming */ }
+                },
+                StripState::OscEsc => {
+                    // After ESC inside OSC, any byte ends the sequence.
+                    self.state = StripState::Normal;
+                }
+            }
+        }
+        out
+    }
+}
+
 fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| {
@@ -134,5 +270,58 @@ mod tests {
     #[test]
     fn sanitize_name() {
         assert_eq!(sanitize("my session/test:1"), "my_session_test_1");
+    }
+
+    fn strip(input: &[u8]) -> String {
+        let mut s = AnsiStripper::new();
+        String::from_utf8(s.strip(input)).unwrap()
+    }
+
+    #[test]
+    fn strips_csi_colors() {
+        let raw = b"\x1b[01;32mcarlos@kobe\x1b[00m:\x1b[01;34m~\x1b[00m$ ";
+        assert_eq!(strip(raw), "carlos@kobe:~$ ");
+    }
+
+    #[test]
+    fn strips_osc_title() {
+        let raw = b"\x1b]0;carlos@kobe: ~\x07$ ls";
+        assert_eq!(strip(raw), "$ ls");
+    }
+
+    #[test]
+    fn strips_bracketed_paste_modes() {
+        // These are the ?2004h / ?2004l shown in the user's report.
+        let raw = b"\x1b[?2004h$ hi\x1b[?2004l\n";
+        assert_eq!(strip(raw), "$ hi\n");
+    }
+
+    #[test]
+    fn handles_sequence_split_across_chunks() {
+        let mut s = AnsiStripper::new();
+        let mut out = s.strip(b"hello \x1b[01");
+        out.extend(s.strip(b";32mworld\x1b[00m"));
+        assert_eq!(String::from_utf8(out).unwrap(), "hello world");
+    }
+
+    #[test]
+    fn keeps_newlines_and_utf8() {
+        let raw = "hola múnd\n".as_bytes();
+        assert_eq!(strip(raw), "hola múnd\n");
+    }
+
+    #[test]
+    fn plain_mode_logger_writes_clean_text() {
+        let dir = std::env::temp_dir().join("zapx_log_plain_test");
+        let _ = fs::remove_dir_all(&dir);
+        let mut logger =
+            SessionLogger::open_with_format(&dir, "plain-test", LogFormat::Plain).unwrap();
+        logger
+            .write(b"\x1b[?2004h\x1b[01;32mok\x1b[0m\r\n")
+            .unwrap();
+        let (path, _, _) = logger.close().unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "ok\r\n");
+        let _ = fs::remove_dir_all(&dir);
     }
 }
