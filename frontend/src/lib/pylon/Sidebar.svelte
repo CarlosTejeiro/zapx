@@ -214,7 +214,21 @@
     {#each folders as folder (folder.id)}
       {@const folderSessions = sessionsInFolder(folder.id)}
       {#if !query || folderSessions.length > 0}
-        <div class="sb-section">
+        <div
+          class="sb-section"
+          class:dragover={dragOver === folder.id && draggingSessionId != null}
+          ondragover={(e) => onDragOver(e, folder.id)}
+          ondrop={(e) => onDrop(e, folder.id)}
+          ondragenter={() => {
+            // Auto-expand on hover so the user can see the drop is registering.
+            if (draggingSessionId != null && !expandedFolders.has(folder.id)) {
+              const next = new Set(expandedFolders)
+              next.add(folder.id)
+              expandedFolders = next
+            }
+          }}
+          role="group"
+        >
           <button
             class="sb-section-header"
             style:color={theme.textDim}
@@ -491,6 +505,13 @@
   .sb-droparea.dragover {
     border-color: rgba(59, 130, 246, 0.6);
     background: rgba(59, 130, 246, 0.08);
+  }
+
+  /* Highlight the whole folder section when dragging over a collapsed
+     folder so it's obvious you can drop on the header too. */
+  .sb-section.dragover {
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 4px;
   }
 
   .sb-row.dragging {

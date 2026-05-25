@@ -12,9 +12,13 @@
     setLoginScript,
     updateSavedSession,
     getLoginScript,
+    listPlatforms,
+    setSessionPlatform,
+    getSessionPlatform,
   } from '$lib/bridge/commands'
-  import type { Folder, AuthMethod, SavedSession, LoginStep } from '$lib/bridge/types'
+  import type { Folder, AuthMethod, SavedSession, LoginStep, PlatformInfo } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
+  import { setCachedPassword } from '$lib/credentialCache'
 
   type Protocol = 'ssh' | 'telnet' | 'serial'
 
@@ -42,6 +46,18 @@
       )
     } catch {
       bastionCandidates = []
+    }
+    try {
+      platforms = await listPlatforms()
+    } catch {
+      platforms = []
+    }
+    if (existing) {
+      try {
+        platform = await getSessionPlatform(existing.id)
+      } catch {
+        platform = null
+      }
     }
     if (existing) {
       protocol = (existing.protocol as Protocol) ?? 'ssh'
@@ -91,6 +107,9 @@
   let viaSessionId = $state<number | null>(null)
   /// Per-session color scheme override (null = use global default).
   let colorScheme = $state<string | null>(null)
+  /// Per-session command-hint platform (null = use global default from Settings).
+  let platform = $state<string | null>(null)
+  let platforms = $state<PlatformInfo[]>([])
   let error = $state('')
 
   // Optional login automation: list of expect/send pairs run after connect.
@@ -214,6 +233,13 @@
           auth,
           viaSessionId,
         )
+        // Prime the in-memory cache so the next open in this app lifetime
+        // doesn't re-prompt even if the OS Keychain denies the dev-built
+        // binary access to its own entry (very common on macOS without
+        // code signing).
+        if (authType === 'password' && password) {
+          setCachedPassword(id, password)
+        }
       } else if (protocol === 'telnet') {
         id = await createTelnetSession(name.trim(), folderId, host.trim(), port)
       } else {
@@ -259,6 +285,11 @@
       // In edit mode push unconditionally so clearing all steps takes effect.
       if (existing || cleanSteps.length > 0) {
         await setLoginScript(id, cleanSteps)
+      }
+      // Persist the command-hint platform for this session (skip "generic"
+      // and null since both fall back to the global default).
+      if (platform && platform !== 'generic') {
+        await setSessionPlatform(id, platform).catch(console.error)
       }
       onCreated(id)
     } catch (e) {
@@ -405,6 +436,18 @@
       </label>
     {/if}
 
+    {#if platforms.length > 0}
+      <label>
+        Platform <span class="hint-pill">command hints</span>
+        <select bind:value={platform}>
+          <option value={null}>— Use global default —</option>
+          {#each platforms as p (p.id)}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+
     {#if colorSchemes.length > 0}
       <label>
         Color scheme
@@ -466,6 +509,20 @@
 </div>
 
 <style>
+  .hint-pill {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.4rem;
+    background: rgba(34, 211, 238, 0.12);
+    color: #67e8f9;
+    font-size: 0.6rem;
+    border-radius: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+
   .overlay {
     position: fixed;
     inset: 0;
