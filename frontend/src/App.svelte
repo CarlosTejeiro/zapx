@@ -31,6 +31,7 @@
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
   import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
   import Toasts from '$lib/ui/Toasts.svelte'
+  import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
   import { ask } from '@tauri-apps/plugin-dialog'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
@@ -50,6 +51,7 @@
     deleteFolder,
     listSnippets as listSnippetsApi,
     sendInputText,
+    openLogsDir,
   } from '$lib/bridge/commands'
   import type { Snippet } from '$lib/bridge/types'
   import { getFocusedSessionId } from '$lib/stores/sessionRuntime.svelte'
@@ -424,6 +426,14 @@
     { id: 'act-split-v',       label: 'Split vertical',            icon: '⬓', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'v') },
     { id: 'act-multi',         label: 'Toggle multi-exec',         icon: '⇶', section: 'Actions' as const, run: () => (multiOn = !multiOn) },
     { id: 'act-close-tab',     label: 'Cerrar tab actual',         icon: '✕', section: 'Actions' as const, run: () => closeTab(activeTabId) },
+    { id: 'act-open-logs',     label: 'Abrir carpeta de logs',     icon: '📂', section: 'Actions' as const, run: async () => {
+      try {
+        const path = await openLogsDir()
+        showToast({ kind: 'info', title: 'Logs', detail: path })
+      } catch (e) {
+        showToast({ kind: 'error', title: 'Logs', detail: e instanceof Error ? e.message : String(e) })
+      }
+    } },
     { id: 'act-about',         label: 'Acerca de zapx',            icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
     { id: 'theme-neon-noir',   label: 'Tema · Neon Noir', icon: '◐', section: 'Themes' as const, run: () => setTheme('neonNoir') },
     { id: 'theme-graphite',    label: 'Tema · Graphite',  icon: '◐', section: 'Themes' as const, run: () => setTheme('graphite') },

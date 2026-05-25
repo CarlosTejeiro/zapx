@@ -379,6 +379,12 @@ export async function clearCommandHistory(savedSessionId: number | null): Promis
   return invoke<void>('clear_command_history', { savedSessionId })
 }
 
+// Reveal the app's session-log directory in the host file explorer.
+// Returns the absolute path (also useful for showing in a toast).
+export async function openLogsDir(): Promise<string> {
+  return invoke<string>('open_logs_dir')
+}
+
 // Persist the user-typed password into the backend in-memory cache. Used by
 // the reconnect dialog when the OS keychain denies access on dev builds.
 export async function cacheSessionPassword(

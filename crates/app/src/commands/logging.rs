@@ -5,6 +5,28 @@ use core_persistence::SessionLog;
 use crate::error::AppError;
 use crate::state::{ActiveLog, AppState};
 
+/// Reveal the session-log directory in the host's file explorer
+/// (Finder / Explorer / file manager). Best-effort: silently no-ops if
+/// the platform opener is unavailable. Returns the directory path so the
+/// frontend can show it in a toast.
+#[tauri::command]
+pub async fn open_logs_dir(state: State<'_, AppState>) -> Result<String, AppError> {
+    let path = state.log_dir.clone();
+    let path_str = path.to_string_lossy().into_owned();
+    let _ = std::fs::create_dir_all(&path);
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    if let Err(e) = std::process::Command::new(opener).arg(&path).spawn() {
+        tracing::warn!("open_logs_dir spawn failed: {e}");
+    }
+    Ok(path_str)
+}
+
 #[tauri::command]
 pub async fn start_session_logging(
     state: State<'_, AppState>,

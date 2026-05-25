@@ -3,7 +3,13 @@
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, ColorPalette, AuthMethod } from '$lib/bridge/types'
   import { getCachedPassword, setCachedPassword } from '$lib/credentialCache'
-  import { cacheSessionPassword } from '$lib/bridge/commands'
+  import {
+    cacheSessionPassword,
+    startSessionLogging,
+    stopSessionLogging,
+  } from '$lib/bridge/commands'
+  import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
+  import { showToast } from '$lib/ui/toast-store.svelte'
 
   interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
@@ -47,6 +53,57 @@
   }: Props = $props()
 
   let status = $state<PaneStatus>('connecting')
+
+  // ── Session logging (SecureCRT-style record button) ──────────────────
+  // Toggled from the pane header. Writes raw terminal bytes to a rotating
+  // file under the app's session_logs directory. Logging keeps recording
+  // until the user stops it or the underlying session ends.
+  let isLogging = $state(false)
+  let logPath = $state<string | null>(null)
+  let logBusy = $state(false)
+
+  async function toggleLogging() {
+    if (logBusy) return
+    const sid = paneToSession.get(pane.id)
+    if (!sid) {
+      showToast({ kind: 'warning', title: 'Logging', detail: 'La sesión no está activa.' })
+      return
+    }
+    logBusy = true
+    try {
+      if (isLogging) {
+        await stopSessionLogging(sid)
+        isLogging = false
+        showToast({ kind: 'info', title: 'Logging detenido', detail: logPath ?? undefined })
+        logPath = null
+      } else {
+        const name = pane.savedSession?.name ?? pane.ssh?.host ?? pane.telnet?.host ?? pane.label
+        const savedId = pane.savedSession?.id ?? null
+        const p = await startSessionLogging(sid, savedId, name)
+        logPath = p
+        isLogging = true
+        showToast({ kind: 'success', title: 'Logging iniciado', detail: p })
+      }
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Logging falló',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      logBusy = false
+    }
+  }
+
+  // If the pane closes / disconnects while recording, the backend already
+  // stops the writer in close_session; reset our local flag so the next
+  // open doesn't think it's still recording.
+  $effect(() => {
+    if (status === 'closed' || status === 'error') {
+      isLogging = false
+      logPath = null
+    }
+  })
 
   function handleStatus(s: PaneStatus) {
     status = s
@@ -147,6 +204,16 @@
     {/if}
     <span class="ph-proto" style:color={theme.terminal.dim}>{protocol.toUpperCase()}</span>
     <span class="ph-actions">
+      <button
+        class="ph-btn ph-btn-rec"
+        class:recording={isLogging}
+        type="button"
+        title={isLogging ? `Stop logging\n${logPath ?? ''}` : 'Start logging this session'}
+        aria-label={isLogging ? 'Stop logging' : 'Start logging'}
+        disabled={logBusy}
+        style:color={isLogging ? '#ef4444' : theme.terminal.dim}
+        onclick={(e) => { e.stopPropagation(); toggleLogging() }}
+      >●</button>
       {#if onSplitH}
         <button
           class="ph-btn"
@@ -312,6 +379,21 @@
   .ph-btn-close:hover {
     background: rgba(239, 68, 68, 0.18);
     color: #ef4444 !important;
+  }
+
+  /* Recording state — red pulsing dot like SecureCRT's session log
+     indicator. The button stays visible (not just on hover) while
+     logging is active so the user knows. */
+  .ph-btn-rec.recording {
+    opacity: 1 !important;
+    animation: ph-rec-pulse 1.4s ease-in-out infinite;
+  }
+  .ph-btn-rec.recording:hover {
+    background: rgba(239, 68, 68, 0.18);
+  }
+  @keyframes ph-rec-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
   }
 
   .pane-body {

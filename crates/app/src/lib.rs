@@ -148,6 +148,7 @@ pub fn run() {
             commands::logging::stop_session_logging,
             commands::logging::list_session_logs,
             commands::logging::list_all_session_logs,
+            commands::logging::open_logs_dir,
             commands::settings::get_settings,
             commands::settings::get_setting,
             commands::settings::set_setting,
