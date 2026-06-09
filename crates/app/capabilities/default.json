@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Default capability — allows the main window to use core Tauri APIs.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "dialog:default",
+    "updater:default"
+  ]
+}

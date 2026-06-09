@@ -1,0 +1,343 @@
+export interface PylonTheme {
+  name: string
+
+  // Fonts
+  fontUi: string
+  fontMono: string
+
+  // Chrome layout
+  appBg: string
+  bodyBg: string
+  sidebarBg: string
+  titlebarBg: string
+  statusbarBg: string
+  tabBarBg: string
+
+  // Tabs
+  tabActiveBg: string
+  tabIdleBg: string
+  tabBorder: string
+  tabRadius: string
+
+  // Interactive
+  accent: string
+  accent2: string
+  /** Foreground for text/icons sitting on top of an `accent`-filled surface
+   *  (e.g. primary buttons). Dark on light accents, light on dark accents. */
+  onAccent: string
+  itemHoverBg: string
+  itemActiveBg: string
+  itemActiveBorder: string
+
+  // Text
+  textPrimary: string
+  textMuted: string
+  textDim: string
+
+  // Borders
+  border: string
+  radius: string
+
+  // Status / connection
+  ok: string
+  warn: string
+  err: string
+
+  // Terminal
+  terminal: {
+    bg: string
+    fg: string
+    cursor: string
+    dim: string
+    ok: string
+    warn: string
+    err: string
+    // ANSI
+    black: string
+    red: string
+    green: string
+    yellow: string
+    blue: string
+    magenta: string
+    cyan: string
+    white: string
+    brightBlack: string
+    brightRed: string
+    brightGreen: string
+    brightYellow: string
+    brightBlue: string
+    brightMagenta: string
+    brightCyan: string
+    brightWhite: string
+  }
+
+  // Effects
+  glows: boolean
+  windowShadow: string
+}
+
+export const graphite: PylonTheme = {
+  name: 'graphite',
+
+  fontUi: '"Geist", "SF Pro Text", system-ui, sans-serif',
+  fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+
+  appBg: '#1a1d23',
+  bodyBg: '#1e2127',
+  sidebarBg: '#181b20',
+  titlebarBg: '#13151a',
+  statusbarBg: '#16191e',
+  tabBarBg: '#13151a',
+
+  tabActiveBg: '#1e2127',
+  tabIdleBg: 'transparent',
+  tabBorder: '#2a2d35',
+  tabRadius: '6px 6px 0 0',
+
+  accent: '#5eb3b2',
+  accent2: '#c89b6b',
+  onAccent: '#0f1717',
+  itemHoverBg: 'rgba(255,255,255,0.04)',
+  itemActiveBg: 'rgba(94,179,178,0.10)',
+  itemActiveBorder: '#5eb3b2',
+
+  textPrimary: '#c9cdd3',
+  textMuted: '#6b7280',
+  textDim: '#4b5563',
+
+  border: '#2a2d35',
+  radius: '6px',
+
+  ok: '#7cb992',
+  warn: '#d4a85a',
+  err: '#d97070',
+
+  terminal: {
+    bg: '#15181d',
+    fg: '#c9cdd3',
+    cursor: '#5eb3b2',
+    dim: '#4b5563',
+    ok: '#7cb992',
+    warn: '#d4a85a',
+    err: '#d97070',
+    black: '#1d2025',
+    red: '#d97070',
+    green: '#7cb992',
+    yellow: '#d4a85a',
+    blue: '#5b9dd9',
+    magenta: '#c977c4',
+    cyan: '#5eb3b2',
+    white: '#c9cdd3',
+    brightBlack: '#4b5563',
+    brightRed: '#d97070',
+    brightGreen: '#7cb992',
+    brightYellow: '#d4a85a',
+    brightBlue: '#82bfff',
+    brightMagenta: '#e89edf',
+    brightCyan: '#5eb3b2',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.35)',
+}
+
+export const neonNoir: PylonTheme = {
+  name: 'neon-noir',
+
+  fontUi: '"Geist", "SF Pro Display", system-ui, sans-serif',
+  fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+
+  appBg: '#080b11',
+  bodyBg: '#0d1220',
+  sidebarBg: '#05080e',   // noticeably darker than bodyBg for contrast
+  titlebarBg: '#04070c',
+  statusbarBg: '#04070c',
+  tabBarBg: '#04070c',
+
+  tabActiveBg: '#0d1220',
+  tabIdleBg: 'transparent',
+  tabBorder: '#1e2840',
+  tabRadius: '8px 8px 0 0',
+
+  accent: '#22d3ee',
+  accent2: '#f472b6',
+  onAccent: '#052029',
+  itemHoverBg: 'rgba(34,211,238,0.07)',
+  itemActiveBg: 'rgba(34,211,238,0.13)',
+  itemActiveBorder: '#22d3ee',
+
+  textPrimary: '#d4dff0',
+  textMuted: '#5a6e90',
+  textDim: '#334060',
+
+  border: '#1e2840',   // more visible than before
+  radius: '5px',
+
+  ok: '#4ade80',
+  warn: '#fbbf24',
+  err: '#ef4444',
+
+  terminal: {
+    bg: '#05080d',
+    fg: '#cbd5e1',
+    cursor: '#f472b6',
+    dim: '#2d3a50',
+    ok: '#4ade80',
+    warn: '#fbbf24',
+    err: '#ef4444',
+    black: '#0d1119',
+    red: '#ef4444',
+    green: '#4ade80',
+    yellow: '#fbbf24',
+    blue: '#5b9dd9',
+    magenta: '#f472b6',
+    cyan: '#22d3ee',
+    white: '#cbd5e1',
+    brightBlack: '#2d3a50',
+    brightRed: '#ef4444',
+    brightGreen: '#4ade80',
+    brightYellow: '#fbbf24',
+    brightBlue: '#82bfff',
+    brightMagenta: '#f9a8d4',
+    brightCyan: '#67e8f9',
+    brightWhite: '#ffffff',
+  },
+
+  glows: true,
+  windowShadow: '0 30px 80px rgba(0,0,0,0.4), 0 0 80px rgba(34,211,238,0.08)',
+}
+
+export const parchment: PylonTheme = {
+  name: 'parchment',
+
+  fontUi: '"Geist", "SF Pro Text", system-ui, sans-serif',
+  fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+
+  appBg: '#f5f2eb',
+  bodyBg: '#faf8f3',
+  sidebarBg: '#f0ece2',
+  titlebarBg: '#efeae0',
+  statusbarBg: '#e7e1d3',
+  tabBarBg: '#efeae0',
+
+  tabActiveBg: '#faf8f3',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(85,70,40,0.15)',
+  tabRadius: '6px 6px 0 0',
+
+  accent: '#564ca0',
+  accent2: '#b3793a',
+  onAccent: '#faf8f3',
+  itemHoverBg: 'rgba(85,70,40,0.05)',
+  itemActiveBg: 'rgba(86,76,160,0.10)',
+  itemActiveBorder: '#564ca0',
+
+  textPrimary: '#2d2a24',
+  textMuted: '#5d5549',
+  textDim: '#8a8174',
+
+  border: 'rgba(85,70,40,0.14)',
+  radius: '6px',
+
+  ok: '#3e8f60',
+  warn: '#b88528',
+  err: '#b13a3a',
+
+  terminal: {
+    bg: '#1d1e26',
+    fg: '#d4d6dc',
+    cursor: '#8e85e0',
+    dim: '#3d3f52',
+    ok: '#4ade80',
+    warn: '#fbbf24',
+    err: '#ef4444',
+    black: '#1d1e26',
+    red: '#cc5555',
+    green: '#55aa77',
+    yellow: '#c9882a',
+    blue: '#5b8fc9',
+    magenta: '#8e85e0',
+    cyan: '#5eb3b2',
+    white: '#d4d6dc',
+    brightBlack: '#3d3f52',
+    brightRed: '#e06c75',
+    brightGreen: '#66bb88',
+    brightYellow: '#d4a85a',
+    brightBlue: '#82bfff',
+    brightMagenta: '#a99ede',
+    brightCyan: '#67e8f9',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.15)',
+}
+
+export const aurora: PylonTheme = {
+  name: 'aurora',
+
+  fontUi: '"Geist", "SF Pro Display", system-ui, sans-serif',
+  fontMono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+
+  appBg: '#0a0d1a',
+  bodyBg: '#0f1428',
+  sidebarBg: '#070a14',
+  titlebarBg: '#050811',
+  statusbarBg: '#050811',
+  tabBarBg: '#050811',
+
+  tabActiveBg: '#0f1428',
+  tabIdleBg: 'transparent',
+  tabBorder: '#1f2a48',
+  tabRadius: '8px 8px 0 0',
+
+  accent: '#a78bfa',
+  accent2: '#22d3ee',
+  onAccent: '#0a0d1a',
+  itemHoverBg: 'rgba(167,139,250,0.08)',
+  itemActiveBg: 'rgba(167,139,250,0.15)',
+  itemActiveBorder: '#a78bfa',
+
+  textPrimary: '#e2e8f0',
+  textMuted: '#6b7896',
+  textDim: '#3a4566',
+
+  border: '#1f2a48',
+  radius: '6px',
+
+  ok: '#34d399',
+  warn: '#fbbf24',
+  err: '#f87171',
+
+  terminal: {
+    bg: '#0a0e1e',
+    fg: '#e2e8f0',
+    cursor: '#f0abfc',
+    dim: '#2d3a5c',
+    ok: '#34d399',
+    warn: '#fbbf24',
+    err: '#f87171',
+    black: '#0e1224',
+    red: '#f87171',
+    green: '#34d399',
+    yellow: '#fbbf24',
+    blue: '#60a5fa',
+    magenta: '#f0abfc',
+    cyan: '#22d3ee',
+    white: '#e2e8f0',
+    brightBlack: '#2d3a5c',
+    brightRed: '#fca5a5',
+    brightGreen: '#6ee7b7',
+    brightYellow: '#fde047',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#f5d0fe',
+    brightCyan: '#67e8f9',
+    brightWhite: '#ffffff',
+  },
+
+  glows: true,
+  windowShadow: '0 30px 80px rgba(0,0,0,0.45), 0 0 100px rgba(167,139,250,0.10)',
+}
+
+export const themes: Record<string, PylonTheme> = { graphite, neonNoir, parchment, aurora }
