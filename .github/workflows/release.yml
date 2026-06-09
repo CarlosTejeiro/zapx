@@ -63,7 +63,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libxdo-dev
+            libxdo-dev \
+            libudev-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
