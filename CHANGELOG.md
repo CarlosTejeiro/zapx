@@ -5,7 +5,42 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-06-10
+
+### Changed
+- **Full UI redesign («Pulido»)** following the design handoff: 38 px title
+  bar with the new brand mark, 248 px sidebar with 32 px session rows (active
+  state by background + type weight, no border-left), 42 px tab bar with
+  vertically-centred chip tabs and an inner accent underline, 28 px mono
+  status bar with `│` separators and a glowing connection LED, and the
+  terminal rendered as a **floating card** (11 px radius, soft shadow, 14 px
+  frame, 10 px gap between splits).
+- **New app icon «Tile»** — a single lightning bolt knocked out of a rounded
+  indigo tile. Replaces the crossed-bolts mark in the title bar, the About
+  dialog and every bundle asset (icns/ico/png), regenerated via `tauri icon`.
+- **7 new themes** replace the previous four: Parchment (refined), Oxide,
+  Fjord, Nocturne, Porcelain, Phosphor and Amber — each with a full ANSI
+  terminal palette; the CRT pair (Phosphor/Amber) enables cursor glow.
+  Error/warning/ok colours stay semantic in every theme so keyword
+  highlighting keeps meaning.
+- **Unified SVG icon set** (16×16, stroke 1.5) across the entire chrome and
+  all dialogs — no more text/emoji glyphs (✎ ✕ 📁 ▸ ● ─ □) as controls.
+- **Bundled fonts**: Geist and JetBrains Mono (variable) now ship with the
+  app, so the UI no longer depends on system-installed fonts.
+- **Terminal scrollback scrollbar** is now visible: slim 4 px track with a
+  rounded thumb (was hidden entirely).
+
+### Removed
+- Dead legacy components (`SplitView`, `TerminalPane`, `SessionTree`) that
+  bypassed the theme system with hardcoded colors.
+
+### Known issues
+- **macOS**: bundles are not yet signed/notarized, so Gatekeeper reports the
+  downloaded app as "damaged". Workaround: right-click → Open, or run
+  `xattr -cr /Applications/ZAPX.app` after installing. Proper signing +
+  notarization will ship once an Apple Developer ID is available.
+
+## [0.1.0] - 2026-06-09
 
 ### Changed
 - **Renamed to `ZAPX`** (the brief `RustTerm` identity was never released).

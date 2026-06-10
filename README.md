@@ -36,6 +36,24 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free and open source 
 | `Ctrl+,` | Open Settings |
 | `Escape` | Close search / close dialog |
 
+## Installation
+
+Download the installer for your platform from the
+[releases page](https://github.com/CarlosTejeiro/zapx/releases).
+
+### macOS: "ZAPX is damaged and can't be opened"
+
+The macOS bundles are **not yet signed/notarized** (an Apple Developer ID is
+on the roadmap), so Gatekeeper quarantines the downloaded app and reports it
+as damaged. The app is fine — clear the quarantine flag after dragging it to
+Applications:
+
+```sh
+xattr -cr /Applications/ZAPX.app
+```
+
+or right-click the app → **Open** → **Open** on first launch.
+
 ## Building from source
 
 Prerequisites: Rust stable ≥ 1.80, Node.js LTS, pnpm.
