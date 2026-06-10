@@ -116,10 +116,11 @@
     min-height: 0;
   }
 
+  /* Match the split-view card gap so every layout breathes the same. */
   .grid {
     flex: 1;
     display: grid;
-    gap: 2px;
+    gap: 10px;
     min-width: 0;
     min-height: 0;
     grid-auto-rows: 1fr;

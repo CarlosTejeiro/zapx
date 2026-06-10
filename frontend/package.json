@@ -1,7 +1,7 @@
 {
   "name": "zapx-frontend",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
@@ -12,6 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.2.9",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@tauri-apps/api": "^2.1.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-updater": "^2.10.1",

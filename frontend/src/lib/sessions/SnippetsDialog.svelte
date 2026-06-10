@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import {
     createSnippet,
     updateSnippet,
@@ -179,7 +180,7 @@
       <h2>Snippets</h2>
       <div class="header-right">
         <button class="btn" onclick={() => (showAdd = !showAdd)}>+ New</button>
-        <button class="btn" onclick={onClose} title="Close">✕</button>
+        <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
       </div>
     </div>
 
@@ -262,8 +263,8 @@
                   </span>
                   <span class="preview">{preview(s.content)}</span>
                 </div>
-                <button class="btn icon" onclick={() => beginEdit(s)} title="Edit">✎</button>
-                <button class="btn icon danger" onclick={() => remove(s)} title="Delete">✕</button>
+                <button class="btn icon" onclick={() => beginEdit(s)} title="Edit"><Icon name="pencil" size={12} /></button>
+                <button class="btn icon danger" onclick={() => remove(s)} title="Delete"><Icon name="x" size={12} /></button>
               {/if}
             </li>
           {/each}

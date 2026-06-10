@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PylonTheme } from '$lib/themes/index'
   import type { HostCapture } from './commandRunner.svelte'
+  import Icon from '$lib/icons/Icon.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -131,7 +132,7 @@
           <span class="badge warn">{groups.length} variantes{timedOut.length ? ` · ${timedOut.length} sin responder` : ''}</span>
         {/if}
       </div>
-      <button class="btn" onclick={onClose} title="Cerrar">✕</button>
+      <button class="btn" onclick={onClose} title="Cerrar"><Icon name="x" size={12} /></button>
     </div>
 
     <p class="hint">
@@ -142,7 +143,7 @@
       {#each groups as g, i (i)}
         <div class="group" class:diff-a={diffA === i} class:diff-b={diffB === i}>
           <div class="group-head">
-            <button class="caret" onclick={() => toggle(i)}>{open.has(i) ? '▾' : '▸'}</button>
+            <button class="caret" onclick={() => toggle(i)}><Icon name="chevron" size={11} open={open.has(i)} /></button>
             <span class="count" style:background={theme.accent}>{g.hosts.length}</span>
             <span class="hostnames">{g.hosts.map((h) => h.label).join(', ')}</span>
             <button

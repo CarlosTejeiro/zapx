@@ -101,18 +101,19 @@
       <span
         class="sb-led"
         style:background={statusColor}
+        style:box-shadow={status === 'connected' ? `0 0 5px ${statusColor}` : 'none'}
         style:animation={status === 'connected' ? 'pylon-glow-pulse 2s ease infinite' : 'none'}
       ></span>
       <span style:color={statusColor}>{statusLabel}</span>
     </span>
 
     {#if host}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg" style:color={theme.textMuted}>{host}</span>
     {/if}
 
     {#if port !== undefined}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg">
         <span style:color={theme.textDim}>{protocol.toLowerCase()}</span>
         <span style:color={theme.textMuted}> {port}</span>
@@ -120,7 +121,7 @@
     {/if}
 
     {#if mssLabel && status === 'connected'}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg sb-mono" style:color={theme.textMuted} title="TCP MSS — bytes per segment {mss?.send != null ? `we send (${mss.send})` : ''}{mss?.send != null && mss?.recv != null ? ' / ' : ''}{mss?.recv != null ? `the peer sends (${mss.recv})` : ''}">
         <span style:color={theme.textDim}>mss</span>
         <span>{mssLabel}</span>
@@ -128,17 +129,17 @@
     {/if}
 
     {#if uptimeStr && status === 'connected'}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg sb-mono" style:color={theme.textMuted}>up {uptimeStr}</span>
     {/if}
 
     {#if latencyMs !== undefined && status === 'connected'}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg sb-mono" style:color={theme.textMuted}>{latencyMs}ms</span>
     {/if}
 
     {#if bytesPerSec !== undefined && status === 'connected'}
-      <span class="sb-divider">|</span>
+      <span class="sb-divider">│</span>
       <span class="sb-seg sb-mono" style:color={theme.textMuted}>
         ↓ {formatRate(bytesPerSec)}
       </span>
@@ -148,9 +149,9 @@
   <!-- Right segments -->
   <div class="sb-right">
     <span class="sb-seg">utf-8</span>
-    <span class="sb-divider">|</span>
+    <span class="sb-divider">│</span>
     <span class="sb-seg">VT320</span>
-    <span class="sb-divider">|</span>
+    <span class="sb-divider">│</span>
     <span class="sb-seg">{layout}</span>
   </div>
 
@@ -158,11 +159,11 @@
 
 <style>
   .statusbar {
-    height: 24px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 10px;
+    padding: 0 12px;
     font-size: 11px;
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
@@ -178,14 +179,13 @@
   .sb-seg {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 6px;
+    gap: 5px;
+    padding: 0 7px;
     white-space: nowrap;
   }
 
   .sb-divider {
-    opacity: 0.3;
-    padding: 0 2px;
+    opacity: 0.25;
   }
 
   .sb-led {

@@ -10,6 +10,7 @@
   } from '$lib/bridge/commands'
   import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
+  import Icon from '$lib/icons/Icon.svelte'
 
   interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
@@ -183,10 +184,16 @@
   })
 </script>
 
+<!-- The terminal floats as a card: rounded, clipped, soft shadow. The
+     focused pane adds an accent inset ring on top of the card shadow. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="pane"
-  style:box-shadow={focused ? `inset 0 0 0 1.5px ${theme.accent}88` : 'none'}
+  style:background={theme.terminal.bg}
+  style:border-radius="calc({theme.radius} + 4px)"
+  style:box-shadow={focused
+    ? `inset 0 0 0 1.5px ${theme.accent}88, 0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)`
+    : '0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)'}
   onclick={onFocus}
   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onFocus() }}
   role="region"
@@ -214,9 +221,9 @@
         title={isLogging ? `Stop logging\n${logPath ?? ''}` : 'Start logging this session'}
         aria-label={isLogging ? 'Stop logging' : 'Start logging'}
         disabled={logBusy}
-        style:color={isLogging ? '#ef4444' : theme.terminal.fg}
+        style:color={isLogging ? theme.err : theme.terminal.fg}
         onclick={(e) => { e.stopPropagation(); toggleLogging() }}
-      >●</button>
+      ><Icon name="record" size={10} /></button>
       {#if onSplitH}
         <button
           class="ph-btn"
@@ -225,7 +232,7 @@
           aria-label="Split horizontally"
           style:color={theme.terminal.fg}
           onclick={(e) => { e.stopPropagation(); onSplitH?.() }}
-        >⊟</button>
+        ><Icon name="split" size={12} /></button>
       {/if}
       {#if onSplitV}
         <button
@@ -235,7 +242,7 @@
           aria-label="Split vertically"
           style:color={theme.terminal.fg}
           onclick={(e) => { e.stopPropagation(); onSplitV?.() }}
-        >⊞</button>
+        ><Icon name="splitV" size={12} /></button>
       {/if}
       {#if canClose && onClosePane}
         <button
@@ -245,7 +252,7 @@
           aria-label="Close pane"
           style:color={theme.terminal.fg}
           onclick={(e) => { e.stopPropagation(); onClosePane?.() }}
-        >✕</button>
+        ><Icon name="x" size={12} /></button>
       {/if}
     </span>
   </div>
@@ -309,6 +316,7 @@
     min-height: 0;
     overflow: hidden;
     transition: box-shadow 0.1s;
+    position: relative;
   }
 
   .pane-header {
@@ -368,9 +376,11 @@
     background: rgba(255, 255, 255, 0.06);
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
-    padding: 2px 7px;
+    padding: 3px 7px;
     border-radius: 4px;
     opacity: 0.9;
     transition: opacity 0.1s, background 0.1s, color 0.1s;
@@ -402,12 +412,15 @@
     50%      { opacity: 0.55; }
   }
 
+  /* Inner breathing room so terminal text doesn't kiss the card edge —
+     the FitAddon measures the padded box, so cols/rows stay correct. */
   .pane-body {
     flex: 1;
     overflow: hidden;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    padding: 4px 14px 12px;
   }
 
   .pw-overlay {

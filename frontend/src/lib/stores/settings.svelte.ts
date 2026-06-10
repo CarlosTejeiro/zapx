@@ -4,7 +4,7 @@ import type { ColorScheme } from '$lib/bridge/types'
 // ── reactive global terminal settings ──────────────────────────────────────
 
 export const terminalSettings = $state({
-  fontFamily: 'Cascadia Code, JetBrains Mono, monospace',
+  fontFamily: 'JetBrains Mono Variable, JetBrains Mono, monospace',
   fontSize: 14,
   lineHeight: 1.2,
   cursorStyle: 'block' as 'block' | 'underline' | 'bar',

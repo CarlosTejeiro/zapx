@@ -10,6 +10,7 @@
   } from '$lib/stores/settings.svelte'
 
   const FONT_FAMILIES = [
+    'JetBrains Mono Variable, JetBrains Mono, monospace',
     'Cascadia Code, JetBrains Mono, monospace',
     'JetBrains Mono, monospace',
     'Fira Code, monospace',

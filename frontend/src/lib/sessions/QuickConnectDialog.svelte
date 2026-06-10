@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
+  import Icon from '$lib/icons/Icon.svelte'
 
   export type ConnectParams =
     | { type: 'local' }
@@ -70,7 +71,7 @@
   <div class="dialog" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="dialog-header">
       <h2 class="dialog-title">Quick Connect</h2>
-      <button class="close-btn" onclick={onCancel} aria-label="Close">✕</button>
+      <button class="close-btn" onclick={onCancel} aria-label="Close"><Icon name="x" size={13} /></button>
     </div>
 
     <div class="dialog-body">

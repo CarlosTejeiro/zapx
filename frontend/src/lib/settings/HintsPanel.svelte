@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import {
     listPlatforms,
@@ -149,7 +150,7 @@
     </p>
     <div class="catalog-actions">
       <button type="button" class="catalog-btn" onclick={openCatalogsDir}>
-        📁 Abrir carpeta de catálogos
+        <Icon name="folder" size={13} /> Abrir carpeta de catálogos
       </button>
       <button type="button" class="catalog-btn" onclick={reloadCatalogs} disabled={reloading}>
         {reloading ? '↻ Recargando…' : '↻ Recargar catálogos'}

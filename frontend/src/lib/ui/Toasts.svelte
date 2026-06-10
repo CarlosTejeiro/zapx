@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fly } from 'svelte/transition'
+  import Icon from '$lib/icons/Icon.svelte'
   import { toasts, dismissToast, type Toast } from './toast-store.svelte'
 
   function colorFor(kind: Toast['kind']): { fg: string; bg: string; border: string; icon: string } {
@@ -33,7 +34,7 @@
         class="close"
         onclick={() => dismissToast(toast.id)}
         aria-label="Cerrar"
-      >✕</button>
+      ><Icon name="x" size={12} /></button>
     </div>
   {/each}
 </div>

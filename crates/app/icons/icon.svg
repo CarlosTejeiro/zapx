@@ -1,66 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!--
-    ZAPX app icon — two rust-orange lightning bolts crossed into an X.
-    Each is the same 7-vertex bolt polygon, scaled and rotated ±45° about the
-    icon centre so they cross through the middle. The "X" of bolts is the mark.
+    ZAPX app icon — «Tile»: a single lightning bolt knocked out of a rounded
+    accent tile (matches the in-app MarkTile brand component, scaled 60×
+    from its 16px geometry). Accent = Parchment theme accent #564ca0; the
+    bolt is cut in the paper colour #f7f4ed. No filters — the silhouette
+    must survive 16px rasterisation.
   -->
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#1c2030"/>
-      <stop offset="100%" stop-color="#0a0c14"/>
+    <linearGradient id="tile" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#6157b3"/>
+      <stop offset="100%" stop-color="#48408c"/>
     </linearGradient>
-    <linearGradient id="boltfill" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%"   stop-color="#fdba74"/>
-      <stop offset="45%"  stop-color="#fb923c"/>
-      <stop offset="100%" stop-color="#c2410c"/>
-    </linearGradient>
-    <filter id="glow-bolt" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="22" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
 
-  <!-- macOS-style squircle. -->
-  <path
-    d="M 220 60
-       C 100 60, 60 100, 60 220
-       L 60 804
-       C 60 924, 100 964, 220 964
-       L 804 964
-       C 924 964, 964 924, 964 804
-       L 964 220
-       C 964 100, 924 60, 804 60
-       Z"
-    fill="url(#bg)"/>
-  <path
-    d="M 220 60
-       C 100 60, 60 100, 60 220
-       L 60 804
-       C 60 924, 100 964, 220 964
-       L 804 964
-       C 924 964, 964 924, 964 804
-       L 964 220
-       C 964 100, 924 60, 804 60
-       Z"
-    fill="none"
-    stroke="#252a3a"
-    stroke-width="2"/>
+  <!-- Rounded tile (same corner ratio as the 16px mark: rx 4.2/15). -->
+  <rect x="32" y="32" width="960" height="960" rx="269" fill="url(#tile)"/>
+  <rect x="34" y="34" width="956" height="956" rx="267" fill="none"
+        stroke="rgba(255,255,255,0.14)" stroke-width="4"/>
 
-  <!--
-    Two crossed bolts. The base shape is the 7-vertex bolt polygon
-    (M 320 100 … Z). Each copy is rotated ±45° and scaled to ~0.6 about the
-    icon centre (512,512) via `translate(c) rotate(a) scale(s) translate(-c)`,
-    so both cross through the middle and stay inside the squircle.
-  -->
-  <g filter="url(#glow-bolt)" fill="url(#boltfill)">
-    <path
-      transform="translate(512 512) rotate(45) scale(0.6) translate(-512 -512)"
-      d="M 320 100 L 800 100 L 560 490 L 820 490 L 150 930 L 480 580 L 220 580 Z"/>
-    <path
-      transform="translate(512 512) rotate(-45) scale(0.6) translate(-512 -512)"
-      d="M 320 100 L 800 100 L 560 490 L 820 490 L 150 930 L 480 580 L 220 580 Z"/>
-  </g>
+  <!-- Bolt — MarkTile path scaled ×60 (16 → 960 box) and offset by the margin. -->
+  <path
+    transform="translate(32 32) scale(60)"
+    d="M 9.1 2.6 L 5 8.6 H 7.6 L 6.6 13.4 L 11.4 6.8 H 8.6 Z"
+    fill="#f7f4ed"/>
 </svg>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icons/Icon.svelte'
   import {
     listHighlightRules,
     createHighlightRule,
@@ -176,7 +177,7 @@
             onclick={() => handleDelete(rule.id)}
             class="rule-del"
             aria-label="Delete {rule.name}"
-          >✕</button>
+          ><Icon name="x" size={12} /></button>
         </li>
       {/each}
     </ul>

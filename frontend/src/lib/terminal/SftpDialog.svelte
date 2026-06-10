@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
   import {
@@ -356,7 +357,7 @@
       <h2>SFTP browser</h2>
       <div class="header-right">
         <button class="btn" onclick={refresh} disabled={loading} title="Refresh">↻</button>
-        <button class="btn" onclick={onClose} title="Close">✕</button>
+        <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
       </div>
     </div>
 
@@ -385,10 +386,10 @@
           </button>
         {/if}
         <button class="btn" onclick={() => { showRename = true; showMkdir = false; showDownload = false; showUpload = false; renameTo = selectedEntry?.name ?? '' }}>
-          ✎ Rename
+          <Icon name="pencil" size={12} /> Rename
         </button>
         <button class="btn danger" onclick={doDelete} disabled={busy === 'delete'}>
-          ✕ Delete
+          <Icon name="x" size={12} /> Delete
         </button>
       {/if}
     </div>
@@ -459,7 +460,7 @@
             disabled={transfer.cancelling}
             title="Cancel transfer"
           >
-            {transfer.cancelling ? '…' : '✕'}
+            {#if transfer.cancelling}…{:else}<Icon name="x" size={12} />{/if}
           </button>
         </div>
         <div class="xfer-bar">
@@ -498,7 +499,7 @@
               >
                 <td class="col-name">
                   <span class="icon">
-                    {#if e.kind === 'dir'}📁{:else if e.kind === 'symlink'}🔗{:else}📄{/if}
+                    {#if e.kind === 'dir'}<Icon name="folder" size={13} />{:else if e.kind === 'symlink'}<Icon name="link" size={13} />{:else}<Icon name="file" size={13} />{/if}
                   </span>
                   {e.name}
                 </td>

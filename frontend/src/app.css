@@ -16,29 +16,29 @@
  * ------------------------------------------------------------------------- */
 :root {
   /* Color/font fallbacks — mirror `parchment` in src/lib/themes/index.ts. */
-  --zx-app-bg: #f5f2eb;
-  --zx-body-bg: #faf8f3;
-  --zx-surface: #f0ece2;
-  --zx-surface-2: #efeae0;
-  --zx-text: #2d2a24;
-  --zx-text-muted: #5d5549;
-  --zx-text-dim: #8a8174;
+  --zx-app-bg: #f7f4ed;
+  --zx-body-bg: #f7f4ed;
+  --zx-surface: #efebdf;
+  --zx-surface-2: #efebdf;
+  --zx-text: #2c2924;
+  --zx-text-muted: #6c6354;
+  --zx-text-dim: #a09684;
   --zx-accent: #564ca0;
   --zx-accent-2: #b3793a;
   --zx-on-accent: #faf8f3;
-  --zx-border: rgba(85, 70, 40, 0.14);
-  --zx-radius: 6px;
-  --zx-hover-bg: rgba(85, 70, 40, 0.05);
-  --zx-active-bg: rgba(86, 76, 160, 0.10);
+  --zx-border: rgba(82, 68, 40, 0.16);
+  --zx-radius: 7px;
+  --zx-hover-bg: rgba(82, 68, 40, 0.06);
+  --zx-active-bg: color-mix(in srgb, #564ca0 10%, transparent);
   --zx-active-border: #564ca0;
   --zx-ok: #3e8f60;
   --zx-warn: #b88528;
   --zx-err: #b13a3a;
-  --zx-font-ui: "Geist", "SF Pro Text", system-ui, sans-serif;
-  --zx-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --zx-font-ui: "Geist Variable", "Geist", "SF Pro Text", system-ui, sans-serif;
+  --zx-font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --zx-shadow: 0 24px 70px rgba(0, 0, 0, 0.15);
-  --zx-term-bg: #1d1e26;
-  --zx-term-fg: #d4d6dc;
+  --zx-term-bg: #20212b;
+  --zx-term-fg: #d6d8e0;
 
   /* Spacing scale (base-8). */
   --zx-space-1: 4px;

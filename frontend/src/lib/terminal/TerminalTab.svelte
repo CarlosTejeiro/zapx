@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
   import { SearchAddon } from '@xterm/addon-search'
@@ -701,7 +702,7 @@
       />
       <button class="search-nav" onclick={() => searchAddon?.findNext(searchQuery)}>▼</button>
       <button class="search-nav" onclick={() => searchAddon?.findPrevious(searchQuery)}>▲</button>
-      <button class="search-nav" onclick={() => { showSearch = false; searchAddon?.clearDecorations(); searchQuery = '' }}>✕</button>
+      <button class="search-nav" onclick={() => { showSearch = false; searchAddon?.clearDecorations(); searchQuery = '' }}><Icon name="x" size={11} /></button>
     </div>
   {/if}
 
@@ -1013,9 +1014,31 @@
     padding: 0;
   }
 
+  /* Slim scrollbar per the design system: 4px track barely tinted, rounded
+     thumb. Replaces the old hidden-scrollbar behaviour so scrollback
+     position is visible at a glance. */
   :global(.xterm-viewport) {
     background-color: var(--term-bg, #09090b) !important;
-    overflow-y: hidden !important;
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+  }
+
+  :global(.xterm-viewport::-webkit-scrollbar) {
+    width: 4px;
+  }
+
+  :global(.xterm-viewport::-webkit-scrollbar-track) {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 2px;
+  }
+
+  :global(.xterm-viewport::-webkit-scrollbar-thumb) {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 2px;
+  }
+
+  :global(.xterm-viewport::-webkit-scrollbar-thumb:hover) {
+    background: rgba(255, 255, 255, 0.22);
   }
 
   :global(.xterm-screen) {
@@ -1027,7 +1050,7 @@
     gap: 0.75rem;
     padding: 1rem 1.25rem;
     color: #ef4444;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--zx-font-mono, "JetBrains Mono", ui-monospace, monospace);
     font-size: 0.8rem;
     background: rgba(239, 68, 68, 0.07);
     border-left: 3px solid #ef4444;

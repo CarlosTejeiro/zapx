@@ -100,7 +100,7 @@
     <div
       class="split-handle"
       class:vertical={node.direction === 'v'}
-      style:background={theme.border}
+      style:--accent={theme.accent}
       role="separator"
       aria-orientation={node.direction === 'h' ? 'vertical' : 'horizontal'}
       onmousedown={(e) => startResize(e, node.direction)}
@@ -144,15 +144,19 @@
     overflow: hidden;
   }
 
+  /* Floating-card layout: the handle is the transparent 10px gap between
+     terminal cards; an accent stripe appears while hovering/dragging. */
   .split-handle {
-    flex: 0 0 4px;
+    flex: 0 0 10px;
     cursor: col-resize;
+    background: transparent;
     transition: background 0.1s;
     user-select: none;
+    border-radius: 3px;
   }
 
   .split-handle:hover {
-    filter: brightness(1.6);
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
   .split-handle.vertical {

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { fade, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
+  import Icon from '$lib/icons/Icon.svelte'
   import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import {
     createSavedSession,
@@ -505,7 +506,7 @@
             bind:value={step.timeout_ms}
             title="timeout (ms)"
           />
-          <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step">✕</button>
+          <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step"><Icon name="x" size={12} /></button>
         </div>
       {/each}
       <button type="button" class="add-step" onclick={addStep}>+ Add step</button>

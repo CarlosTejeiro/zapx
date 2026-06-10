@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SavedSession, BroadcastGroup } from '$lib/bridge/types'
+  import Icon from '$lib/icons/Icon.svelte'
   import {
     groups,
     loadGroups,
@@ -105,7 +106,7 @@
   <div class="dialog">
     <div class="header">
       <h2>Grupos de broadcast</h2>
-      <button class="btn" onclick={onClose} title="Close">✕</button>
+      <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
     </div>
 
     <p class="hint">
@@ -161,8 +162,8 @@
                   onclick={() => onOpenGrid(g)}
                   title="Abrir como grid"
                 >▦ Abrir</button>
-                <button class="btn" onclick={() => startEdit(g)} title="Editar miembros">✎</button>
-                <button class="btn danger" onclick={() => destroy(g)} title="Borrar">✕</button>
+                <button class="btn" onclick={() => startEdit(g)} title="Editar miembros"><Icon name="pencil" size={12} /></button>
+                <button class="btn danger" onclick={() => destroy(g)} title="Borrar"><Icon name="x" size={12} /></button>
               </div>
             </div>
           {/if}

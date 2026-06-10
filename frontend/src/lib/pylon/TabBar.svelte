@@ -2,6 +2,7 @@
   import { fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import type { PylonTheme } from '$lib/themes/index'
+  import Icon from '$lib/icons/Icon.svelte'
 
   export interface TabEntry {
     id: number
@@ -53,6 +54,7 @@
   style:font-family={theme.fontUi}
   style:--item-hover-bg={theme.itemHoverBg}
   style:--text-primary={theme.textPrimary}
+  style:--err={theme.err}
 >
 
   <!-- Tabs strip -->
@@ -65,10 +67,9 @@
         class:tab-active={active}
         in:fly={{ y: -8, duration: 180, easing: cubicOut }}
         style:background={active ? theme.tabActiveBg : theme.tabIdleBg}
-        style:border={active ? `1px solid ${theme.border}` : `1px solid transparent`}
-        style:border-bottom={active ? `1px solid ${theme.tabActiveBg}` : 'none'}
-        style:border-radius={theme.tabRadius}
-        style:border-top={active ? `2px solid ${theme.accent}` : '2px solid transparent'}
+        style:border={active ? `1px solid ${theme.border}` : '1px solid transparent'}
+        style:border-radius={theme.radius}
+        style:box-shadow={active ? `inset 0 -2px 0 ${theme.accent}` : 'none'}
         onclick={() => onActivate(tab.id)}
         onmouseenter={() => hoveredTab = tab.id}
         onmouseleave={() => hoveredTab = null}
@@ -86,7 +87,7 @@
             style:color={theme.textDim}
             onclick={(e) => { e.stopPropagation(); onClose(tab.id) }}
             title="Close tab"
-          >✕</button>
+          ><Icon name="x" size={11} /></button>
         {/if}
       </div>
     {/each}
@@ -95,9 +96,10 @@
     <button
       class="tab-add"
       style:color={theme.textDim}
+      style:border-radius={theme.radius}
       onclick={onAdd}
       title="New tab"
-    >+</button>
+    ><Icon name="plus" size={14} /></button>
   </div>
 
   <!-- Right controls: Split + Multi -->
@@ -105,28 +107,27 @@
     <button
       class="tab-action-btn"
       class:active={splitOn}
-      style:color={splitOn ? theme.accent : theme.textDim}
+      style:color={splitOn ? theme.accent : theme.textMuted}
       style:background={splitOn ? `${theme.accent}18` : 'transparent'}
+      style:border="1px solid {splitOn ? `${theme.accent}55` : theme.border}"
+      style:border-radius={theme.radius}
       onclick={onToggleSplit}
       title="Toggle split pane (Ctrl+\)"
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <rect x="1" y="1" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="8" y="1" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
+      <Icon name="split" size={13} />
       Split
     </button>
     <button
       class="tab-action-btn"
       class:active={multiOn}
-      style:color={multiOn ? theme.accent2 : theme.textDim}
+      style:color={multiOn ? theme.accent2 : theme.textMuted}
       style:background={multiOn ? `${theme.accent2}18` : 'transparent'}
+      style:border="1px solid {multiOn ? `${theme.accent2}55` : theme.border}"
+      style:border-radius={theme.radius}
       onclick={onToggleMulti}
       title="Toggle MultiExec broadcast (Ctrl+Shift+M)"
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <path d="M1 7h12M7 1v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
+      <Icon name="cast" size={13} />
       Multi
     </button>
   </div>
@@ -135,21 +136,22 @@
 
 <style>
   .tabbar {
-    height: 36px;
+    height: 42px;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     flex-shrink: 0;
     overflow: hidden;
+    padding: 0 10px;
+    gap: 4px;
   }
 
   .tab-strip {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     flex: 1;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0 4px;
-    gap: 2px;
+    gap: 4px;
     scrollbar-width: none;
   }
 
@@ -158,20 +160,15 @@
   .tab {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     height: 30px;
-    padding: 0 10px;
-    min-width: 130px;
+    padding: 0 12px;
+    min-width: 140px;
     max-width: 220px;
     cursor: pointer;
     flex-shrink: 0;
     position: relative;
     transition: background 0.1s;
-    margin-bottom: -1px;
-  }
-
-  .tab-active {
-    box-shadow: 0 1px 0 0 var(--tab-active-bg, #1e2127);
   }
 
   .tab-dot {
@@ -182,7 +179,7 @@
   }
 
   .tab-label {
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 400;
     flex: 1;
     overflow: hidden;
@@ -199,32 +196,29 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 10px;
-    padding: 2px 3px;
-    border-radius: 3px;
+    padding: 2px;
+    border-radius: 4px;
     color: inherit;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
     transition: background 0.1s, color 0.1s;
   }
 
   .tab-close:hover {
-    background: rgba(239,68,68,0.15);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--err) 15%, transparent);
+    color: var(--err);
   }
 
   .tab-add {
     background: none;
     border: none;
     cursor: pointer;
-    width: 26px;
-    height: 26px;
-    font-size: 16px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    margin-bottom: 2px;
     flex-shrink: 0;
     transition: background 0.1s, color 0.1s;
     color: inherit;
@@ -232,31 +226,28 @@
 
   .tab-add:hover {
     background: var(--item-hover-bg, rgba(255,255,255,0.06));
-    color: var(--text-primary, #c9cdd3);
+    color: var(--text-primary, #2c2924);
   }
 
   .tab-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 0 8px 4px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
   .tab-action-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     background: none;
-    border: none;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 500;
-    padding: 3px 8px;
-    border-radius: 4px;
-    height: 22px;
+    padding: 0 10px;
+    height: 28px;
     font-family: inherit;
-    transition: background 0.1s, color 0.1s;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
     color: inherit;
   }
 

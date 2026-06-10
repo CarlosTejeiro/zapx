@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
+  import Icon from '$lib/icons/Icon.svelte'
   import TerminalSettingsPanel from './TerminalSettingsPanel.svelte'
   import HighlightRulesPanel from '$lib/sessions/HighlightRulesPanel.svelte'
   import HintsPanel from './HintsPanel.svelte'
@@ -74,7 +75,7 @@
   <div class="modal" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="modal-header">
       <h2 class="modal-title">Settings</h2>
-      <button class="close-btn" onclick={onClose} aria-label="Close">✕</button>
+      <button class="close-btn" onclick={onClose} aria-label="Close"><Icon name="x" size={13} /></button>
     </div>
 
     <div class="modal-body">

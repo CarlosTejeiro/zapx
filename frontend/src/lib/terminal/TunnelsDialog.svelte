@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import {
     addLocalForward,
     addDynamicForward,
@@ -103,7 +104,7 @@
             {:else}
               <span class="target socks">SOCKS5</span>
             {/if}
-            <button class="rm" onclick={() => remove(f.id)} title="Remove forward">✕</button>
+            <button class="rm" onclick={() => remove(f.id)} title="Remove forward"><Icon name="x" size={12} /></button>
           </li>
         {/each}
       </ul>

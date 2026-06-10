@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, Folder } from '$lib/bridge/types'
+  import Icon from '$lib/icons/Icon.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -182,7 +183,7 @@
     expandedFolders = next
   }
 
-  // User initials chip gradient (deterministic from username)
+  // User initials chip (deterministic from username)
   const username = 'admin'
   const initials = username.slice(0, 2).toUpperCase()
 </script>
@@ -190,18 +191,25 @@
 <aside
   class="sidebar"
   style:background={theme.sidebarBg}
-  style:border-right="1px solid {theme.accent}30"
+  style:border-right="1px solid {theme.border}"
   style:font-family={theme.fontUi}
   style:--item-hover-bg={theme.itemHoverBg}
   style:--text-primary={theme.textPrimary}
+  style:--accent={theme.accent}
+  style:--err={theme.err}
+  style:--radius={theme.radius}
 >
 
   <!-- Search -->
-  <div class="sb-search-wrap" style:border-bottom="1px solid {theme.border}">
-    <div class="sb-search-inner" style:border="1px solid {theme.border}">
-      <svg class="sb-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={theme.textDim} stroke-width="2.5">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-      </svg>
+  <div class="sb-search-wrap">
+    <div
+      class="sb-search-inner"
+      style:background={theme.appBg}
+      style:border="1px solid {theme.border}"
+      style:border-radius={theme.radius}
+      style:color={theme.textDim}
+    >
+      <Icon name="search" size={13} />
       <input
         class="sb-search"
         type="text"
@@ -209,17 +217,20 @@
         bind:value={search}
         style:color={theme.textPrimary}
         style:font-family={theme.fontUi}
-        style:--focus-ring={theme.accent}
       />
+      <kbd
+        class="sb-kbd"
+        style:border="1px solid {theme.border}"
+        style:font-family={theme.fontMono}
+      >⌘K</kbd>
     </div>
   </div>
 
   <!-- Tree -->
   <div class="sb-tree">
 
-    <!-- Favorites / pinned (root sessions without folder).
-         Drop handlers live on the outer .sb-section so dropping at root
-         works even when the section is collapsed. -->
+    <!-- Root sessions. Drop handlers live on the outer .sb-section so
+         dropping at root works even when the section is collapsed. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="sb-section"
@@ -235,17 +246,13 @@
         }
       }}
     >
-      <div class="sb-section-row">
+      <div class="sb-section-row" style:color={theme.textDim}>
         <button
           class="sb-section-header"
           style:color={theme.textDim}
           onclick={() => toggleSection('sessions')}
         >
-          <span
-            class="sb-caret"
-            class:expanded={expandedSections.has('sessions')}
-            style:color={theme.textDim}
-          >▸</span>
+          <Icon name="chevron" size={11} open={expandedSections.has('sessions')} />
           SESSIONS
           <span class="sb-count" style:color={theme.textDim}>{rootSessions.length}</span>
         </button>
@@ -255,14 +262,14 @@
             title="New folder"
             style:color={theme.textDim}
             onclick={onCreateFolder}
-          >📁</button>
+          ><Icon name="folder" size={13} /></button>
         {/if}
         <button
           class="sb-add-btn"
           title="New session"
           style:color={theme.textDim}
           onclick={onAddSession}
-        >+</button>
+        ><Icon name="plus" size={13} /></button>
       </div>
 
       {#if expandedSections.has('sessions')}
@@ -286,13 +293,21 @@
               ondragleave={() => onRowDragLeave(s.id)}
               ondrop={(e) => onRowDrop(e, null, s.id)}
               style:background={isActive ? theme.itemActiveBg : ''}
-              style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
               onclick={() => onSelect(s)}
             >
               <span class="sb-dot" style:background={color}></span>
-              <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
+              <span
+                class="sb-name"
+                class:active={isActive}
+                style:color={isActive ? theme.textPrimary : theme.textMuted}
+              >{s.name}</span>
               {#if s.protocol !== 'local'}
-                <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
+                <span
+                  class="sb-tag"
+                  style:color={theme.textDim}
+                  style:border-color={theme.border}
+                  style:font-family={theme.fontMono}
+                >
                   {s.protocol.toUpperCase()}
                 </span>
               {/if}
@@ -304,7 +319,7 @@
                   title="Edit session"
                   style:color={theme.textDim}
                   onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
-                >✎</span>
+                ><Icon name="pencil" size={12} /></span>
               {/if}
               {#if onDelete}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -314,7 +329,7 @@
                   title="Delete session"
                   style:color={theme.textDim}
                   onclick={(e) => { e.stopPropagation(); onDelete?.(s) }}
-                >✕</span>
+                ><Icon name="x" size={12} /></span>
               {/if}
             </div>
           {/each}
@@ -343,17 +358,14 @@
         >
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
           <div
-            class="sb-section-header"
+            class="sb-folder-header"
             role="button"
             tabindex="0"
             style:color={theme.textDim}
             onclick={() => toggleFolder(folder.id)}
           >
-            <span
-              class="sb-caret"
-              class:expanded={expandedFolders.has(folder.id)}
-              style:color={theme.textDim}
-            >▸</span>
+            <Icon name="chevron" size={11} open={expandedFolders.has(folder.id)} />
+            <Icon name="folder" size={13} />
             <span class="sb-folder-name">{folder.name.toUpperCase()}</span>
             <span class="sb-count" style:color={theme.textDim}>{folderSessions.length}</span>
             {#if onRenameFolder}
@@ -364,7 +376,7 @@
                 title="Rename folder"
                 style:color={theme.textDim}
                 onclick={(e) => { e.stopPropagation(); onRenameFolder?.(folder) }}
-              >✎</span>
+              ><Icon name="pencil" size={12} /></span>
             {/if}
             {#if onDeleteFolder}
               <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -374,7 +386,7 @@
                 title="Delete folder"
                 style:color={theme.textDim}
                 onclick={(e) => { e.stopPropagation(); onDeleteFolder?.(folder) }}
-              >✕</span>
+              ><Icon name="x" size={12} /></span>
             {/if}
           </div>
 
@@ -405,13 +417,21 @@
                   ondragleave={() => onRowDragLeave(s.id)}
                   ondrop={(e) => onRowDrop(e, folder.id, s.id)}
                   style:background={isActive ? theme.itemActiveBg : ''}
-                  style:border-left={isActive ? `2px solid ${theme.itemActiveBorder}` : '2px solid transparent'}
                   onclick={() => onSelect(s)}
                 >
-                  <span class="sb-dot" style:background={color}></span>
-                  <span class="sb-name" style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span>
+                  <span class="sb-dot sb-dot-sm" style:background={color}></span>
+                  <span
+                    class="sb-name sb-name-sm"
+                    class:active={isActive}
+                    style:color={isActive ? theme.textPrimary : theme.textMuted}
+                  >{s.name}</span>
                   {#if s.protocol !== 'local'}
-                    <span class="sb-tag" style:color={theme.textDim} style:border-color={theme.border}>
+                    <span
+                      class="sb-tag"
+                      style:color={theme.textDim}
+                      style:border-color={theme.border}
+                      style:font-family={theme.fontMono}
+                    >
                       {s.protocol.toUpperCase()}
                     </span>
                   {/if}
@@ -423,7 +443,7 @@
                       title="Edit session"
                       style:color={theme.textDim}
                       onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
-                    >✎</span>
+                    ><Icon name="pencil" size={12} /></span>
                   {/if}
                   {#if onDelete}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -433,7 +453,7 @@
                       title="Delete session"
                       style:color={theme.textDim}
                       onclick={(e) => { e.stopPropagation(); onDelete?.(s) }}
-                    >✕</span>
+                    ><Icon name="x" size={12} /></span>
                   {/if}
                 </div>
               {/each}
@@ -451,29 +471,22 @@
     {/if}
   </div>
 
-  <!-- Footer: user chip + settings -->
+  <!-- Footer: user chip + theme + settings -->
   <div class="sb-footer" style:border-top="1px solid {theme.border}">
-    <div
+    <span
       class="sb-user-chip"
-      style:background="linear-gradient(135deg, {theme.accent}99, {theme.accent2}99)"
-      style:border-radius={theme.radius}
-    >
-      <span style:font-family={theme.fontUi}>{initials}</span>
-    </div>
+      style:background={theme.accent}
+      style:color={theme.onAccent}
+      style:font-family={theme.fontUi}
+    >{initials}</span>
     <span class="sb-username" style:color={theme.textMuted} style:font-family={theme.fontUi}>
       {username}
     </span>
-    <button class="sb-settings-btn" title="Toggle theme" onclick={onToggleTheme} style:color={theme.accent}>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="12" r="5"/>
-        <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
-      </svg>
+    <button class="sb-settings-btn" title="Cycle theme" onclick={onToggleTheme} style:color={theme.textDim}>
+      <Icon name="contrast" size={14} />
     </button>
     <button class="sb-settings-btn" title="Settings" onclick={onSettings} style:color={theme.textDim}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
+      <Icon name="gear" size={14} />
     </button>
   </div>
 
@@ -489,27 +502,16 @@
   }
 
   .sb-search-wrap {
-    padding: 8px 10px;
+    padding: 12px 12px 8px;
     flex-shrink: 0;
   }
 
   .sb-search-inner {
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    border-radius: 5px;
-    padding: 0 8px;
-    background: rgba(255,255,255,0.03);
-    transition: border-color 0.15s;
-  }
-
-  .sb-search-inner:focus-within {
-    border-color: var(--focus-ring, #5eb3b2) !important;
-  }
-
-  .sb-search-icon {
-    flex-shrink: 0;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
   }
 
   .sb-search {
@@ -517,25 +519,34 @@
     background: none;
     border: none;
     outline: none;
-    font-size: 12px;
+    font-size: 12.5px;
     min-width: 0;
   }
 
   .sb-search::placeholder {
-    color: #4b5563;
+    color: inherit;
+    opacity: 0.85;
+  }
+
+  .sb-kbd {
+    font-size: 10.5px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    line-height: 1.4;
+    flex-shrink: 0;
   }
 
   .sb-tree {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 0;
+    padding: 2px 0 4px;
   }
 
   .sb-tree::-webkit-scrollbar {
     width: 4px;
   }
   .sb-tree::-webkit-scrollbar-track { background: transparent; }
-  .sb-tree::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+  .sb-tree::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.25); border-radius: 2px; }
 
   .sb-section {
     margin-bottom: 2px;
@@ -544,6 +555,8 @@
   .sb-section-row {
     display: flex;
     align-items: center;
+    gap: 6px;
+    padding: 8px 14px 4px;
   }
 
   .sb-add-btn {
@@ -552,22 +565,19 @@
     cursor: pointer;
     width: 22px;
     height: 22px;
-    font-size: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 3px;
+    border-radius: 4px;
     padding: 0;
-    line-height: 1;
     flex-shrink: 0;
-    margin-right: 6px;
     transition: background 0.1s, color 0.1s;
     color: inherit;
   }
 
   .sb-add-btn:hover {
     background: var(--item-hover-bg, rgba(255,255,255,0.06));
-    color: var(--text-primary, #c9cdd3);
+    color: var(--text-primary, #2c2924);
   }
 
   .sb-section-header {
@@ -575,21 +585,34 @@
     width: auto;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 10px;
-    height: 24px;
+    gap: 6px;
+    padding: 0;
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: 0.6px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     font-family: inherit;
+    user-select: none;
+    color: inherit;
+  }
+
+  .sb-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 14px;
+    cursor: pointer;
     user-select: none;
   }
 
   .sb-folder-name {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -597,36 +620,31 @@
   }
 
   /* Reveal rename/delete icons on hover over the folder row. */
-  .sb-section-header:hover .sb-edit {
+  .sb-folder-header:hover .sb-edit {
     opacity: 0.6;
-  }
-
-  .sb-caret {
-    font-size: 9px;
-    transition: transform 0.12s ease;
-    display: inline-block;
-  }
-
-  .sb-caret.expanded {
-    transform: rotate(90deg);
   }
 
   .sb-count {
     margin-left: auto;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 400;
     letter-spacing: 0;
+  }
+
+  .sb-section-header .sb-count {
+    margin-left: 2px;
   }
 
   .sb-row {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 0 10px;
-    height: 30px;
+    gap: 9px;
+    padding: 0 8px;
+    height: 32px;
     background: none;
     border: none;
+    border-radius: var(--radius, 7px);
     cursor: pointer;
     font-family: inherit;
     text-align: left;
@@ -639,10 +657,11 @@
   }
 
   .sb-row-indented {
-    padding-left: 22px;
+    padding-left: 26px;
+    height: 30px;
   }
 
-  /* Drop indicators — a thin coloured rule above (before) or below (after)
+  /* Drop indicators — a thin accent rule above (before) or below (after)
      the hovered row. Pure CSS, no extra DOM. */
   .sb-row.drop-before::before,
   .sb-row.drop-after::after {
@@ -651,24 +670,28 @@
     left: 8px;
     right: 8px;
     height: 2px;
-    background: #6366f1;
-    border-radius: 1px;
-    box-shadow: 0 0 6px rgba(99, 102, 241, 0.65);
+    background: var(--accent);
+    border-radius: 2px;
     pointer-events: none;
   }
   .sb-row.drop-before::before { top: -1px; }
   .sb-row.drop-after::after { bottom: -1px; }
 
   .sb-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
+  .sb-dot-sm {
+    width: 6px;
+    height: 6px;
+  }
+
   .sb-name {
     flex: 1;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 400;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -676,26 +699,34 @@
     transition: color 0.1s;
   }
 
+  .sb-name.active {
+    font-weight: 500;
+  }
+
+  .sb-name-sm {
+    font-size: 12.5px;
+  }
+
   .sb-droparea {
     display: flex;
     flex-direction: column;
     border: 1px dashed transparent;
-    border-radius: 4px;
+    border-radius: var(--radius, 7px);
     transition: border-color 0.1s, background 0.1s;
     padding: 1px;
-    margin: 0 4px;
+    margin: 0 8px;
   }
 
   .sb-droparea.dragover {
-    border-color: rgba(59, 130, 246, 0.6);
-    background: rgba(59, 130, 246, 0.08);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
   /* Highlight the whole folder section when dragging over a collapsed
      folder so it's obvious you can drop on the header too. */
   .sb-section.dragover {
-    background: rgba(59, 130, 246, 0.08);
-    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-radius: var(--radius, 7px);
   }
 
   .sb-row.dragging {
@@ -703,35 +734,41 @@
   }
 
   .sb-edit {
-    margin-left: 4px;
-    font-size: 11px;
-    line-height: 1;
-    padding: 2px 4px;
-    border-radius: 3px;
+    margin-left: 0;
+    padding: 2px 3px;
+    border-radius: 4px;
     cursor: pointer;
     opacity: 0;
+    display: inline-flex;
+    align-items: center;
     transition: opacity 0.1s, background 0.1s;
   }
-  .sb-row:hover .sb-edit {
+  .sb-row:hover .sb-edit,
+  .sb-row.active .sb-edit {
     opacity: 0.6;
   }
   .sb-edit:hover {
     opacity: 1 !important;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--item-hover-bg, rgba(255,255,255,0.08));
   }
   .sb-del:hover {
-    color: #ef4444 !important;
-    background: rgba(239, 68, 68, 0.1) !important;
+    color: var(--err) !important;
+    background: color-mix(in srgb, var(--err) 12%, transparent) !important;
+  }
+
+  /* The protocol tag yields to the action icons on hover/active. */
+  .sb-row:hover .sb-tag,
+  .sb-row.active .sb-tag {
+    display: none;
   }
 
   .sb-tag {
     font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
-    padding: 1px 4px;
+    padding: 1px 5px;
     border: 1px solid;
-    border-radius: 3px;
+    border-radius: 4px;
     flex-shrink: 0;
     line-height: 1.4;
   }
@@ -745,7 +782,7 @@
 
   .sb-hint {
     font-size: 11px;
-    padding: 12px 12px;
+    padding: 12px 14px;
     margin: 0;
     line-height: 1.6;
   }
@@ -753,23 +790,22 @@
   .sb-footer {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 10px;
-    height: 40px;
+    gap: 9px;
+    padding: 10px 14px;
     flex-shrink: 0;
   }
 
   .sb-user-chip {
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     font-size: 10px;
     font-weight: 700;
-    color: rgba(255,255,255,0.9);
+    letter-spacing: 0.5px;
   }
 
   .sb-username {
@@ -795,6 +831,6 @@
 
   .sb-settings-btn:hover {
     background: var(--item-hover-bg, rgba(255,255,255,0.06));
-    color: var(--text-primary, #c9cdd3);
+    color: var(--text-primary, #2c2924);
   }
 </style>

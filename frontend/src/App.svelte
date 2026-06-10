@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getTheme, setTheme } from '$lib/themes/store.svelte'
+  import { themes, themeLabels } from '$lib/themes/index'
+  import MarkTile from '$lib/icons/MarkTile.svelte'
+  import Icon from '$lib/icons/Icon.svelte'
   import TitleBar from '$lib/pylon/TitleBar.svelte'
   import Sidebar from '$lib/pylon/Sidebar.svelte'
   import TabBar from '$lib/pylon/TabBar.svelte'
@@ -111,15 +114,11 @@
 
   const theme = $derived(getTheme())
 
-  const themeKeyMap: Record<string, string> = {
-    'parchment': 'graphite',
-    'graphite':  'neonNoir',
-    'neon-noir': 'aurora',
-    'aurora':    'parchment',
-  }
-
+  /// Cycle through the theme registry in declaration order.
   function toggleTheme() {
-    setTheme(themeKeyMap[theme.name] ?? 'parchment')
+    const keys = Object.keys(themes)
+    const idx = keys.indexOf(theme.name)
+    setTheme(keys[(idx + 1) % keys.length] ?? 'parchment')
   }
 
   // Publish the active theme as global `--zx-*` CSS custom properties on the
@@ -603,10 +602,13 @@
       }
     } },
     { id: 'act-about',         label: 'Acerca de ZAPX',        icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
-    { id: 'theme-neon-noir',   label: 'Tema · Neon Noir', icon: '◐', section: 'Themes' as const, run: () => setTheme('neonNoir') },
-    { id: 'theme-graphite',    label: 'Tema · Graphite',  icon: '◐', section: 'Themes' as const, run: () => setTheme('graphite') },
-    { id: 'theme-parchment',   label: 'Tema · Parchment', icon: '◑', section: 'Themes' as const, run: () => setTheme('parchment') },
-    { id: 'theme-aurora',      label: 'Tema · Aurora',    icon: '✨', section: 'Themes' as const, run: () => setTheme('aurora') },
+    ...Object.entries(themeLabels).map(([key, label]) => ({
+      id: `theme-${key}`,
+      label: `Tema · ${label}`,
+      icon: '◐',
+      section: 'Themes' as const,
+      run: () => setTheme(key),
+    })),
   ])
 
   // Throughput in the StatusBar reflects the runtime session of the focused
@@ -982,19 +984,13 @@
       tabindex="-1"
     >
       <div class="about-header" style:border-bottom="1px solid {theme.border}">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-          <!-- ZAPX mark: two crossed lightning bolts forming an X. -->
-          <g fill={theme.accent}>
-            <path d="M 5 2 L 12 2 L 9 7 L 13 7 L 3 14 L 8 9 L 4 9 Z" transform="rotate(45 8 8)"/>
-            <path d="M 5 2 L 12 2 L 9 7 L 13 7 L 3 14 L 8 9 L 4 9 Z" transform="rotate(-45 8 8)"/>
-          </g>
-        </svg>
+        <MarkTile size={20} accent={theme.accent} paper={theme.appBg} />
         <span style:color={theme.textPrimary} style:font-size="15px" style:font-weight="600">ZAPX</span>
         <button
           class="about-close"
           style:color={theme.textDim}
           onclick={() => showAbout = false}
-        >✕</button>
+        ><Icon name="x" size={13} /></button>
       </div>
       <div class="about-body">
         <p style:color={theme.textMuted} style:font-size="12.5px" style:line-height="1.7">
@@ -1003,9 +999,9 @@
         </p>
         <table class="about-table" style:color={theme.textMuted}>
           <tbody>
-            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>0.1.0</td></tr>
+            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>0.2.0</td></tr>
             <tr><td style:color={theme.textDim}>Runtime</td><td>Tauri 2 · WebView</td></tr>
-            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{theme.name === 'neon-noir' ? 'Neon Noir' : theme.name === 'parchment' ? 'Parchment' : theme.name === 'aurora' ? 'Aurora' : 'Graphite'}</td></tr>
+            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{themeLabels[theme.name] ?? theme.name}</td></tr>
           </tbody>
         </table>
         <p class="about-hint" style:color={theme.textDim} style:font-family={theme.fontMono}>
@@ -1040,12 +1036,15 @@
     overflow: hidden;
   }
 
+  /* Terminal zone — the cards float on the body background with a 14px
+     frame around them (handoff: «terminal como tarjeta flotante»). */
   .pylon-panes {
     flex: 1;
     display: flex;
     min-height: 0;
     overflow: hidden;
     position: relative;
+    padding: 14px;
   }
 
   .pane-slot {

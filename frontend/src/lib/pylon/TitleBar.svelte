@@ -1,12 +1,17 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import type { PylonTheme } from '$lib/themes/index'
+  import { themeLabels } from '$lib/themes/index'
+  import Icon from '$lib/icons/Icon.svelte'
+  import MarkTile from '$lib/icons/MarkTile.svelte'
 
   interface MenuItem {
     label: string
     action?: () => void
     divider?: boolean
     disabled?: boolean
+    /** Render a leading check dot (active theme). */
+    checked?: boolean
   }
 
   interface Props {
@@ -45,12 +50,11 @@
     File: [
       { label: 'Quit', action: () => win.close() },
     ],
-    View: [
-      { label: themeName === 'parchment' ? '● Parchment' : '  Parchment', action: () => { onSetTheme?.('parchment'); openMenu = null } },
-      { label: themeName === 'graphite'  ? '● Graphite'  : '  Graphite',  action: () => { onSetTheme?.('graphite');  openMenu = null } },
-      { label: themeName === 'neon-noir' ? '● Neon Noir' : '  Neon Noir', action: () => { onSetTheme?.('neonNoir'); openMenu = null } },
-      { label: themeName === 'aurora'    ? '● Aurora'    : '  Aurora',    action: () => { onSetTheme?.('aurora');   openMenu = null } },
-    ],
+    View: Object.entries(themeLabels).map(([key, label]) => ({
+      label,
+      checked: themeName === key,
+      action: () => { onSetTheme?.(key); openMenu = null },
+    })),
     Session: [
       { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
       { label: 'Quick Connect  Ctrl+Shift+N', action: () => { onQuickConnect?.(); openMenu = null } },
@@ -83,6 +87,7 @@
 <header
   class="titlebar"
   style:background={theme.titlebarBg}
+  style:border-bottom="1px solid {theme.border}"
   style:color={theme.textMuted}
   style:--item-hover-bg={theme.itemHoverBg}
   style:--text-primary={theme.textPrimary}
@@ -90,20 +95,14 @@
 
   <!-- Left: brand + active session -->
   <div class="tb-left">
-    <svg class="tb-glyph" width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <!-- ZAPX mark: two crossed lightning bolts forming an X. -->
-      <g fill={theme.accent}>
-        <path d="M 5 2 L 12 2 L 9 7 L 13 7 L 3 14 L 8 9 L 4 9 Z" transform="rotate(45 8 8)"/>
-        <path d="M 5 2 L 12 2 L 9 7 L 13 7 L 3 14 L 8 9 L 4 9 Z" transform="rotate(-45 8 8)"/>
-      </g>
-    </svg>
+    <MarkTile size={15} accent={theme.accent} paper={theme.appBg} />
 
     <span class="tb-wordmark" style:color={theme.textPrimary} style:font-family={theme.fontUi}>
       ZAPX
     </span>
 
     {#if sessionName}
-      <span class="tb-sep" style:color={theme.textDim}>·</span>
+      <span class="tb-sep" style:color={theme.textDim}>/</span>
       <span class="tb-session" style:color={theme.textMuted} style:font-family={theme.fontUi}>
         {sessionName}
       </span>
@@ -122,7 +121,7 @@
             class="tb-menu-item"
             class:active={openMenu === name}
             style:color={openMenu === name ? theme.textPrimary : theme.textMuted}
-            style:background={openMenu === name ? theme.itemActiveBg : 'transparent'}
+            style:background={openMenu === name ? theme.itemHoverBg : 'transparent'}
             onclick={() => toggleMenu(name)}
           >{name}</button>
 
@@ -142,7 +141,12 @@
                     style:color={item.disabled ? theme.textDim : theme.textPrimary}
                     style:font-family={theme.fontUi}
                     onclick={item.action}
-                  >{item.label}</button>
+                  >
+                    <span class="dd-check" style:color={theme.accent}>
+                      {#if item.checked}<span class="dd-check-dot"></span>{/if}
+                    </span>
+                    {item.label}
+                  </button>
                 {/if}
               {/each}
             </div>
@@ -152,9 +156,15 @@
     </nav>
 
     <div class="tb-controls">
-      <button class="tb-ctrl" title="Minimize" style:color={theme.textDim} onclick={() => win.minimize()}>─</button>
-      <button class="tb-ctrl" title="Maximize" style:color={theme.textDim} onclick={() => win.toggleMaximize()}>□</button>
-      <button class="tb-ctrl tb-ctrl-close" title="Close" style:color={theme.textDim} onclick={() => win.close()}>✕</button>
+      <button class="tb-ctrl" title="Minimize" style:color={theme.textDim} onclick={() => win.minimize()}>
+        <Icon name="min" size={13} />
+      </button>
+      <button class="tb-ctrl" title="Maximize" style:color={theme.textDim} onclick={() => win.toggleMaximize()}>
+        <Icon name="max" size={12} />
+      </button>
+      <button class="tb-ctrl tb-ctrl-close" title="Close" style:color={theme.textDim} onclick={() => win.close()}>
+        <Icon name="x" size={13} />
+      </button>
     </div>
   </div>
 
@@ -162,13 +172,12 @@
 
 <style>
   .titlebar {
-    height: 32px;
+    height: 38px;
     display: flex;
     align-items: center;
     flex-shrink: 0;
     user-select: none;
     -webkit-user-select: none;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
     position: relative;
     z-index: 100;
   }
@@ -176,20 +185,19 @@
   .tb-left {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 12px;
+    gap: 8px;
+    padding: 0 14px;
+    white-space: nowrap;
     flex-shrink: 0;
   }
-
-  .tb-glyph { flex-shrink: 0; }
 
   .tb-wordmark {
     font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
   }
 
-  .tb-sep { font-size: 12px; opacity: 0.4; }
+  .tb-sep { font-size: 12px; }
 
   .tb-session {
     font-size: 12px;
@@ -220,19 +228,18 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 400;
-    padding: 0 9px;
-    height: 32px;
+    padding: 4px 10px;
+    border-radius: 5px;
     color: inherit;
     transition: color 0.1s, background 0.1s;
-    border-radius: 0;
   }
 
   .tb-menu-item:hover,
   .tb-menu-item.active {
     background: var(--item-hover-bg, rgba(255,255,255,0.06));
-    color: var(--text-primary, #c9cdd3);
+    color: var(--text-primary, #2c2924);
   }
 
   .tb-dropdown {
@@ -240,24 +247,41 @@
     top: 32px;
     left: 0;
     min-width: 180px;
-    border-radius: 6px;
+    border-radius: 7px;
     padding: 4px 0;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
     z-index: 200;
   }
 
   .dd-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     width: 100%;
     text-align: left;
     background: none;
     border: none;
     cursor: pointer;
     font-size: 12px;
-    padding: 5px 14px;
+    padding: 5px 12px 5px 8px;
     white-space: nowrap;
     transition: background 0.08s;
     font-family: inherit;
+  }
+
+  .dd-check {
+    width: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .dd-check-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
   }
 
   .dd-item:not(:disabled):hover {
@@ -280,9 +304,8 @@
     background: none;
     border: none;
     cursor: pointer;
-    width: 46px;
-    height: 32px;
-    font-size: 11px;
+    width: 44px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -292,7 +315,7 @@
 
   .tb-ctrl:hover {
     background: var(--item-hover-bg, rgba(255,255,255,0.08));
-    color: var(--text-primary, #c9cdd3);
+    color: var(--text-primary, #2c2924);
   }
 
   .tb-ctrl-close:hover {
