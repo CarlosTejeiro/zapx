@@ -138,6 +138,18 @@ impl Database {
         Ok(db)
     }
 
+    /// Write a clean, single-file snapshot of the live database to `dest`
+    /// via `VACUUM INTO` — safe while the connection is open (no WAL/SHM
+    /// sidecar files to copy). `dest` must not already exist.
+    pub fn vacuum_into(&self, dest: &Path) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "VACUUM INTO ?1",
+            rusqlite::params![dest.to_string_lossy().into_owned()],
+        )?;
+        Ok(())
+    }
+
     fn run_migrations(&self) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         let version: i64 = conn

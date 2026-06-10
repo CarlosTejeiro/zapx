@@ -1,4 +1,5 @@
 mod commands;
+mod data_dir;
 mod error;
 mod events;
 mod hint_watcher;
@@ -37,6 +38,33 @@ fn apply_vibrancy(window: &tauri::WebviewWindow) {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn apply_vibrancy(_window: &tauri::WebviewWindow) {}
 
+/// Filename tauri-plugin-window-state persists to (in the OS config dir).
+/// Its absence is how we detect the very first launch.
+const WINDOW_STATE_FILE: &str = "window-state.json";
+
+/// On first launch, size the main window to ~75% of the monitor work area
+/// (clamped to the configured 900×600 minimum) and center it. No-op when a
+/// saved window state exists — the plugin restores it instead.
+fn size_window_on_first_run(app: &tauri::App) {
+    let has_saved_state = app
+        .path()
+        .app_config_dir()
+        .map(|d| d.join(WINDOW_STATE_FILE).exists())
+        .unwrap_or(true);
+    if has_saved_state {
+        return;
+    }
+    let Some(win) = app.get_webview_window("main") else { return };
+    let Ok(Some(monitor)) = win.current_monitor() else { return };
+    let scale = monitor.scale_factor();
+    let logical_w = monitor.size().width as f64 / scale;
+    let logical_h = monitor.size().height as f64 / scale;
+    let w = (logical_w * 0.75).max(900.0).min(logical_w);
+    let h = (logical_h * 0.75).max(600.0).min(logical_h);
+    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+    let _ = win.center();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -49,6 +77,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_filename(WINDOW_STATE_FILE)
+                .build(),
+        )
         .setup(|app| {
             // Native window vibrancy (translucent chrome) — best effort.
             // macOS: HUD-style sidebar effect; Windows 11: acrylic; Linux: noop.
@@ -56,7 +89,15 @@ pub fn run() {
                 apply_vibrancy(&win);
             }
 
-            let data_dir = app.path().app_data_dir()?;
+            // First launch (no saved window state yet): open centered at
+            // ~75% of the monitor work area instead of the fixed config
+            // size, like SecureCRT/MobaXterm do. Subsequent launches are
+            // restored by tauri-plugin-window-state.
+            size_window_on_first_run(app);
+
+            let resolved = data_dir::resolve(app.handle())?;
+            tracing::info!(dir = %resolved.dir.display(), source = ?resolved.source, "data dir");
+            let data_dir = resolved.dir.clone();
             std::fs::create_dir_all(&data_dir)?;
 
             let db_path = data_dir.join("zapx.db");
@@ -95,8 +136,9 @@ pub fn run() {
                     .collect(),
             )));
 
-            let vault_seed = data_dir.to_string_lossy().into_owned();
+            let vault_seed = resolved.vault_seed();
             app.manage(AppState {
+                data_dir: resolved,
                 sessions: Mutex::new(HashMap::new()),
                 db,
                 highlighter,
@@ -175,6 +217,10 @@ pub fn run() {
             commands::logging::list_session_logs,
             commands::logging::list_all_session_logs,
             commands::logging::open_logs_dir,
+            commands::data_dir::get_data_dir_info,
+            commands::data_dir::set_data_dir,
+            commands::data_dir::reset_data_dir,
+            commands::data_dir::restart_app,
             commands::settings::get_settings,
             commands::settings::get_setting,
             commands::settings::set_setting,

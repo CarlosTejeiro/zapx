@@ -74,6 +74,10 @@ pub struct ActiveLog {
 
 /// Shared application state injected into Tauri commands via [`tauri::State`].
 pub struct AppState {
+    /// Resolved data directory + how it was chosen (flag/env/portable/
+    /// pointer/default). Everything under it: `zapx.db`, `session_logs/`,
+    /// `catalogs/`.
+    pub data_dir: crate::data_dir::DataDir,
     /// Live terminal sessions keyed by UUID.
     pub sessions: Mutex<HashMap<String, ActiveSession>>,
     /// SQLite database (folders, saved sessions, credential references).

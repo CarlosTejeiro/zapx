@@ -513,6 +513,35 @@ export async function openLogsDir(): Promise<string> {
   return invoke<string>('open_logs_dir')
 }
 
+// ── Data directory (DB, logs, catalogs) ────────────────────────────────────
+
+export interface DataDirInfo {
+  path: string
+  source: 'cli-flag' | 'env-var' | 'portable' | 'pointer' | 'default'
+  portable: boolean
+  default_path: string
+  changeable: boolean
+}
+
+export async function getDataDirInfo(): Promise<DataDirInfo> {
+  return invoke<DataDirInfo>('get_data_dir_info')
+}
+
+// Migrate data to `newDir`, write the startup pointer and return a summary.
+// Takes effect on next launch — pair with `restartApp()`.
+export async function setDataDir(newDir: string): Promise<string> {
+  return invoke<string>('set_data_dir', { newDir })
+}
+
+// Revert to the platform default location on next launch (data stays put).
+export async function resetDataDir(): Promise<void> {
+  return invoke<void>('reset_data_dir')
+}
+
+export async function restartApp(): Promise<void> {
+  return invoke<void>('restart_app')
+}
+
 // Persist the user-typed password into the backend in-memory cache. Used by
 // the reconnect dialog when the OS keychain denies access on dev builds.
 export async function cacheSessionPassword(

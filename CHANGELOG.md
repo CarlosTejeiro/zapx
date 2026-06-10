@@ -5,6 +5,24 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Portable Windows executable** (`ZAPX_x64_portable.exe`) published as a
+  release asset — runs from any folder, no installation (WebView2 runtime
+  required; preinstalled on Win11/updated Win10).
+- **Portable mode**: a `portable` marker file next to the executable keeps
+  all data (DB, settings, logs, catalogs) in a `data/` folder beside it.
+  Credentials switch from the OS keyring to the AES-256-GCM database
+  fallback with a stable seed so the folder works across machines.
+- **User-selectable data folder**: Settings → Data shows where data lives
+  and can migrate it to any folder (DB snapshot via `VACUUM INTO`, fallback
+  secrets re-encrypted for the new location, logs + catalogs copied).
+  Also overridable via `ZAPX_DATA_DIR` env var or `--data-dir` CLI flag.
+- **Window state**: size, position and maximized state persist across
+  launches (`tauri-plugin-window-state`); the first launch opens centered
+  at ~75 % of the monitor work area instead of a fixed 1200×800.
+
 ## [0.2.0] - 2026-06-10
 
 ### Changed

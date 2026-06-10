@@ -54,6 +54,23 @@ xattr -cr /Applications/ZAPX.app
 
 or right-click the app → **Open** → **Open** on first launch.
 
+### Windows portable
+
+`ZAPX_x64_portable.exe` runs from any folder without installation (it needs
+the WebView2 runtime, preinstalled on Windows 11 and updated Windows 10).
+To make it fully self-contained — sessions, settings, snippet catalogs and
+logs travelling with the exe — create an empty file named `portable` next to
+it; everything is then kept in a `data/` folder beside the executable. In
+portable mode credentials are stored AES-256-GCM-encrypted in the database
+instead of the OS keyring: anyone with access to the folder can use them, so
+treat the folder like a physical key.
+
+### Custom data folder
+
+Where ZAPX keeps its data (`zapx.db`, `session_logs/`, `catalogs/`) can be
+changed in **Settings → Data** (migrates your data and restarts), or forced
+with the `ZAPX_DATA_DIR` environment variable / `--data-dir <path>` CLI flag.
+
 ## Building from source
 
 Prerequisites: Rust stable ≥ 1.80, Node.js LTS, pnpm.
