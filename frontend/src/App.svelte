@@ -66,6 +66,7 @@
   import { getSessionPlatform, getSessionTcpMss } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
   import { check as checkUpdate } from '@tauri-apps/plugin-updater'
+  import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder, BroadcastGroup } from '$lib/bridge/types'
@@ -210,6 +211,9 @@
   let showSnippets = $state(false)
   let showGroups = $state(false)
   let showAbout = $state(false)
+  // Bundle version from tauri.conf.json — single source of truth.
+  let appVersion = $state('')
+  getVersion().then((v) => (appVersion = v)).catch(() => {})
   let showPalette = $state(false)
   // Lightweight text-prompt dialog (replaces window.prompt which Tauri blocks).
   let prompt = $state<{
@@ -999,7 +1003,7 @@
         </p>
         <table class="about-table" style:color={theme.textMuted}>
           <tbody>
-            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>0.2.0</td></tr>
+            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>{appVersion || '—'}</td></tr>
             <tr><td style:color={theme.textDim}>Runtime</td><td>Tauri 2 · WebView</td></tr>
             <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{themeLabels[theme.name] ?? theme.name}</td></tr>
           </tbody>

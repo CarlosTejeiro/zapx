@@ -9,31 +9,42 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free and open source 
 
 ---
 
-## Features (v0.1.0)
+## Features
 
 | Feature | Details |
 |---|---|
-| **Protocols** | SSH2, Telnet, Serial (COM / TTY) |
-| **Session manager** | Folder tree, drag-and-drop, search |
-| **Quick Connect** | Open SSH/Telnet/Local sessions instantly without saving |
-| **Keyword highlighting** | Per-rule regex, true-color ANSI, 10 default Cisco/IOS patterns |
-| **Session logging** | Raw byte capture, 50 MB rotation, per-session history panel |
-| **Themes** | 10 built-in colour schemes (One Dark, Dracula, Tokyo Night, Nord, and more) |
-| **Appearance** | Live font family, font size, cursor style, cursor blink |
-| **In-terminal search** | xterm.js SearchAddon, incremental, Ctrl+F |
-| **Keyboard shortcuts** | Ctrl+N Quick Connect, Ctrl+T New Tab, Ctrl+W Close, Ctrl+Tab cycle, Ctrl+, Settings |
+| **Protocols** | SSH2 (password / public key / SSH agent / 2FA keyboard-interactive), Telnet, Serial (COM / TTY), local shell |
+| **Jump hosts & tunnels** | ProxyJump through saved sessions, port forwarding `-L` / `-D` (SOCKS5) / `-R` |
+| **SFTP** | File browser with streaming up/downloads, progress and cancellation |
+| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar) |
+| **Splits & multi-exec** | Recursive split panes, grid view, broadcast typing to many sessions |
+| **Login automation** | Expect-like login scripts (expect/send steps) per saved session |
+| **Hints & snippets** | Command autocomplete from history + vendor catalogs (12 platforms), per-platform snippets on `Ctrl+Shift+1..9`, automatic platform detection from the prompt |
+| **Keyword highlighting** | Per-rule regex, true-color ANSI, user-overridable vendor catalogs (Cisco, Juniper, Fortinet, Palo Alto, F5…) |
+| **Session logging** | Plain or raw capture, 50 MB rotation, per-session history panel |
+| **Themes** | 7 full themes — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor, Amber — UI chrome + terminal ANSI palettes, bundled Geist / JetBrains Mono fonts |
+| **Command palette** | `Ctrl+K` — fuzzy-launch sessions, groups, actions and themes |
+| **Portable & data control** | Windows portable exe, portable mode (data travels with the binary), user-selectable data folder |
+| **Window memory** | Remembers size/position/maximized; first launch sizes to your monitor |
 
 ## Keyboard shortcuts
 
+All customizable in **Settings → Shortcuts**. Defaults:
+
 | Shortcut | Action |
 |---|---|
-| `Ctrl+N` | Quick Connect dialog |
+| `Ctrl+K` | Command palette |
+| `Ctrl+N` | New saved session |
+| `Ctrl+Shift+N` | Quick Connect (ad-hoc, nothing saved) |
 | `Ctrl+T` | New local shell tab |
 | `Ctrl+W` | Close current tab |
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+F` | Open in-terminal search |
-| `Ctrl+,` | Open Settings |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+\` / `Ctrl+Shift+\` | Split pane horizontally / vertically |
+| `Ctrl+Shift+M` | Toggle multi-exec broadcast |
+| `Ctrl+Shift+S` | Snippets |
+| `Ctrl+Shift+1..9` | Fire snippet 1..9 |
+| `Ctrl+F` | In-terminal search |
+| `Ctrl+,` | Settings |
 | `Escape` | Close search / close dialog |
 
 ## Installation
@@ -96,13 +107,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development setup.
 ## Architecture
 
 ```
-rust_terminal/
+zapx/
 ├── crates/
-│   ├── app/               # Tauri shell — commands, state, IPC bridge
-│   ├── core-transport/    # SSH, Telnet, Serial, local PTY transports
-│   ├── core-persistence/  # SQLite via rusqlite — sessions, rules, logs, themes
-│   ├── core-vault/        # OS keyring (passwords never in SQLite)
+│   ├── app/               # Tauri shell — commands, state, IPC bridge, data-dir resolver
+│   ├── core-transport/    # SSH, Telnet, Serial, local PTY, SFTP, port forwarding
+│   ├── core-persistence/  # SQLite via rusqlite — sessions, rules, logs, settings
+│   ├── core-vault/        # OS keyring + AES-256-GCM portable fallback
 │   ├── core-highlight/    # Regex keyword highlighting, ANSI injection
+│   ├── core-hints/        # Command suggestions: history, vendor catalogs, snippets
+│   ├── core-terminal/     # VT100/xterm escape-sequence parser
 │   ├── core-logging/      # Session log writer with 50 MB rotation
 │   ├── core-session/      # Session lifecycle types
 │   └── core-config/       # Config helpers
@@ -113,18 +126,25 @@ rust_terminal/
 ## Security
 
 - Passwords are stored in the **OS keyring** (Windows Credential Manager, macOS Keychain,
-  libsecret on Linux) — never in SQLite and never in logs.
+  libsecret on Linux) — never in SQLite and never in logs. In portable mode they are
+  stored AES-256-GCM-encrypted in the database instead (see *Windows portable* above).
+- Host key verification with SHA-256 fingerprints and known_hosts.
 - Session logs capture raw terminal bytes only; credentials are not echoed by the PTY.
 - `#![forbid(unsafe_code)]` in all core crates.
 
+## Releases
+
+Per-version notes live in [docs/releases/](docs/releases/) and the full history in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Roadmap
 
-- [ ] macOS and Linux builds
-- [ ] Signed Windows installer (code-signing certificate)
-- [ ] Auto-update via Tauri Updater
-- [ ] Jump hosts / SSH tunnels
-- [ ] SFTP file browser
-- [ ] Scripted sessions (Expect-like automation)
+- [ ] Code signing: Apple Developer ID (macOS notarization) + Windows certificate
+- [ ] Auto-update via Tauri Updater (gated on signing)
+- [ ] Session importers: `~/.ssh/config`, PuTTY, SecureCRT
+- [ ] Multi-send to all panes of a regular tab (today: broadcast groups/grid)
+- [ ] Regex matching in login-script expects
+- [ ] SFTP drag & drop + edit remote files with a local editor
 
 ## License
 
