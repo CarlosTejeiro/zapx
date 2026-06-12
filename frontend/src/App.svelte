@@ -12,6 +12,8 @@
   import type { PaneData } from '$lib/pylon/Pane.svelte'
   import SplitTree from '$lib/pylon/SplitTree.svelte'
   import GridView from '$lib/pylon/GridView.svelte'
+  import MasterInputBar from '$lib/pylon/MasterInputBar.svelte'
+  import CommandListDialog from '$lib/orchestrator/CommandListDialog.svelte'
   import {
     type PaneTreeNode,
     type SplitDirection,
@@ -212,6 +214,7 @@
   let showSettings = $state(false)
   let showSnippets = $state(false)
   let showGroups = $state(false)
+  let showCommandList = $state(false)
   let showAbout = $state(false)
   // Bundle version from tauri.conf.json — single source of truth.
   let appVersion = $state('')
@@ -299,6 +302,27 @@
 
   const splitOn = $derived(
     !!activeTab && activeTab.layout.kind === 'split' && leafCount(activeTab.layout.root) > 1,
+  )
+
+  /// Live session UUIDs of the active tab's panes — feeds the master input
+  /// bar on regular (split) tabs when multi-exec is on. Grid tabs render
+  /// their own bar inside GridView.
+  const activeTabSessionIds = $derived(
+    activeTab
+      ? tabPanes(activeTab)
+          .map((p) => paneToSession.get(p.id))
+          .filter((id): id is string => typeof id === 'string')
+      : [],
+  )
+
+  /// Every live session across all tabs, labelled — target list for the
+  /// command-list dialog.
+  const liveTargets = $derived(
+    tabs.flatMap((t) =>
+      tabPanes(t)
+        .map((p) => ({ sessionId: paneToSession.get(p.id), label: p.label, tabLabel: t.label, active: t.id === activeTabId }))
+        .filter((x): x is { sessionId: string; label: string; tabLabel: string; active: boolean } => typeof x.sessionId === 'string'),
+    ),
   )
   const canClosePanes = $derived(splitOn)
 
@@ -678,6 +702,7 @@
     { id: 'act-quick',         label: 'Quick Connect',             icon: '⚡', section: 'Actions' as const, run: () => (showQuickConnect = true) },
     { id: 'act-snippets',      label: 'Abrir Snippets',            icon: '✂', section: 'Actions' as const, run: () => (showSnippets = true) },
     { id: 'act-groups',        label: 'Grupos de broadcast…',      icon: '⇶', section: 'Actions' as const, run: () => (showGroups = true) },
+    { id: 'act-cmdlist',       label: 'Enviar lista de comandos…', icon: '☰', section: 'Actions' as const, run: () => (showCommandList = true) },
     { id: 'act-settings',      label: 'Abrir Settings',            icon: '⚙', section: 'Actions' as const, run: () => (showSettings = true) },
     ...groups.map((g) => ({
       id: `group-${g.id}`,
@@ -844,6 +869,7 @@
     onExport={handleExport}
     onImport={handleImport}
     onImportSshConfig={handleImportSshConfig}
+    onCommandList={() => (showCommandList = true)}
   />
 
   <div class="pylon-body">
@@ -987,6 +1013,12 @@
         {/each}
       </div>
 
+      {#if multiOn && activeTab?.layout.kind === 'split'}
+        <!-- Multi-exec on a regular tab: same master bar as grid mode,
+             broadcasting to every live pane of the active tab. -->
+        <MasterInputBar {theme} sessionIds={activeTabSessionIds} />
+      {/if}
+
       <SnippetButtonBar {theme} />
 
       <StatusBar
@@ -1040,6 +1072,13 @@
     {sessions}
     onClose={() => (showGroups = false)}
     onOpenGrid={(g) => { showGroups = false; openGroupAsGrid(g) }}
+  />
+{/if}
+
+{#if showCommandList}
+  <CommandListDialog
+    targets={liveTargets}
+    onClose={() => (showCommandList = false)}
   />
 {/if}
 

@@ -28,6 +28,7 @@
     onExport?: () => void
     onImport?: () => void
     onImportSshConfig?: () => void
+    onCommandList?: () => void
     themeName?: string
   }
 
@@ -45,6 +46,7 @@
     onExport,
     onImport,
     onImportSshConfig,
+    onCommandList,
     themeName = 'parchment',
   }: Props = $props()
 
@@ -71,6 +73,7 @@
     ],
     Tools: [
       { label: 'Snippets…', action: () => { onSnippets?.(); openMenu = null } },
+      { label: 'Send command list…', action: () => { onCommandList?.(); openMenu = null } },
       { label: 'Settings  Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
     ],
     Help: [

@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Multi-send on regular tabs**: with multi-exec on (Ctrl+Shift+M), the
+  master input bar from grid mode now also appears on ordinary split tabs,
+  broadcasting to every live pane of the active tab — including "live"
+  keystroke streaming.
+- **Send command list** (Tools menu / command palette): paste a runbook —
+  one command per line, `#` comments skipped — pick any set of open
+  sessions across tabs, set the pause between lines and dispatch it to all
+  of them at once, with live progress and mid-run cancel. SecureCRT
+  "command window" style.
+
 ## [0.4.0] - 2026-06-12
 
 ### Added
