@@ -5,7 +5,7 @@ use core_persistence::HighlightRule;
 use crate::error::AppError;
 use crate::state::AppState;
 
-fn rebuild_highlighter(state: &AppState) {
+pub(crate) fn rebuild_highlighter(state: &AppState) {
     let rules = state.db.list_highlight_rules().unwrap_or_default();
     let converted: Vec<core_highlight::HighlightRule> = rules
         .into_iter()

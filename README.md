@@ -25,6 +25,7 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free and open source 
 | **Themes** | 7 full themes — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor, Amber — UI chrome + terminal ANSI palettes, bundled Geist / JetBrains Mono fonts |
 | **Command palette** | `Ctrl+K` — fuzzy-launch sessions, groups, actions and themes |
 | **Portable & data control** | Windows portable exe, portable mode (data travels with the binary), user-selectable data folder |
+| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords) — idempotent import for backup, migration and team sharing |
 | **Window memory** | Remembers size/position/maximized; first launch sizes to your monitor |
 
 ## Keyboard shortcuts
@@ -141,7 +142,7 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 
 - [ ] Code signing: Apple Developer ID (macOS notarization) + Windows certificate
 - [ ] Auto-update via Tauri Updater (gated on signing)
-- [ ] Session importers: `~/.ssh/config`, PuTTY, SecureCRT
+- [ ] Importers for third-party formats: `~/.ssh/config`, PuTTY, MobaXterm, SecureCRT (on top of the native import pipeline)
 - [ ] Multi-send to all panes of a regular tab (today: broadcast groups/grid)
 - [ ] Regex matching in login-script expects
 - [ ] SFTP drag & drop + edit remote files with a local editor

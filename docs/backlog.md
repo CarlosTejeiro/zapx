@@ -33,4 +33,11 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 ## Ideas
 
+- **Third-party session importers**: parse `~/.ssh/config`, PuTTY sessions,
+  MobaXterm.ini and SecureCRT XML into the native import pipeline
+  (`crates/app/src/commands/transfer.rs` — `apply_import` already handles id
+  remapping, duplicates and warnings; importers only need to produce an
+  `ExportFile`). Expect partial mappings: import what ZAPX supports, emit
+  warnings for the rest.
+
 <!-- Add out-of-scope ideas below this line -->

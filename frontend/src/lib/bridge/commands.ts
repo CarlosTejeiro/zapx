@@ -513,6 +513,39 @@ export async function openLogsDir(): Promise<string> {
   return invoke<string>('open_logs_dir')
 }
 
+// ── Export / import of the ZAPX environment ────────────────────────────────
+
+export interface ExportSummary {
+  path: string
+  sessions: number
+  folders: number
+  groups: number
+  snippets: number
+  rules: number
+}
+
+export interface ImportSummary {
+  sessions_added: number
+  sessions_skipped: number
+  folders_added: number
+  groups_added: number
+  snippets_added: number
+  rules_added: number
+  warnings: string[]
+}
+
+// Write the whole environment (sessions, folders, groups, snippets,
+// highlight rules — never credentials) as versioned JSON at `path`.
+export async function exportSessions(path: string): Promise<ExportSummary> {
+  return invoke<ExportSummary>('export_sessions', { path })
+}
+
+// Merge a ZAPX export file into the current DB. Idempotent: existing items
+// are skipped and counted in the summary.
+export async function importSessions(path: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_sessions', { path })
+}
+
 // ── Data directory (DB, logs, catalogs) ────────────────────────────────────
 
 export interface DataDirInfo {

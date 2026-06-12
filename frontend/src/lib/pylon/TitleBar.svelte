@@ -25,6 +25,8 @@
     onToggleTheme?: () => void
     onSetTheme?: (key: string) => void
     onAbout?: () => void
+    onExport?: () => void
+    onImport?: () => void
     themeName?: string
   }
 
@@ -39,6 +41,8 @@
     onToggleTheme,
     onSetTheme,
     onAbout,
+    onExport,
+    onImport,
     themeName = 'parchment',
   }: Props = $props()
 
@@ -48,6 +52,9 @@
 
   const menus = $derived<Record<string, MenuItem[]>>({
     File: [
+      { label: 'Export sessions…', action: () => { onExport?.(); openMenu = null } },
+      { label: 'Import sessions…', action: () => { onImport?.(); openMenu = null } },
+      { label: '', divider: true },
       { label: 'Quit', action: () => win.close() },
     ],
     View: Object.entries(themeLabels).map(([key, label]) => ({

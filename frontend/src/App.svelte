@@ -37,7 +37,8 @@
   import Toasts from '$lib/ui/Toasts.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
+  import { exportSessions, importSessions } from '$lib/bridge/commands'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import {
@@ -503,6 +504,70 @@
     }
   }
 
+  // ── export / import ──────────────────────────────────────────────────────
+
+  /// Export the whole environment to a user-chosen JSON file. Warns that
+  /// login scripts travel verbatim (their `send` steps may contain secrets);
+  /// passwords themselves never leave the keyring.
+  async function handleExport() {
+    const proceed = await ask(
+      'Se exportarán sesiones, carpetas, grupos, snippets y reglas de highlight.\n\n' +
+        'Las contraseñas NO se exportan. Ojo: los login scripts sí van tal cual ' +
+        '(sus pasos "send" pueden contener secretos escritos a mano).',
+      { title: 'Exportar sesiones', kind: 'info' },
+    )
+    if (!proceed) return
+    const path = await saveFileDialog({
+      title: 'Exportar sesiones de ZAPX',
+      defaultPath: 'zapx-sessions.json',
+      filters: [{ name: 'ZAPX export', extensions: ['json'] }],
+    })
+    if (!path) return
+    try {
+      const s = await exportSessions(path)
+      showToast({
+        kind: 'success',
+        title: 'Export completado',
+        detail: `${s.sessions} sesiones, ${s.folders} carpetas, ${s.groups} grupos, ${s.snippets} snippets, ${s.rules} reglas → ${s.path}`,
+      })
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Export falló', detail: String(e) })
+    }
+  }
+
+  /// Merge a ZAPX export file into the current environment (idempotent —
+  /// existing items are skipped) and refresh every affected store.
+  async function handleImport() {
+    const path = await openFileDialog({
+      title: 'Importar sesiones de ZAPX',
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'ZAPX export', extensions: ['json'] }],
+    })
+    if (typeof path !== 'string' || !path) return
+    try {
+      const s = await importSessions(path)
+      showToast({
+        kind: 'success',
+        title: 'Import completado',
+        detail:
+          `${s.sessions_added} sesiones nuevas (${s.sessions_skipped} ya existían), ` +
+          `${s.folders_added} carpetas, ${s.groups_added} grupos, ` +
+          `${s.snippets_added} snippets, ${s.rules_added} reglas`,
+      })
+      if (s.warnings.length > 0) {
+        showToast({
+          kind: 'warning',
+          title: `Import: ${s.warnings.length} aviso(s)`,
+          detail: s.warnings.slice(0, 3).join(' · ') + (s.warnings.length > 3 ? ' …' : ''),
+        })
+      }
+      await load()
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Import falló', detail: String(e) })
+    }
+  }
+
   /// Open a new tab from a [`QuickConnectDialog`] submission. Connections are
   /// in-memory only (no SQLite row), so closing the tab cleans up everything.
   function handleQuickConnect(params: ConnectParams) {
@@ -605,6 +670,8 @@
         showToast({ kind: 'error', title: 'Logs', detail: e instanceof Error ? e.message : String(e) })
       }
     } },
+    { id: 'act-export',        label: 'Exportar sesiones…',        icon: '⤓', section: 'Actions' as const, run: handleExport },
+    { id: 'act-import',        label: 'Importar sesiones…',        icon: '⤒', section: 'Actions' as const, run: handleImport },
     { id: 'act-about',         label: 'Acerca de ZAPX',        icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
     ...Object.entries(themeLabels).map(([key, label]) => ({
       id: `theme-${key}`,
@@ -744,6 +811,8 @@
     onToggleTheme={toggleTheme}
     onSetTheme={(k) => setTheme(k)}
     onAbout={() => showAbout = true}
+    onExport={handleExport}
+    onImport={handleImport}
   />
 
   <div class="pylon-body">

@@ -602,6 +602,20 @@ impl Database {
         Ok(())
     }
 
+    /// Set (or clear) the ProxyJump bastion of a session. Used by the import
+    /// pipeline's second pass, after every session id has been remapped.
+    pub fn set_session_via(&self, id: i64, via_session_id: Option<i64>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions SET via_session_id = ?1 WHERE id = ?2",
+            rusqlite::params![via_session_id, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
     pub fn delete_session(&self, id: i64) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM sessions WHERE id=?1", rusqlite::params![id])?;

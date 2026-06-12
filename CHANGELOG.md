@@ -5,6 +5,17 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Export / import of the ZAPX environment** (File menu and command
+  palette): one versioned JSON file with sessions, folders, broadcast
+  groups, snippets and highlight rules. Passwords never leave the OS
+  keyring — imported password sessions prompt on first connect. Import is
+  idempotent (existing items are skipped) and remaps all ids, including
+  ProxyJump bastion references and group memberships, reporting a summary
+  with warnings (missing key files, unresolved bastions).
+
 ## [0.3.0] - 2026-06-11
 
 ### Added

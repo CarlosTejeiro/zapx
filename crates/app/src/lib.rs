@@ -217,6 +217,8 @@ pub fn run() {
             commands::logging::list_session_logs,
             commands::logging::list_all_session_logs,
             commands::logging::open_logs_dir,
+            commands::transfer::export_sessions,
+            commands::transfer::import_sessions,
             commands::data_dir::get_data_dir_info,
             commands::data_dir::set_data_dir,
             commands::data_dir::reset_data_dir,
