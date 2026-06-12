@@ -5,39 +5,45 @@ block that gates them is closed.
 
 Add entries with format: `- **Feature name**: brief description. Gated by: Bloque N.`
 
-## Planned for 0.3
+## Planned for 0.5
 
-- **Portable Windows executable (release asset)**: publish the raw `ZAPX.exe`
-  (already produced by `cargo tauri build`) as a `ZAPX_x64_portable.exe` asset in
-  the release workflow, Windows matrix only. Document the WebView2 runtime
-  requirement (preinstalled on Win11 / updated Win10; the installers bootstrap
-  it, the portable exe does not).
-- **Portable mode (data travels with the exe)**: when a `portable` marker file
-  (or `data/` folder) exists next to the executable, redirect the app data dir
-  (DB, settings, logs, catalogs) there instead of `%APPDATA%`/`~/Library`.
-  Credentials switch from the OS keyring to the existing `core-vault`
-  AES-256-GCM fallback, with an explicit security notice (KeePass-style).
-- **User-selectable data directory**: setting (+ `ZAPX_DATA_DIR` env var /
-  `--data-dir` CLI flag) that relocates `zapx.db`, settings, `session_logs/`
-  and `catalogs/` (snippet/hint files) to a user-chosen folder — e.g. a synced
-  drive or a network share. Needs a single data-dir resolution point in
-  `crates/app` (today the path is resolved per subsystem), plus a "move
-  existing data" migration helper in Settings. Consider accepting YAML in
-  addition to JSON for user catalogs while at it.
-- **Window size/state awareness**: remember window size, position and
-  maximized state across launches (`tauri-plugin-window-state`); on first run,
-  open centered at ~75 % of the monitor work area (clamped to min 900×600)
-  instead of the fixed 1200×800. This is what SecureCRT/MobaXterm do
-  (SecureCRT additionally syncs terminal rows×cols — out of scope here since
-  xterm.js + FitAddon already reflow on resize).
+- **Third-party session importers (PuTTY / MobaXterm / SecureCRT)**: parsers
+  that produce an `ExportFile` and feed the existing idempotent pipeline
+  (`crates/app/src/commands/transfer.rs::apply_import` — remapping, duplicate
+  skipping and warnings come for free; the `~/.ssh/config` importer in
+  `crates/app/src/importers/ssh_config.rs` is the template). Sources: PuTTY =
+  Windows registry `HKCU\Software\SimonTatham\PuTTY\Sessions` (or exported
+  .reg file), MobaXterm = `MobaXterm.ini` `[Bookmarks]` sections (positional
+  `#`-separated fields), SecureCRT = its XML config export. Partial mappings
+  expected: import what ZAPX supports, warn about the rest.
+- **Multi-send in regular tabs**: today broadcast typing works in grid tabs
+  (MasterInputBar) and via the Multi toggle fan-out; extend the master-input
+  experience to ordinary split/tab layouts so any set of open sessions can be
+  driven at once, MobaXterm-style.
+- **Send command list to N sessions (SecureCRT "Command Window")**: paste or
+  load a list of commands and dispatch it line-by-line to selected open
+  sessions — sequential with per-line pacing (and reuse the prompt-return
+  detection from the orchestrator/CommandRunner for "wait for prompt between
+  lines"). Combine with broadcast groups for one-click fleet changes.
+- **Custom snippet button bar (SecureCRT button bar)**: today the bar under
+  the terminal (`SnippetButtonBar.svelte`) auto-populates from per-platform
+  snippets + recents. Add a user-curated mode: the user creates/pins buttons
+  (label, command, optional color, order), persisted per platform or global,
+  drag-to-reorder, same `--zx-*` design system as the rest of the chrome.
+  `Ctrl+Shift+1..9` keeps firing the first nine visible buttons.
 
 ## Ideas
 
-- **Third-party session importers**: parse `~/.ssh/config`, PuTTY sessions,
-  MobaXterm.ini and SecureCRT XML into the native import pipeline
-  (`crates/app/src/commands/transfer.rs` — `apply_import` already handles id
-  remapping, duplicates and warnings; importers only need to produce an
-  `ExportFile`). Expect partial mappings: import what ZAPX supports, emit
-  warnings for the rest.
+- **Linux packaging — AUR / Flathub / Snap**: the AppImage/deb/rpm already
+  work on Arch, but native channels help adoption. Cheapest first: publish a
+  `zapx-bin` PKGBUILD to the AUR that repacks the released .deb (update via
+  CI on each release). Then Flathub (best cross-distro discoverability for
+  GUI apps; needs a flatpak manifest + review) and optionally Snapcraft.
+- **Smarter hints — command-sequence learning**: beyond frecency, learn
+  per-platform command bigrams ("after `conf t` you usually run `interface…`")
+  from `command_history` (already persisted with timestamps per session) and
+  boost those continuations in the hint popup right after the previous
+  command runs. Pure local heuristic (counts + recency decay), no telemetry;
+  fits in `core-hints` next to the existing frecency scorer.
 
 <!-- Add out-of-scope ideas below this line -->

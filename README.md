@@ -144,6 +144,10 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 - [ ] Auto-update via Tauri Updater (gated on signing)
 - [ ] Importers for third-party formats: PuTTY, MobaXterm, SecureCRT (on top of the native import pipeline; `~/.ssh/config` already supported)
 - [ ] Multi-send to all panes of a regular tab (today: broadcast groups/grid)
+- [ ] Command list dispatch to N sessions at once (SecureCRT-style command window)
+- [ ] User-curated snippet button bar (pin/create buttons, SecureCRT-style)
+- [ ] Smarter hints: learn command sequences per platform and suggest the usual next command
+- [ ] Linux packaging: AUR (`zapx-bin`), Flathub, Snap
 - [ ] Regex matching in login-script expects
 - [ ] SFTP drag & drop + edit remote files with a local editor
 
