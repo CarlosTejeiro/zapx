@@ -324,6 +324,34 @@ pub async fn import_sessions(
     Ok(summary)
 }
 
+/// Import SSH sessions from an OpenSSH client config (`~/.ssh/config` by
+/// default). The parser feeds the same `apply_import` pipeline as the
+/// native format, so duplicates/remapping/summary behave identically.
+#[tauri::command]
+pub async fn import_ssh_config(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<ImportSummary, AppError> {
+    use tauri::Manager;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let cfg = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => home.join(".ssh").join("config"),
+    };
+    let parsed = crate::importers::ssh_config::parse(&cfg, &home)
+        .map_err(|e| AppError::Internal(format!("{}: {e}", cfg.display())))?;
+    let mut summary = apply_import(&state.db, &parsed.file)?;
+    // Parser warnings (skipped patterns, multi-hop jumps…) ride along.
+    let mut warnings = parsed.warnings;
+    warnings.append(&mut summary.warnings);
+    summary.warnings = warnings;
+    Ok(summary)
+}
+
 // ── tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

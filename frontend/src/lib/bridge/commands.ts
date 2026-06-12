@@ -546,6 +546,12 @@ export async function importSessions(path: string): Promise<ImportSummary> {
   return invoke<ImportSummary>('import_sessions', { path })
 }
 
+// Import SSH sessions from an OpenSSH client config. Omitting `path` uses
+// `~/.ssh/config`. Same idempotent pipeline/summary as importSessions.
+export async function importSshConfig(path?: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_ssh_config', { path: path ?? null })
+}
+
 // ── Data directory (DB, logs, catalogs) ────────────────────────────────────
 
 export interface DataDirInfo {

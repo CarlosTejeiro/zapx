@@ -27,6 +27,7 @@
     onAbout?: () => void
     onExport?: () => void
     onImport?: () => void
+    onImportSshConfig?: () => void
     themeName?: string
   }
 
@@ -43,6 +44,7 @@
     onAbout,
     onExport,
     onImport,
+    onImportSshConfig,
     themeName = 'parchment',
   }: Props = $props()
 
@@ -54,6 +56,7 @@
     File: [
       { label: 'Export sessions…', action: () => { onExport?.(); openMenu = null } },
       { label: 'Import sessions…', action: () => { onImport?.(); openMenu = null } },
+      { label: 'Import from SSH config…', action: () => { onImportSshConfig?.(); openMenu = null } },
       { label: '', divider: true },
       { label: 'Quit', action: () => win.close() },
     ],

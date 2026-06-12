@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idempotent (existing items are skipped) and remaps all ids, including
   ProxyJump bastion references and group memberships, reporting a summary
   with warnings (missing key files, unresolved bastions).
+- **Import from `~/.ssh/config`** (File → Import from SSH config…): parses
+  Host blocks (HostName, User, Port, IdentityFile with `~` expansion,
+  ProxyJump resolved between imported aliases, Include with `*` glob) into
+  the same idempotent pipeline. Wildcard/`Match` blocks and unsupported
+  directives are skipped with warnings.
 
 ## [0.3.0] - 2026-06-11
 

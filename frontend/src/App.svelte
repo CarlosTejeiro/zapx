@@ -38,7 +38,8 @@
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
   import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
-  import { exportSessions, importSessions } from '$lib/bridge/commands'
+  import { exportSessions, importSessions, importSshConfig } from '$lib/bridge/commands'
+  import type { ImportSummary } from '$lib/bridge/commands'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import {
@@ -535,6 +536,26 @@
     }
   }
 
+  /// Shared toast reporting for every import source.
+  async function reportImport(s: ImportSummary) {
+    showToast({
+      kind: 'success',
+      title: 'Import completado',
+      detail:
+        `${s.sessions_added} sesiones nuevas (${s.sessions_skipped} ya existían), ` +
+        `${s.folders_added} carpetas, ${s.groups_added} grupos, ` +
+        `${s.snippets_added} snippets, ${s.rules_added} reglas`,
+    })
+    if (s.warnings.length > 0) {
+      showToast({
+        kind: 'warning',
+        title: `Import: ${s.warnings.length} aviso(s)`,
+        detail: s.warnings.slice(0, 3).join(' · ') + (s.warnings.length > 3 ? ' …' : ''),
+      })
+    }
+    await load()
+  }
+
   /// Merge a ZAPX export file into the current environment (idempotent —
   /// existing items are skipped) and refresh every affected store.
   async function handleImport() {
@@ -546,25 +567,33 @@
     })
     if (typeof path !== 'string' || !path) return
     try {
-      const s = await importSessions(path)
-      showToast({
-        kind: 'success',
-        title: 'Import completado',
-        detail:
-          `${s.sessions_added} sesiones nuevas (${s.sessions_skipped} ya existían), ` +
-          `${s.folders_added} carpetas, ${s.groups_added} grupos, ` +
-          `${s.snippets_added} snippets, ${s.rules_added} reglas`,
-      })
-      if (s.warnings.length > 0) {
-        showToast({
-          kind: 'warning',
-          title: `Import: ${s.warnings.length} aviso(s)`,
-          detail: s.warnings.slice(0, 3).join(' · ') + (s.warnings.length > 3 ? ' …' : ''),
-        })
-      }
-      await load()
+      await reportImport(await importSessions(path))
     } catch (e) {
       showToast({ kind: 'error', title: 'Import falló', detail: String(e) })
+    }
+  }
+
+  /// Import hosts from the OpenSSH client config. Defaults to ~/.ssh/config;
+  /// declining the prompt opens a file picker for a custom location.
+  async function handleImportSshConfig() {
+    const useDefault = await ask(
+      'Importar los hosts de ~/.ssh/config?\n\nElige "No" para seleccionar otro fichero de configuración SSH.',
+      { title: 'Importar desde SSH config', kind: 'info' },
+    )
+    let path: string | undefined
+    if (!useDefault) {
+      const picked = await openFileDialog({
+        title: 'Elegir fichero ssh_config',
+        multiple: false,
+        directory: false,
+      })
+      if (typeof picked !== 'string' || !picked) return
+      path = picked
+    }
+    try {
+      await reportImport(await importSshConfig(path))
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Import SSH config falló', detail: String(e) })
     }
   }
 
@@ -672,6 +701,7 @@
     } },
     { id: 'act-export',        label: 'Exportar sesiones…',        icon: '⤓', section: 'Actions' as const, run: handleExport },
     { id: 'act-import',        label: 'Importar sesiones…',        icon: '⤒', section: 'Actions' as const, run: handleImport },
+    { id: 'act-import-ssh',    label: 'Importar desde SSH config…', icon: '⤒', section: 'Actions' as const, run: handleImportSshConfig },
     { id: 'act-about',         label: 'Acerca de ZAPX',        icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
     ...Object.entries(themeLabels).map(([key, label]) => ({
       id: `theme-${key}`,
@@ -813,6 +843,7 @@
     onAbout={() => showAbout = true}
     onExport={handleExport}
     onImport={handleImport}
+    onImportSshConfig={handleImportSshConfig}
   />
 
   <div class="pylon-body">

@@ -3,6 +3,7 @@ mod data_dir;
 mod error;
 mod events;
 mod hint_watcher;
+mod importers;
 mod login_script;
 mod menu;
 mod state;
@@ -219,6 +220,7 @@ pub fn run() {
             commands::logging::open_logs_dir,
             commands::transfer::export_sessions,
             commands::transfer::import_sessions,
+            commands::transfer::import_ssh_config,
             commands::data_dir::get_data_dir_info,
             commands::data_dir::set_data_dir,
             commands::data_dir::reset_data_dir,
