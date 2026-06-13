@@ -1,17 +1,11 @@
 name: Release
 
-# Triggered on tag pushes shaped like `v1.2.3`.
+# Triggered on tag pushes shaped like `v1.2.3`. Builds platform-specific
+# bundles (DMG/AppImage/deb on macOS+Linux, MSI/NSIS on Windows) plus the
+# Windows portable exe, and attaches them to a draft Release on this repo.
 #
-# This (private) code repo builds the bundles and stages them on a release
-# here, then the `mirror-to-public` job copies them to the PUBLIC releases
-# repo where users download from.
-#
-# One-time setup (in addition to the Tauri signing secrets below):
-# - Create the public releases repo (default: `CarlosTejeiro/zapx-releases`)
-#   and set PUBLIC_RELEASES_REPO below if you use another name.
-# - Create a Personal Access Token with `contents: write` on the releases
-#   repo and add it to THIS repo's secrets as `RELEASES_TOKEN`
-#   (the default GITHUB_TOKEN can only write to its own repo).
+# This repo is private; its Releases are private too (visible to the owner
+# and collaborators only). That's intentional.
 #
 # Signing secrets (optional until in-app updates are enabled):
 # - `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
@@ -26,11 +20,6 @@ on:
 
 permissions:
   contents: write
-
-env:
-  # Public repo that hosts the downloadable releases. Create it (public) and,
-  # if you rename it, change it here.
-  PUBLIC_RELEASES_REPO: CarlosTejeiro/zapx-releases
 
 jobs:
   build:
@@ -90,8 +79,6 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      # Stage the bundles on a (hidden) release in this private repo. The
-      # mirror job below copies them to the public releases repo.
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
@@ -102,15 +89,16 @@ jobs:
           projectPath: crates/app
           tagName: ${{ github.ref_name }}
           releaseName: 'ZAPX ${{ github.ref_name }}'
-          releaseBody: 'Build staging — see the public releases repo.'
-          releaseDraft: false
+          releaseBody: 'See CHANGELOG.md for details.'
+          releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
 
       # Portable Windows build: the bare exe (frontend embedded) runs from
       # any folder without installation. Requires the WebView2 runtime on
-      # the target machine (preinstalled on Win11 / updated Win10). Drop a
-      # file named `portable` next to the exe to keep all data in `data/`.
+      # the target machine (preinstalled on Win11 / updated Win10 — the
+      # installers bootstrap it, the portable exe does not). Drop a file
+      # named `portable` next to the exe to keep all data in `data/`.
       - name: Upload portable exe (Windows)
         if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -125,34 +113,21 @@ jobs:
           Copy-Item $exe.FullName $portable
           gh release upload "${{ github.ref_name }}" $portable --clobber
 
-  # Copy the staged bundles to the PUBLIC releases repo as a draft for review.
-  # Additive: if this fails (e.g. RELEASES_TOKEN not set up yet), the staged
-  # release in this repo is unaffected.
-  mirror-to-public:
+  # Set the draft's body from docs/releases/<tag>.md once all builds finish.
+  # Falls back to the placeholder body when no notes file exists for the tag.
+  release-notes:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download staged bundles from this repo
+      - name: Apply release notes from docs/releases/
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p dist
-          gh release download "${{ github.ref_name }}" --dir dist --clobber
-
-      - name: Publish to the public releases repo (draft)
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          notes="docs/releases/${TAG}.md"
-          [ -f "$notes" ] || notes=/dev/null
-          if ! gh release view "$TAG" --repo "$PUBLIC_RELEASES_REPO" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$PUBLIC_RELEASES_REPO" \
-              --title "ZAPX $TAG" --notes-file "$notes" --draft
+          file="docs/releases/${{ github.ref_name }}.md"
+          if [ -f "$file" ]; then
+            gh release edit "${{ github.ref_name }}" --notes-file "$file"
           else
-            gh release edit "$TAG" --repo "$PUBLIC_RELEASES_REPO" --notes-file "$notes"
+            echo "No notes file at $file — keeping placeholder body."
           fi
-          gh release upload "$TAG" dist/* --repo "$PUBLIC_RELEASES_REPO" --clobber
