@@ -70,7 +70,7 @@
       await deleteSnippet(s.id)
       editing = null
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
-      showToast({ kind: 'info', title: 'Botón borrado', detail: s.name })
+      showToast({ kind: 'info', title: 'Button deleted', detail: s.name })
     } catch (e) {
       flash('err', e instanceof Error ? e.message : String(e))
     }
@@ -136,7 +136,7 @@
       style:color={theme.textDim}
       onclick={() => (collapsed = false)}
       title="Show button bar"
-    >▴ Botones ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recientes` : ''}</button>
+    >▴ Buttons ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recent` : ''}</button>
   </div>
 {:else}
   <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border}>
@@ -170,8 +170,8 @@
             class="edit-dot"
             style:color={theme.textDim}
             style:background={theme.tabBarBg}
-            title="Editar botón"
-            aria-label="Editar botón"
+            title="Edit button"
+            aria-label="Edit button"
             onclick={(e) => { e.stopPropagation(); editing = s }}
           ><Icon name="pencil" size={10} /></button>
         </span>
@@ -183,8 +183,8 @@
         style:color={theme.textDim}
         style:border-color={theme.border}
         onclick={() => (editing = 'new')}
-        title="Nuevo botón"
-        aria-label="Nuevo botón"
+        title="New button"
+        aria-label="New button"
       ><Icon name="plus" size={12} /></button>
 
       {#if recents.length > 0}
@@ -197,9 +197,9 @@
           style:color={theme.textPrimary}
           style:border-color={theme.border}
           onclick={() => fireRecent(r)}
-          title={`Reciente: ${r.text}`}
+          title={`Recent: ${r.text}`}
         >
-          <span class="recent-mark" title="De tu historial reciente">⏱</span>
+          <span class="recent-mark" title="From your recent history">⏱</span>
           <span class="snippet-name">{shortLabel(r.text)}</span>
         </button>
       {/each}

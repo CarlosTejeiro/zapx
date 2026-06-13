@@ -72,7 +72,7 @@
   <div class="row">
     <input
       class="name"
-      placeholder="Etiqueta del botón"
+      placeholder="Button label"
       bind:value={name}
       style:background={theme.bodyBg}
       style:color={theme.textPrimary}
@@ -82,7 +82,7 @@
       <button
         class="swatch none"
         class:sel={color === null}
-        title="Sin color (tema)"
+        title="No color (theme default)"
         style:border-color={theme.border}
         style:color={theme.textDim}
         onclick={() => (color = null)}
@@ -103,7 +103,7 @@
 
   <textarea
     class="content"
-    placeholder="Comando(s) a enviar"
+    placeholder="Command(s) to send"
     bind:value={content}
     spellcheck="false"
     style:background={theme.bodyBg}
@@ -114,25 +114,25 @@
 
   <div class="footer">
     {#if hasPlatform}
-      <label class="scope" style:color={theme.textMuted} title="Mostrar solo en sesiones de esta plataforma">
+      <label class="scope" style:color={theme.textMuted} title="Show only in sessions of this platform">
         <input type="checkbox" bind:checked={platformScoped} />
-        solo {platform}
+        {platform} only
       </label>
     {:else}
       <span class="scope" style:color={theme.textDim}>global</span>
     {/if}
     <span class="spacer"></span>
     {#if onDelete}
-      <button class="btn danger" style:color={theme.err} onclick={onDelete}>Borrar</button>
+      <button class="btn danger" style:color={theme.err} onclick={onDelete}>Delete</button>
     {/if}
-    <button class="btn" style:color={theme.textMuted} style:border="1px solid {theme.border}" onclick={onClose}>Cancelar</button>
+    <button class="btn" style:color={theme.textMuted} style:border="1px solid {theme.border}" onclick={onClose}>Cancel</button>
     <button
       class="btn primary"
       disabled={!name.trim() || !content.trim()}
       style:background={theme.accent}
       style:color={theme.onAccent}
       onclick={save}
-    >Guardar</button>
+    >Save</button>
   </div>
 </div>
 
