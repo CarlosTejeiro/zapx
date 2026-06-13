@@ -38,3 +38,8 @@ core-logging       = { path = "../core-logging" }
 window-vibrancy    = "0.6"
 chrono             = { workspace = true }
 notify             = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Read PuTTY sessions straight from HKCU when importing on Windows. The
+# cross-platform `.reg`-export parser needs no dependency and is tested.
+winreg = "0.52"

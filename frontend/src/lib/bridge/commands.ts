@@ -552,6 +552,22 @@ export async function importSshConfig(path?: string): Promise<ImportSummary> {
   return invoke<ImportSummary>('import_ssh_config', { path: path ?? null })
 }
 
+// Import PuTTY sessions. With `path` (a .reg export) parses the file; without
+// it, reads the Windows registry directly (errors on macOS/Linux).
+export async function importPutty(path?: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_putty', { path: path ?? null })
+}
+
+// Import a MobaXterm.ini / .mxtsessions file.
+export async function importMobaXterm(path: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_mobaxterm', { path })
+}
+
+// Import a SecureCRT "Sessions" directory (folder of per-session .ini files).
+export async function importSecureCrt(path: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_securecrt', { path })
+}
+
 // ── Data directory (DB, logs, catalogs) ────────────────────────────────────
 
 export interface DataDirInfo {

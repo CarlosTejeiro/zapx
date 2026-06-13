@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sessions across tabs, set the pause between lines and dispatch it to all
   of them at once, with live progress and mid-run cancel. SecureCRT
   "command window" style.
+- **Importers for PuTTY, MobaXterm and SecureCRT** (File menu / command
+  palette), all feeding the same idempotent import pipeline:
+  - **PuTTY**: a `.reg` export anywhere, or the live `HKCU` registry on
+    Windows. Maps SSH/Telnet/Serial; `.ppk` keys are flagged to convert.
+  - **MobaXterm**: `MobaXterm.ini` / `.mxtsessions` `[Bookmarks]` sections,
+    rebuilding the `SubRep` folder tree. RDP/VNC bookmarks are skipped.
+  - **SecureCRT**: walks the `Config/Sessions` directory of per-session
+    `.ini` files, turning subfolders into ZAPX folders.
 
 ## [0.4.0] - 2026-06-12
 

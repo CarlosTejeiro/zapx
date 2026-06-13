@@ -25,7 +25,7 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free and open source 
 | **Themes** | 7 full themes — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor, Amber — UI chrome + terminal ANSI palettes, bundled Geist / JetBrains Mono fonts |
 | **Command palette** | `Ctrl+K` — fuzzy-launch sessions, groups, actions and themes |
 | **Portable & data control** | Windows portable exe, portable mode (data travels with the binary), user-selectable data folder |
-| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords) — idempotent import for backup, migration and team sharing. Imports hosts from `~/.ssh/config` too |
+| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords) — idempotent import for backup, migration and team sharing. Imports from `~/.ssh/config`, PuTTY, MobaXterm and SecureCRT too |
 | **Window memory** | Remembers size/position/maximized; first launch sizes to your monitor |
 
 ## Keyboard shortcuts
@@ -142,9 +142,6 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 
 - [ ] Code signing: Apple Developer ID (macOS notarization) + Windows certificate
 - [ ] Auto-update via Tauri Updater (gated on signing)
-- [ ] Importers for third-party formats: PuTTY, MobaXterm, SecureCRT (on top of the native import pipeline; `~/.ssh/config` already supported)
-- [ ] Multi-send to all panes of a regular tab (today: broadcast groups/grid)
-- [ ] Command list dispatch to N sessions at once (SecureCRT-style command window)
 - [ ] User-curated snippet button bar (pin/create buttons, SecureCRT-style)
 - [ ] Smarter hints: learn command sequences per platform and suggest the usual next command
 - [ ] Linux packaging: AUR (`zapx-bin`), Flathub, Snap

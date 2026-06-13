@@ -28,6 +28,9 @@
     onExport?: () => void
     onImport?: () => void
     onImportSshConfig?: () => void
+    onImportPutty?: () => void
+    onImportMobaXterm?: () => void
+    onImportSecureCrt?: () => void
     onCommandList?: () => void
     themeName?: string
   }
@@ -46,6 +49,9 @@
     onExport,
     onImport,
     onImportSshConfig,
+    onImportPutty,
+    onImportMobaXterm,
+    onImportSecureCrt,
     onCommandList,
     themeName = 'parchment',
   }: Props = $props()
@@ -58,7 +64,11 @@
     File: [
       { label: 'Export sessions…', action: () => { onExport?.(); openMenu = null } },
       { label: 'Import sessions…', action: () => { onImport?.(); openMenu = null } },
+      { label: '', divider: true },
       { label: 'Import from SSH config…', action: () => { onImportSshConfig?.(); openMenu = null } },
+      { label: 'Import from PuTTY…', action: () => { onImportPutty?.(); openMenu = null } },
+      { label: 'Import from MobaXterm…', action: () => { onImportMobaXterm?.(); openMenu = null } },
+      { label: 'Import from SecureCRT…', action: () => { onImportSecureCrt?.(); openMenu = null } },
       { label: '', divider: true },
       { label: 'Quit', action: () => win.close() },
     ],

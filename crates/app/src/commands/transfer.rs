@@ -344,12 +344,74 @@ pub async fn import_ssh_config(
     };
     let parsed = crate::importers::ssh_config::parse(&cfg, &home)
         .map_err(|e| AppError::Internal(format!("{}: {e}", cfg.display())))?;
-    let mut summary = apply_import(&state.db, &parsed.file)?;
-    // Parser warnings (skipped patterns, multi-hop jumps…) ride along.
-    let mut warnings = parsed.warnings;
+    finish_import(&state, parsed.file, parsed.warnings)
+}
+
+/// Apply a parsed third-party envelope and prepend the parser's warnings to
+/// the pipeline summary (parser warnings first — they explain what the
+/// source dropped before import even ran).
+fn finish_import(
+    state: &AppState,
+    file: ExportFile,
+    parser_warnings: Vec<String>,
+) -> Result<ImportSummary, AppError> {
+    let mut summary = apply_import(&state.db, &file)?;
+    if summary.rules_added > 0 {
+        super::highlight::rebuild_highlighter(state);
+    }
+    let mut warnings = parser_warnings;
     warnings.append(&mut summary.warnings);
     summary.warnings = warnings;
     Ok(summary)
+}
+
+/// Import PuTTY saved sessions. With a `path` (a `.reg` export) the file is
+/// parsed everywhere; without one, on Windows it reads HKCU directly, and on
+/// other platforms it errors asking for a `.reg` export.
+#[tauri::command]
+pub async fn import_putty(
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<ImportSummary, AppError> {
+    let parsed = match path {
+        Some(p) => {
+            let raw = std::fs::read_to_string(&p).map_err(|e| AppError::Internal(e.to_string()))?;
+            crate::importers::putty::from_sessions(&crate::importers::putty::parse_reg(&raw))
+        }
+        None => {
+            let sessions = crate::importers::putty::read_registry();
+            if sessions.is_empty() && !cfg!(target_os = "windows") {
+                return Err(AppError::Internal(
+                    "en macOS/Linux exporta primero las sesiones de PuTTY a un .reg y elígelo".into(),
+                ));
+            }
+            crate::importers::putty::from_sessions(&sessions)
+        }
+    };
+    finish_import(&state, parsed.file, parsed.warnings)
+}
+
+/// Import a MobaXterm `MobaXterm.ini` (or `.mxtsessions` export).
+#[tauri::command]
+pub async fn import_mobaxterm(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<ImportSummary, AppError> {
+    let raw = std::fs::read_to_string(&path).map_err(|e| AppError::Internal(e.to_string()))?;
+    let parsed = crate::importers::mobaxterm::parse(&raw);
+    finish_import(&state, parsed.file, parsed.warnings)
+}
+
+/// Import a SecureCRT `Sessions` directory (the folder of per-session .ini
+/// files under its `Config/`).
+#[tauri::command]
+pub async fn import_securecrt(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<ImportSummary, AppError> {
+    let parsed = crate::importers::securecrt::parse_dir(std::path::Path::new(&path))
+        .map_err(|e| AppError::Internal(format!("{path}: {e}")))?;
+    finish_import(&state, parsed.file, parsed.warnings)
 }
 
 // ── tests ───────────────────────────────────────────────────────────────────

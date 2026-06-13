@@ -40,7 +40,14 @@
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
   import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
-  import { exportSessions, importSessions, importSshConfig } from '$lib/bridge/commands'
+  import {
+    exportSessions,
+    importSessions,
+    importSshConfig,
+    importPutty,
+    importMobaXterm,
+    importSecureCrt,
+  } from '$lib/bridge/commands'
   import type { ImportSummary } from '$lib/bridge/commands'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
@@ -621,6 +628,63 @@
     }
   }
 
+  /// PuTTY: on Windows offer the registry directly; otherwise (or on "No")
+  /// pick a `.reg` export. The backend errors clearly if the registry is
+  /// asked for off-Windows.
+  async function handleImportPutty() {
+    const fromRegistry = await ask(
+      'Importar desde el registro de Windows?\n\nElige "No" para seleccionar un fichero .reg exportado (necesario en macOS/Linux).',
+      { title: 'Importar desde PuTTY', kind: 'info' },
+    )
+    let path: string | undefined
+    if (!fromRegistry) {
+      const picked = await openFileDialog({
+        title: 'Elegir export .reg de PuTTY',
+        multiple: false,
+        directory: false,
+        filters: [{ name: 'Registry export', extensions: ['reg'] }],
+      })
+      if (typeof picked !== 'string' || !picked) return
+      path = picked
+    }
+    try {
+      await reportImport(await importPutty(path))
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Import PuTTY falló', detail: String(e) })
+    }
+  }
+
+  /// MobaXterm: pick a MobaXterm.ini or .mxtsessions file.
+  async function handleImportMobaXterm() {
+    const picked = await openFileDialog({
+      title: 'Elegir MobaXterm.ini',
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'MobaXterm', extensions: ['ini', 'mxtsessions'] }],
+    })
+    if (typeof picked !== 'string' || !picked) return
+    try {
+      await reportImport(await importMobaXterm(picked))
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Import MobaXterm falló', detail: String(e) })
+    }
+  }
+
+  /// SecureCRT: pick the "Sessions" directory of its Config folder.
+  async function handleImportSecureCrt() {
+    const picked = await openFileDialog({
+      title: 'Elegir la carpeta Sessions de SecureCRT',
+      directory: true,
+      multiple: false,
+    })
+    if (typeof picked !== 'string' || !picked) return
+    try {
+      await reportImport(await importSecureCrt(picked))
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Import SecureCRT falló', detail: String(e) })
+    }
+  }
+
   /// Open a new tab from a [`QuickConnectDialog`] submission. Connections are
   /// in-memory only (no SQLite row), so closing the tab cleans up everything.
   function handleQuickConnect(params: ConnectParams) {
@@ -727,6 +791,9 @@
     { id: 'act-export',        label: 'Exportar sesiones…',        icon: '⤓', section: 'Actions' as const, run: handleExport },
     { id: 'act-import',        label: 'Importar sesiones…',        icon: '⤒', section: 'Actions' as const, run: handleImport },
     { id: 'act-import-ssh',    label: 'Importar desde SSH config…', icon: '⤒', section: 'Actions' as const, run: handleImportSshConfig },
+    { id: 'act-import-putty',  label: 'Importar desde PuTTY…',      icon: '⤒', section: 'Actions' as const, run: handleImportPutty },
+    { id: 'act-import-moba',   label: 'Importar desde MobaXterm…',  icon: '⤒', section: 'Actions' as const, run: handleImportMobaXterm },
+    { id: 'act-import-scrt',   label: 'Importar desde SecureCRT…',  icon: '⤒', section: 'Actions' as const, run: handleImportSecureCrt },
     { id: 'act-about',         label: 'Acerca de ZAPX',        icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
     ...Object.entries(themeLabels).map(([key, label]) => ({
       id: `theme-${key}`,
@@ -869,6 +936,9 @@
     onExport={handleExport}
     onImport={handleImport}
     onImportSshConfig={handleImportSshConfig}
+    onImportPutty={handleImportPutty}
+    onImportMobaXterm={handleImportMobaXterm}
+    onImportSecureCrt={handleImportSecureCrt}
     onCommandList={() => (showCommandList = true)}
   />
 
