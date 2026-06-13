@@ -169,6 +169,17 @@ export async function listForwards(sessionId: string): Promise<ForwardInfo[]> {
   return invoke<ForwardInfo[]>('list_forwards', { sessionId })
 }
 
+// One active forward plus the live session it belongs to.
+export interface SessionForwardInfo {
+  session_id: string
+  info: ForwardInfo
+}
+
+// Every active forward across all live sessions (global tunnels manager).
+export async function listAllForwards(): Promise<SessionForwardInfo[]> {
+  return invoke<SessionForwardInfo[]>('list_all_forwards')
+}
+
 export async function removeForward(sessionId: string, forwardId: string): Promise<void> {
   return invoke<void>('remove_forward', { sessionId, forwardId })
 }

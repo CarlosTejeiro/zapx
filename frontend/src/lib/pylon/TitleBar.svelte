@@ -32,6 +32,7 @@
     onImportMobaXterm?: () => void
     onImportSecureCrt?: () => void
     onCommandList?: () => void
+    onTunnelsManager?: () => void
     themeName?: string
   }
 
@@ -53,6 +54,7 @@
     onImportMobaXterm,
     onImportSecureCrt,
     onCommandList,
+    onTunnelsManager,
     themeName = 'parchment',
   }: Props = $props()
 
@@ -84,6 +86,7 @@
     Tools: [
       { label: 'Snippets…', action: () => { onSnippets?.(); openMenu = null } },
       { label: 'Send command list…', action: () => { onCommandList?.(); openMenu = null } },
+      { label: 'Active tunnels…', action: () => { onTunnelsManager?.(); openMenu = null } },
       { label: 'Settings  Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
     ],
     Help: [

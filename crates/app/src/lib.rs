@@ -177,6 +177,7 @@ pub fn run() {
             commands::forwards::add_dynamic_forward,
             commands::forwards::add_remote_forward,
             commands::forwards::list_forwards,
+            commands::forwards::list_all_forwards,
             commands::forwards::remove_forward,
             commands::forwards::get_session_forwards,
             commands::forwards::set_session_forwards,

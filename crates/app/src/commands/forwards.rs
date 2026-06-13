@@ -148,6 +148,29 @@ pub async fn list_forwards(
         .unwrap_or_default())
 }
 
+/// One active forward plus the live session it belongs to — for the global
+/// tunnels manager.
+#[derive(serde::Serialize)]
+pub struct SessionForwardInfo {
+    pub session_id: String,
+    pub info: ForwardInfo,
+}
+
+/// Every active forward across all live sessions.
+#[tauri::command]
+pub async fn list_all_forwards(
+    state: State<'_, AppState>,
+) -> Result<Vec<SessionForwardInfo>, AppError> {
+    let map = state.forwards.lock().unwrap();
+    let mut out = Vec::new();
+    for (sid, vec) in map.iter() {
+        for c in vec {
+            out.push(SessionForwardInfo { session_id: sid.clone(), info: c.info.clone() });
+        }
+    }
+    Ok(out)
+}
+
 /// Stop a single forward (by id) attached to `session_id`. Dropping the
 /// controller aborts the listener task.
 #[tauri::command]

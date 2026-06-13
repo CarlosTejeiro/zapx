@@ -14,6 +14,7 @@
   import GridView from '$lib/pylon/GridView.svelte'
   import MasterInputBar from '$lib/pylon/MasterInputBar.svelte'
   import CommandListDialog from '$lib/orchestrator/CommandListDialog.svelte'
+  import TunnelsManagerDialog from '$lib/terminal/TunnelsManagerDialog.svelte'
   import {
     type PaneTreeNode,
     type SplitDirection,
@@ -223,6 +224,18 @@
   let showSnippets = $state(false)
   let showGroups = $state(false)
   let showCommandList = $state(false)
+  let showTunnelsManager = $state(false)
+
+  /// Live session UUID → human label (pane name), for the tunnels manager.
+  const sessionLabels = $derived<Record<string, string>>(
+    Object.fromEntries(
+      tabs.flatMap((t) =>
+        tabPanes(t)
+          .map((p) => [paneToSession.get(p.id), p.label] as const)
+          .filter((e): e is [string, string] => typeof e[0] === 'string'),
+      ),
+    ),
+  )
   let showAbout = $state(false)
   // Bundle version from tauri.conf.json — single source of truth.
   let appVersion = $state('')
@@ -768,6 +781,7 @@
     { id: 'act-snippets',      label: 'Open Snippets',             icon: '✂', section: 'Actions' as const, run: () => (showSnippets = true) },
     { id: 'act-groups',        label: 'Broadcast groups…',         icon: '⇶', section: 'Actions' as const, run: () => (showGroups = true) },
     { id: 'act-cmdlist',       label: 'Send command list…',        icon: '☰', section: 'Actions' as const, run: () => (showCommandList = true) },
+    { id: 'act-tunnels',       label: 'Active tunnels…',           icon: '⇄', section: 'Actions' as const, run: () => (showTunnelsManager = true) },
     { id: 'act-settings',      label: 'Open Settings',             icon: '⚙', section: 'Actions' as const, run: () => (showSettings = true) },
     ...groups.map((g) => ({
       id: `group-${g.id}`,
@@ -941,6 +955,7 @@
     onImportMobaXterm={handleImportMobaXterm}
     onImportSecureCrt={handleImportSecureCrt}
     onCommandList={() => (showCommandList = true)}
+    onTunnelsManager={() => (showTunnelsManager = true)}
   />
 
   <div class="pylon-body">
@@ -1150,6 +1165,13 @@
   <CommandListDialog
     targets={liveTargets}
     onClose={() => (showCommandList = false)}
+  />
+{/if}
+
+{#if showTunnelsManager}
+  <TunnelsManagerDialog
+    labels={sessionLabels}
+    onClose={() => (showTunnelsManager = false)}
   />
 {/if}
 
