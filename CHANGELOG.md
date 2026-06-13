@@ -5,7 +5,7 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-06-13
 
 ### Added
 - **Smarter hints — command-sequence learning**: ZAPX now learns which command
@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SFTP and Tunnels buttons back in the pane header**: the 0.2 redesign had
   hidden the toolbar that hosted them, so both features were unreachable in
   the UI. They now appear in each connected SSH pane's header.
+
+### Fixed
+- **Session dialog overflow**: the New/Edit Session form now caps to the
+  window and scrolls, with a sticky Cancel/Save row — it could previously
+  overflow off-screen on shorter windows.
+- **macOS launch crash**: cosmetic window vibrancy (private macOS APIs) and
+  first-run sizing are now contained, so a failure on brand-new macOS builds
+  no longer aborts startup.
 
 ## [0.5.0] - 2026-06-13
 
