@@ -67,6 +67,17 @@ pub async fn create_snippet(
 }
 
 #[tauri::command]
+pub async fn set_snippets_order(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<i64>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_snippets_order(&ordered_ids)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+#[tauri::command]
 pub async fn update_snippet(
     state: State<'_, AppState>,
     id: i64,

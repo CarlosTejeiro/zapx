@@ -24,6 +24,7 @@
     createSnippet,
     updateSnippet,
     deleteSnippet,
+    setSnippetsOrder,
   } from '$lib/bridge/commands'
   import {
     getFocusedSessionId,
@@ -44,6 +45,27 @@
 
   // Inline button editor: `null` = closed, `'new'` = create, Snippet = edit.
   let editing = $state<Snippet | 'new' | null>(null)
+
+  // Drag-to-reorder state (index into visibleSnippets being dragged).
+  let dragIndex = $state<number | null>(null)
+  let dropIndex = $state<number | null>(null)
+
+  async function reorderTo(target: number) {
+    const from = dragIndex
+    dragIndex = null
+    dropIndex = null
+    if (from === null || from === target) return
+    const ids = visibleSnippets.map((s) => s.id)
+    const [moved] = ids.splice(from, 1)
+    if (moved === undefined) return
+    ids.splice(target, 0, moved)
+    try {
+      await setSnippetsOrder(ids)
+      await Promise.all([loadVisibleSnippets(), loadSnippets()])
+    } catch (e) {
+      flash('err', e instanceof Error ? e.message : String(e))
+    }
+  }
 
   async function saveButton(v: {
     name: string
@@ -139,7 +161,7 @@
     >▴ Buttons ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recent` : ''}</button>
   </div>
 {:else}
-  <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border}>
+  <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border} style:--accent={theme.accent}>
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
@@ -149,11 +171,21 @@
 
     <div class="snippets">
       {#each visibleSnippets as s, i (s.id)}
-        <!-- Each button: click fires it; a hover pencil opens the editor. The
-             optional color paints a left accent stripe. -->
-        <span class="btn-wrap">
+        <!-- Each button: click fires it; a hover pencil opens the editor;
+             drag to reorder. The optional color paints a left accent stripe. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <span
+          class="btn-wrap"
+          class:dragging={dragIndex === i}
+          class:drop-target={dropIndex === i && dragIndex !== i}
+          ondragover={(e) => { if (dragIndex !== null) { e.preventDefault(); dropIndex = i } }}
+          ondrop={(e) => { e.preventDefault(); reorderTo(i) }}
+        >
           <button
             class="snippet-btn"
+            draggable="true"
+            ondragstart={() => { dragIndex = i }}
+            ondragend={() => { dragIndex = null; dropIndex = null }}
             style:color={theme.textPrimary}
             style:background={s.color ? `color-mix(in srgb, ${s.color} 18%, transparent)` : theme.itemActiveBg}
             style:border-color={s.color ?? theme.border}
@@ -262,6 +294,10 @@
     z-index: 2;
   }
   .btn-wrap:hover .edit-dot { display: inline-flex; }
+  .btn-wrap.dragging { opacity: 0.45; }
+  .btn-wrap.drop-target { box-shadow: -2px 0 0 0 var(--accent, #5eb3b2); }
+  .snippet-btn[draggable='true'] { cursor: grab; }
+  .snippet-btn[draggable='true']:active { cursor: grabbing; }
   .edit-dot:hover { filter: brightness(1.3); }
 
   .add-btn {

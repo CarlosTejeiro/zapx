@@ -283,6 +283,11 @@ export async function updateSnippet(
   return invoke<void>('update_snippet', { id, name, content, platform, color })
 }
 
+// Persist a new display order (sort_order) for the listed snippet ids.
+export async function setSnippetsOrder(orderedIds: number[]): Promise<void> {
+  return invoke<void>('set_snippets_order', { orderedIds })
+}
+
 export async function deleteSnippet(id: number): Promise<void> {
   return invoke<void>('delete_snippet', { id })
 }

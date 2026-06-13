@@ -195,6 +195,7 @@ pub fn run() {
             commands::snippets::list_recent_command_snippets,
             commands::snippets::create_snippet,
             commands::snippets::update_snippet,
+            commands::snippets::set_snippets_order,
             commands::snippets::delete_snippet,
             commands::login_scripts::get_login_script,
             commands::login_scripts::set_login_script,

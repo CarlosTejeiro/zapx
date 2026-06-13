@@ -1141,6 +1141,21 @@ impl Database {
         Ok(())
     }
 
+    /// Persist a new display order for the given snippet ids: `sort_order`
+    /// becomes each id's position in the list. Ids not listed keep theirs.
+    pub fn set_snippets_order(&self, ordered_ids: &[i64]) -> Result<(), Error> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        for (idx, id) in ordered_ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE snippets SET sort_order = ?1 WHERE id = ?2",
+                rusqlite::params![idx as i64, id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Command history (powers the ghost-text / popup hints)
     // -----------------------------------------------------------------------
