@@ -5,6 +5,31 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-14
+
+### Added
+- **Customizable button bar — drag to reorder**: drag a button in the bottom
+  bar to a new slot; the order persists. Lets you deliberately arrange the
+  first nine (the `Ctrl+Shift+1..9` slots).
+- **Snippet variables**: snippets/buttons can contain `{{name}}` placeholders
+  (optional default with `{{name=Default}}`). Running one prompts for the
+  values, then substitutes and sends — reusable command templates.
+- **Import PuTTY port-forwards**: PuTTY's saved tunnels (`PortForwardings`)
+  now import into the session's saved forwards, so they auto-start on connect.
+  (MobaXterm/SecureCRT forward storage isn't reliably documented; their
+  imports don't carry forwards yet.)
+- **Global tunnels manager** (Tools → *Active tunnels…*): one panel listing
+  every active port-forward across all sessions — kind, route and session —
+  each with a stop button.
+
+### Changed
+- **License: proprietary.** ZAPX's own code is now proprietary (© Carlos
+  Tejeiro, all rights reserved) from 0.7.0 onward. Releases up to 0.6.0 remain
+  available under Apache 2.0 for those versions. Third-party dependencies stay
+  under their own permissive licenses (see THIRD-PARTY-NOTICES.md).
+- **"Check for updates" opens the releases page** instead of a non-functional
+  in-app updater (the repo/releases are private; no public update manifest).
+
 ## [0.6.0] - 2026-06-13
 
 ### Added
