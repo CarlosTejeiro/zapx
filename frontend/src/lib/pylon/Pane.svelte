@@ -67,7 +67,7 @@
     if (logBusy) return
     const sid = paneToSession.get(pane.id)
     if (!sid) {
-      showToast({ kind: 'warning', title: 'Logging', detail: 'La sesión no está activa.' })
+      showToast({ kind: 'warning', title: 'Logging', detail: 'The session is not active.' })
       return
     }
     logBusy = true
@@ -83,12 +83,12 @@
         const p = await startSessionLogging(sid, savedId, name)
         logPath = p
         isLogging = true
-        showToast({ kind: 'success', title: 'Logging iniciado', detail: p })
+        showToast({ kind: 'success', title: 'Logging started', detail: p })
       }
     } catch (e) {
       showToast({
         kind: 'error',
-        title: 'Logging falló',
+        title: 'Logging failed',
         detail: e instanceof Error ? e.message : String(e),
       })
     } finally {

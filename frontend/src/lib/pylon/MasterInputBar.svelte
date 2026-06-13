@@ -63,7 +63,7 @@
     if (!onRunCompare) return
     const cmd = line.trim()
     if (!cmd) {
-      notify('Escribe un comando primero')
+      notify('Type a command first')
       return
     }
     if (sessionIds.length === 0) {
@@ -105,7 +105,7 @@
       style:border="1px solid {theme.accent}"
       style:color={theme.accent}
       onclick={runCompare}
-      title="Ejecutar en todos y comparar la salida"
+      title="Run on all and compare the output"
     >▶ Run &amp; compare</button>
   {/if}
   <label class="mb-live" style:color={theme.textMuted} title="Stream every keystroke as you type">

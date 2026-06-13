@@ -33,7 +33,7 @@
         type="button"
         class="close"
         onclick={() => dismissToast(toast.id)}
-        aria-label="Cerrar"
+        aria-label="Close"
       ><Icon name="x" size={12} /></button>
     </div>
   {/each}

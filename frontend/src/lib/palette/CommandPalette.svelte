@@ -133,7 +133,7 @@
         bind:this={inputEl}
         bind:value={query}
         type="text"
-        placeholder="Salta a sesiones, ejecuta acciones, cambia tema…"
+        placeholder="Jump to sessions, run actions, switch theme…"
         spellcheck="false"
         autocomplete="off"
       />

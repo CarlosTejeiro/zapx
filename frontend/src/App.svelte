@@ -396,7 +396,7 @@
       .map((sid) => sessions.find((s) => s.id === sid))
       .filter((s): s is SavedSession => !!s)
     if (members.length === 0) {
-      showToast({ kind: 'warning', title: group.name, detail: 'El grupo no tiene sesiones.' })
+      showToast({ kind: 'warning', title: group.name, detail: 'This group has no sessions.' })
       return
     }
     const panes = members.map((s) =>
@@ -543,14 +543,14 @@
   /// passwords themselves never leave the keyring.
   async function handleExport() {
     const proceed = await ask(
-      'Se exportarán sesiones, carpetas, grupos, snippets y reglas de highlight.\n\n' +
-        'Las contraseñas NO se exportan. Ojo: los login scripts sí van tal cual ' +
-        '(sus pasos "send" pueden contener secretos escritos a mano).',
-      { title: 'Exportar sesiones', kind: 'info' },
+      'This exports sessions, folders, groups, snippets and highlight rules.\n\n' +
+        'Passwords are NOT exported. Note: login scripts ARE exported verbatim ' +
+        '(their "send" steps may contain secrets you typed).',
+      { title: 'Export sessions', kind: 'info' },
     )
     if (!proceed) return
     const path = await saveFileDialog({
-      title: 'Exportar sesiones de ZAPX',
+      title: 'Export ZAPX sessions',
       defaultPath: 'zapx-sessions.json',
       filters: [{ name: 'ZAPX export', extensions: ['json'] }],
     })
@@ -559,11 +559,11 @@
       const s = await exportSessions(path)
       showToast({
         kind: 'success',
-        title: 'Export completado',
-        detail: `${s.sessions} sesiones, ${s.folders} carpetas, ${s.groups} grupos, ${s.snippets} snippets, ${s.rules} reglas → ${s.path}`,
+        title: 'Export complete',
+        detail: `${s.sessions} sessions, ${s.folders} folders, ${s.groups} groups, ${s.snippets} snippets, ${s.rules} rules → ${s.path}`,
       })
     } catch (e) {
-      showToast({ kind: 'error', title: 'Export falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'Export failed', detail: String(e) })
     }
   }
 
@@ -571,16 +571,16 @@
   async function reportImport(s: ImportSummary) {
     showToast({
       kind: 'success',
-      title: 'Import completado',
+      title: 'Import complete',
       detail:
-        `${s.sessions_added} sesiones nuevas (${s.sessions_skipped} ya existían), ` +
-        `${s.folders_added} carpetas, ${s.groups_added} grupos, ` +
-        `${s.snippets_added} snippets, ${s.rules_added} reglas`,
+        `${s.sessions_added} new sessions (${s.sessions_skipped} already existed), ` +
+        `${s.folders_added} folders, ${s.groups_added} groups, ` +
+        `${s.snippets_added} snippets, ${s.rules_added} rules`,
     })
     if (s.warnings.length > 0) {
       showToast({
         kind: 'warning',
-        title: `Import: ${s.warnings.length} aviso(s)`,
+        title: `Import: ${s.warnings.length} warning(s)`,
         detail: s.warnings.slice(0, 3).join(' · ') + (s.warnings.length > 3 ? ' …' : ''),
       })
     }
@@ -591,7 +591,7 @@
   /// existing items are skipped) and refresh every affected store.
   async function handleImport() {
     const path = await openFileDialog({
-      title: 'Importar sesiones de ZAPX',
+      title: 'Import ZAPX sessions',
       multiple: false,
       directory: false,
       filters: [{ name: 'ZAPX export', extensions: ['json'] }],
@@ -600,7 +600,7 @@
     try {
       await reportImport(await importSessions(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'Import failed', detail: String(e) })
     }
   }
 
@@ -608,13 +608,13 @@
   /// declining the prompt opens a file picker for a custom location.
   async function handleImportSshConfig() {
     const useDefault = await ask(
-      'Importar los hosts de ~/.ssh/config?\n\nElige "No" para seleccionar otro fichero de configuración SSH.',
-      { title: 'Importar desde SSH config', kind: 'info' },
+      'Import hosts from ~/.ssh/config?\n\nChoose "No" to pick a different SSH config file.',
+      { title: 'Import from SSH config', kind: 'info' },
     )
     let path: string | undefined
     if (!useDefault) {
       const picked = await openFileDialog({
-        title: 'Elegir fichero ssh_config',
+        title: 'Choose ssh_config file',
         multiple: false,
         directory: false,
       })
@@ -624,7 +624,7 @@
     try {
       await reportImport(await importSshConfig(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import SSH config falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'SSH config import failed', detail: String(e) })
     }
   }
 
@@ -633,13 +633,13 @@
   /// asked for off-Windows.
   async function handleImportPutty() {
     const fromRegistry = await ask(
-      'Importar desde el registro de Windows?\n\nElige "No" para seleccionar un fichero .reg exportado (necesario en macOS/Linux).',
-      { title: 'Importar desde PuTTY', kind: 'info' },
+      'Import from the Windows registry?\n\nChoose "No" to pick an exported .reg file (required on macOS/Linux).',
+      { title: 'Import from PuTTY', kind: 'info' },
     )
     let path: string | undefined
     if (!fromRegistry) {
       const picked = await openFileDialog({
-        title: 'Elegir export .reg de PuTTY',
+        title: 'Choose PuTTY .reg export',
         multiple: false,
         directory: false,
         filters: [{ name: 'Registry export', extensions: ['reg'] }],
@@ -650,14 +650,14 @@
     try {
       await reportImport(await importPutty(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import PuTTY falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'PuTTY import failed', detail: String(e) })
     }
   }
 
   /// MobaXterm: pick a MobaXterm.ini or .mxtsessions file.
   async function handleImportMobaXterm() {
     const picked = await openFileDialog({
-      title: 'Elegir MobaXterm.ini',
+      title: 'Choose MobaXterm.ini',
       multiple: false,
       directory: false,
       filters: [{ name: 'MobaXterm', extensions: ['ini', 'mxtsessions'] }],
@@ -666,14 +666,14 @@
     try {
       await reportImport(await importMobaXterm(picked))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import MobaXterm falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'MobaXterm import failed', detail: String(e) })
     }
   }
 
   /// SecureCRT: pick the "Sessions" directory of its Config folder.
   async function handleImportSecureCrt() {
     const picked = await openFileDialog({
-      title: 'Elegir la carpeta Sessions de SecureCRT',
+      title: 'Choose SecureCRT Sessions folder',
       directory: true,
       multiple: false,
     })
@@ -681,7 +681,7 @@
     try {
       await reportImport(await importSecureCrt(picked))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import SecureCRT falló', detail: String(e) })
+      showToast({ kind: 'error', title: 'SecureCRT import failed', detail: String(e) })
     }
   }
 
@@ -761,26 +761,26 @@
       section: 'Sessions' as const,
       run: () => openSavedSessionTab(s),
     })),
-    { id: 'act-new-tab',       label: 'Nuevo tab local',           icon: '＋', section: 'Actions' as const, run: addLocalTab },
-    { id: 'act-new-session',   label: 'Nueva sesión guardada',     icon: '🆕', section: 'Actions' as const, run: () => (showNewSession = true) },
+    { id: 'act-new-tab',       label: 'New local tab',             icon: '＋', section: 'Actions' as const, run: addLocalTab },
+    { id: 'act-new-session',   label: 'New saved session',         icon: '🆕', section: 'Actions' as const, run: () => (showNewSession = true) },
     { id: 'act-quick',         label: 'Quick Connect',             icon: '⚡', section: 'Actions' as const, run: () => (showQuickConnect = true) },
-    { id: 'act-snippets',      label: 'Abrir Snippets',            icon: '✂', section: 'Actions' as const, run: () => (showSnippets = true) },
-    { id: 'act-groups',        label: 'Grupos de broadcast…',      icon: '⇶', section: 'Actions' as const, run: () => (showGroups = true) },
-    { id: 'act-cmdlist',       label: 'Enviar lista de comandos…', icon: '☰', section: 'Actions' as const, run: () => (showCommandList = true) },
-    { id: 'act-settings',      label: 'Abrir Settings',            icon: '⚙', section: 'Actions' as const, run: () => (showSettings = true) },
+    { id: 'act-snippets',      label: 'Open Snippets',             icon: '✂', section: 'Actions' as const, run: () => (showSnippets = true) },
+    { id: 'act-groups',        label: 'Broadcast groups…',         icon: '⇶', section: 'Actions' as const, run: () => (showGroups = true) },
+    { id: 'act-cmdlist',       label: 'Send command list…',        icon: '☰', section: 'Actions' as const, run: () => (showCommandList = true) },
+    { id: 'act-settings',      label: 'Open Settings',             icon: '⚙', section: 'Actions' as const, run: () => (showSettings = true) },
     ...groups.map((g) => ({
       id: `group-${g.id}`,
-      label: `Abrir grupo: ${g.name}`,
-      subtitle: `${g.session_ids.length} sesion${g.session_ids.length === 1 ? '' : 'es'} · grid`,
+      label: `Open group: ${g.name}`,
+      subtitle: `${g.session_ids.length} session${g.session_ids.length === 1 ? '' : 's'} · grid`,
       icon: '▦',
       section: 'Groups' as const,
       run: () => openGroupAsGrid(g),
     })),
-    { id: 'act-split-h',       label: 'Split horizontal',          icon: '◫', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'h') },
-    { id: 'act-split-v',       label: 'Split vertical',            icon: '⬓', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'v') },
+    { id: 'act-split-h',       label: 'Split horizontally',        icon: '◫', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'h') },
+    { id: 'act-split-v',       label: 'Split vertically',          icon: '⬓', section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'v') },
     { id: 'act-multi',         label: 'Toggle multi-exec',         icon: '⇶', section: 'Actions' as const, run: () => (multiOn = !multiOn) },
-    { id: 'act-close-tab',     label: 'Cerrar tab actual',         icon: '✕', section: 'Actions' as const, run: () => closeTab(activeTabId) },
-    { id: 'act-open-logs',     label: 'Abrir carpeta de logs',     icon: '📂', section: 'Actions' as const, run: async () => {
+    { id: 'act-close-tab',     label: 'Close current tab',         icon: '✕', section: 'Actions' as const, run: () => closeTab(activeTabId) },
+    { id: 'act-open-logs',     label: 'Open logs folder',          icon: '📂', section: 'Actions' as const, run: async () => {
       try {
         const path = await openLogsDir()
         showToast({ kind: 'info', title: 'Logs', detail: path })
@@ -788,13 +788,13 @@
         showToast({ kind: 'error', title: 'Logs', detail: e instanceof Error ? e.message : String(e) })
       }
     } },
-    { id: 'act-export',        label: 'Exportar sesiones…',        icon: '⤓', section: 'Actions' as const, run: handleExport },
-    { id: 'act-import',        label: 'Importar sesiones…',        icon: '⤒', section: 'Actions' as const, run: handleImport },
-    { id: 'act-import-ssh',    label: 'Importar desde SSH config…', icon: '⤒', section: 'Actions' as const, run: handleImportSshConfig },
-    { id: 'act-import-putty',  label: 'Importar desde PuTTY…',      icon: '⤒', section: 'Actions' as const, run: handleImportPutty },
-    { id: 'act-import-moba',   label: 'Importar desde MobaXterm…',  icon: '⤒', section: 'Actions' as const, run: handleImportMobaXterm },
-    { id: 'act-import-scrt',   label: 'Importar desde SecureCRT…',  icon: '⤒', section: 'Actions' as const, run: handleImportSecureCrt },
-    { id: 'act-about',         label: 'Acerca de ZAPX',        icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
+    { id: 'act-export',        label: 'Export sessions…',          icon: '⤓', section: 'Actions' as const, run: handleExport },
+    { id: 'act-import',        label: 'Import sessions…',          icon: '⤒', section: 'Actions' as const, run: handleImport },
+    { id: 'act-import-ssh',    label: 'Import from SSH config…',   icon: '⤒', section: 'Actions' as const, run: handleImportSshConfig },
+    { id: 'act-import-putty',  label: 'Import from PuTTY…',        icon: '⤒', section: 'Actions' as const, run: handleImportPutty },
+    { id: 'act-import-moba',   label: 'Import from MobaXterm…',    icon: '⤒', section: 'Actions' as const, run: handleImportMobaXterm },
+    { id: 'act-import-scrt',   label: 'Import from SecureCRT…',    icon: '⤒', section: 'Actions' as const, run: handleImportSecureCrt },
+    { id: 'act-about',         label: 'About ZAPX',                icon: 'ℹ', section: 'Actions' as const, run: () => (showAbout = true) },
     ...Object.entries(themeLabels).map(([key, label]) => ({
       id: `theme-${key}`,
       label: `Tema · ${label}`,
@@ -883,7 +883,7 @@
       async (e) => {
         showToast({
           kind: 'info',
-          title: 'Plataforma detectada',
+          title: 'Platform detected',
           detail: e.payload.display_name,
         })
         // Refresh sessions so the updated platform is visible immediately.
@@ -952,8 +952,8 @@
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
       onDelete={async (s) => {
-        const ok = await ask(`Borrar "${s.name}"? Esta acción no se puede deshacer.`, {
-          title: 'Borrar sesión',
+        const ok = await ask(`Delete "${s.name}"? This can't be undone.`, {
+          title: 'Delete session',
           kind: 'warning',
         })
         if (!ok) return
@@ -966,9 +966,9 @@
       }}
       onCreateFolder={() => {
         openPrompt({
-          title: 'Nueva carpeta',
-          placeholder: 'Mi carpeta',
-          submitLabel: 'Crear',
+          title: 'New folder',
+          placeholder: 'My folder',
+          submitLabel: 'Create',
           onSubmit: async (name) => {
             prompt = null
             try {
@@ -982,9 +982,9 @@
       }}
       onRenameFolder={(folder) => {
         openPrompt({
-          title: `Renombrar "${folder.name}"`,
+          title: `Rename "${folder.name}"`,
           initial: folder.name,
-          submitLabel: 'Renombrar',
+          submitLabel: 'Rename',
           onSubmit: async (name) => {
             prompt = null
             if (name === folder.name) return
@@ -999,8 +999,8 @@
       }}
       onDeleteFolder={async (folder) => {
         const ok = await ask(
-          `Borrar la carpeta "${folder.name}"? Las sesiones de dentro pasan a la raíz.`,
-          { title: 'Borrar carpeta', kind: 'warning' },
+          `Delete folder "${folder.name}"? Its sessions move to the root.`,
+          { title: 'Delete folder', kind: 'warning' },
         )
         if (!ok) return
         try {

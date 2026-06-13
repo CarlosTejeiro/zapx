@@ -125,18 +125,18 @@
       <div class="title">
         <span class="cmd" style:color={theme.accent}>$ {command || '—'}</span>
         {#if running}
-          <span class="badge running">corriendo…</span>
+          <span class="badge running">running…</span>
         {:else if allSame}
-          <span class="badge ok">✓ {hosts.length} hosts idénticos</span>
+          <span class="badge ok">✓ {hosts.length} hosts identical</span>
         {:else}
-          <span class="badge warn">{groups.length} variantes{timedOut.length ? ` · ${timedOut.length} sin responder` : ''}</span>
+          <span class="badge warn">{groups.length} variants{timedOut.length ? ` · ${timedOut.length} no reply` : ''}</span>
         {/if}
       </div>
-      <button class="btn" onclick={onClose} title="Cerrar"><Icon name="x" size={12} /></button>
+      <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
     </div>
 
     <p class="hint">
-      Salidas agrupadas por contenido idéntico. Selecciona dos grupos para ver el diff.
+      Outputs grouped by identical content. Select two groups to see the diff.
     </p>
 
     <div class="groups">
@@ -150,11 +150,11 @@
               class="btn small"
               class:active={diffA === i || diffB === i}
               onclick={() => pickDiff(i)}
-              title="Marcar para diff"
+              title="Mark for diff"
             >diff</button>
           </div>
           {#if open.has(i)}
-            <pre class="output">{g.text || '(sin salida)'}</pre>
+            <pre class="output">{g.text || '(no output)'}</pre>
           {/if}
         </div>
       {/each}
@@ -164,20 +164,20 @@
           <div class="group-head">
             <span class="count to">{timedOut.length}</span>
             <span class="hostnames">{timedOut.map((h) => h.label).join(', ')}</span>
-            <span class="to-label">no respondieron a tiempo</span>
+            <span class="to-label">timed out</span>
           </div>
         </div>
       {/if}
 
       {#if groups.length === 0 && !running}
-        <p class="empty">Ningún host devolvió salida.</p>
+        <p class="empty">No host returned output.</p>
       {/if}
     </div>
 
     {#if diff}
       <div class="diff">
         <div class="diff-head">
-          Diff: grupo {(diffA ?? 0) + 1} (rojo) ↔ grupo {(diffB ?? 0) + 1} (verde)
+          Diff: group {(diffA ?? 0) + 1} (red) ↔ group {(diffB ?? 0) + 1} (green)
         </div>
         <pre class="diff-body">{#each diff as l (l.text + l.kind)}<span class="dl {l.kind}">{l.kind === 'a' ? '- ' : l.kind === 'b' ? '+ ' : '  '}{l.text}
 </span>{/each}</pre>

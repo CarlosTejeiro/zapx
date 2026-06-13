@@ -36,10 +36,10 @@
 
 <div class="panel">
   <section>
-    <h3>Formato del archivo</h3>
+    <h3>File format</h3>
     <p class="hint">
-      Controla cómo se guarda el contenido del terminal cuando activas el
-      botón de grabación (●) en la cabecera de un pane.
+      Controls how the terminal content is saved when you toggle the record
+      button (●) in a pane header.
     </p>
 
     <label class="row">
@@ -51,12 +51,11 @@
         onchange={() => update('plain')}
       />
       <div>
-        <div class="row-title">Texto plano <span class="default-tag">por defecto</span></div>
+        <div class="row-title">Plain text <span class="default-tag">default</span></div>
         <div class="row-help">
-          Elimina los códigos ANSI (colores, títulos de ventana, modos de paste)
-          y deja sólo texto. Igual que la opción <em>Log Session</em> de
-          SecureCRT. Recomendado para auditoría y para abrir el log en cualquier
-          editor.
+          Strips ANSI codes (colors, window titles, paste modes) and keeps only
+          text. Same as SecureCRT's <em>Log Session</em> option. Recommended for
+          auditing and for opening the log in any editor.
         </div>
       </div>
     </label>
@@ -72,19 +71,18 @@
       <div>
         <div class="row-title">Raw</div>
         <div class="row-help">
-          Guarda los bytes exactos que envía el remoto, incluyendo escape
-          sequences. Útil para reproducir la sesión con
-          <code>cat logfile</code> en otra terminal, o para depurar problemas
-          de renderizado.
+          Saves the exact bytes the remote sends, including escape sequences.
+          Useful to replay the session with <code>cat logfile</code> in another
+          terminal, or to debug rendering issues.
         </div>
       </div>
     </label>
   </section>
 
   <section>
-    <h3>Ubicación</h3>
-    <p class="hint">Los archivos rotan automáticamente cada 50&nbsp;MB.</p>
-    <button type="button" class="ok-btn" onclick={reveal}>📂 Abrir carpeta de logs</button>
+    <h3>Location</h3>
+    <p class="hint">Files rotate automatically every 50&nbsp;MB.</p>
+    <button type="button" class="ok-btn" onclick={reveal}>📂 Open logs folder</button>
     {#if logsPath}
       <code class="path">{logsPath}</code>
     {/if}

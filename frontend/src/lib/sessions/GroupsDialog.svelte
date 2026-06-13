@@ -36,7 +36,7 @@
     try {
       await addGroup(name)
       newName = ''
-      status = { kind: 'ok', text: `Grupo "${name}" creado.` }
+      status = { kind: 'ok', text: `Group "${name}" created.` }
     } catch (e) {
       status = { kind: 'err', text: fmt(e) }
     }
@@ -67,7 +67,7 @@
       // Preserve saved-session order from the sessions list for stable grids.
       const ordered = sessions.map((s) => s.id).filter((id) => editMembers.has(id))
       await setGroupMembers(editingId, ordered)
-      status = { kind: 'ok', text: 'Grupo guardado.' }
+      status = { kind: 'ok', text: 'Group saved.' }
       cancelEdit()
     } catch (e) {
       status = { kind: 'err', text: fmt(e) }
@@ -75,7 +75,7 @@
   }
 
   async function destroy(g: BroadcastGroup) {
-    if (!confirm(`Borrar el grupo "${g.name}"?`)) return
+    if (!confirm(`Delete group "${g.name}"?`)) return
     try {
       await removeGroup(g.id)
       if (editingId === g.id) cancelEdit()
@@ -88,7 +88,7 @@
     const names = g.session_ids
       .map((id) => sessions.find((s) => s.id === id)?.name)
       .filter((n): n is string => !!n)
-    return names.length ? names.join(', ') : 'sin sesiones'
+    return names.length ? names.join(', ') : 'no sessions'
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -105,17 +105,17 @@
 <div class="overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={onKeydown}>
   <div class="dialog">
     <div class="header">
-      <h2>Grupos de broadcast</h2>
+      <h2>Broadcast groups</h2>
       <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
     </div>
 
     <p class="hint">
-      Un grupo abre N sesiones en un grid con una barra maestra que las controla a la vez.
+      A group opens N sessions in a grid with a master bar that drives them all at once.
     </p>
 
     <form class="newform" onsubmit={(e) => { e.preventDefault(); create() }}>
-      <input bind:value={newName} placeholder="Nombre del nuevo grupo (p.ej. core-switches)" />
-      <button class="btn primary" type="submit">+ Crear</button>
+      <input bind:value={newName} placeholder="New group name (e.g. core-switches)" />
+      <button class="btn primary" type="submit">+ Create</button>
     </form>
 
     {#if status}
@@ -127,10 +127,10 @@
         <div class="group">
           {#if editingId === g.id}
             <div class="edit">
-              <input class="edit-name" bind:value={editName} placeholder="Nombre" />
+              <input class="edit-name" bind:value={editName} placeholder="Name" />
               <div class="members">
                 {#if sessions.length === 0}
-                  <p class="empty">No hay sesiones guardadas todavía.</p>
+                  <p class="empty">No saved sessions yet.</p>
                 {/if}
                 {#each sessions as s (s.id)}
                   <label class="member">
@@ -145,8 +145,8 @@
                 {/each}
               </div>
               <div class="edit-actions">
-                <button class="btn" onclick={cancelEdit}>Cancelar</button>
-                <button class="btn primary" onclick={saveEdit}>Guardar</button>
+                <button class="btn" onclick={cancelEdit}>Cancel</button>
+                <button class="btn primary" onclick={saveEdit}>Save</button>
               </div>
             </div>
           {:else}
@@ -160,17 +160,17 @@
                   class="btn primary"
                   disabled={g.session_ids.length === 0}
                   onclick={() => onOpenGrid(g)}
-                  title="Abrir como grid"
-                >▦ Abrir</button>
-                <button class="btn" onclick={() => startEdit(g)} title="Editar miembros"><Icon name="pencil" size={12} /></button>
-                <button class="btn danger" onclick={() => destroy(g)} title="Borrar"><Icon name="x" size={12} /></button>
+                  title="Open as grid"
+                >▦ Open</button>
+                <button class="btn" onclick={() => startEdit(g)} title="Edit members"><Icon name="pencil" size={12} /></button>
+                <button class="btn danger" onclick={() => destroy(g)} title="Delete"><Icon name="x" size={12} /></button>
               </div>
             </div>
           {/if}
         </div>
       {/each}
       {#if groups.length === 0}
-        <p class="empty">No hay grupos. Crea uno arriba.</p>
+        <p class="empty">No groups yet. Create one above.</p>
       {/if}
     </div>
   </div>

@@ -75,8 +75,8 @@
     sending = false
     showToast({
       kind: cancelled ? 'warning' : 'success',
-      title: cancelled ? 'Envío cancelado' : 'Lista enviada',
-      detail: `${sent}/${lines.length} comandos a ${ids.length} sesión${ids.length === 1 ? '' : 'es'}`,
+      title: cancelled ? 'Send cancelled' : 'List sent',
+      detail: `${sent}/${lines.length} commands to ${ids.length} session${ids.length === 1 ? '' : 's'}`,
     })
     if (!cancelled) onClose()
   }
@@ -105,9 +105,9 @@
 
     <div class="body">
       <div class="targets">
-        <span class="section-label">Sesiones destino ({selected.size}/{targets.length})</span>
+        <span class="section-label">Target sessions ({selected.size}/{targets.length})</span>
         {#if targets.length === 0}
-          <p class="hint">No hay sesiones abiertas.</p>
+          <p class="hint">No open sessions.</p>
         {:else}
           <ul class="target-list">
             {#each targets as t (t.sessionId)}
@@ -129,35 +129,35 @@
       </div>
 
       <div class="editor">
-        <span class="section-label">Comandos — uno por línea (las líneas con «#» se ignoran)</span>
+        <span class="section-label">Commands — one per line («#» lines are ignored)</span>
         <textarea
           bind:value={text}
-          placeholder={'show clock\nterminal length 0\nshow ip interface brief\n# comentario'}
+          placeholder={'show clock\nterminal length 0\nshow ip interface brief\n# comment'}
           spellcheck="false"
           disabled={sending}
         ></textarea>
         <div class="options">
           <label class="delay">
-            Pausa entre líneas
+            Pause between lines
             <input type="number" min="0" step="100" bind:value={delayMs} disabled={sending} />
             ms
           </label>
-          <span class="count">{lines.length} comando{lines.length === 1 ? '' : 's'}</span>
+          <span class="count">{lines.length} command{lines.length === 1 ? '' : 's'}</span>
         </div>
       </div>
     </div>
 
     <div class="footer">
       {#if sending}
-        <span class="progress">Enviando línea {progress.line}/{progress.total}…</span>
-        <button class="btn" onclick={() => (cancelled = true)}>Cancelar</button>
+        <span class="progress">Sending line {progress.line}/{progress.total}…</span>
+        <button class="btn" onclick={() => (cancelled = true)}>Cancel</button>
       {:else}
-        <button class="btn" onclick={onClose}>Cerrar</button>
+        <button class="btn" onclick={onClose}>Close</button>
         <button
           class="btn primary"
           disabled={lines.length === 0 || selected.size === 0}
           onclick={send}
-        >Enviar a {selected.size} sesión{selected.size === 1 ? '' : 'es'}</button>
+        >Send to {selected.size} session{selected.size === 1 ? '' : 's'}</button>
       {/if}
     </div>
   </div>

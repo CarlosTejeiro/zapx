@@ -47,8 +47,8 @@
     try {
       const n = await reloadHintCatalogs()
       flashCatalog('ok', n === 0
-        ? 'Sin ficheros de usuario — usando los catálogos integrados.'
-        : `Recargado: ${n} catálogo${n === 1 ? '' : 's'} sustituido${n === 1 ? '' : 's'} por tus ficheros.`)
+        ? 'No user files — using the built-in catalogs.'
+        : `Reloaded: ${n} catalog${n === 1 ? '' : 's'} replaced by your files.`)
     } catch (e) {
       flashCatalog('err', e instanceof Error ? e.message : String(e))
     } finally {
@@ -61,7 +61,7 @@
   }
 
   async function clearAllHistory() {
-    if (!confirm('Borrar todo el historial de comandos? Esta acción no se puede deshacer.')) return
+    if (!confirm("Clear the entire command history? This can't be undone.")) return
     clearingHistory = true
     try {
       await clearCommandHistory(null)
@@ -81,11 +81,11 @@
     // sees that their edit took effect without pressing the button.
     unlistenReload = await listen<number>('hint-catalogs-reloaded', (e) => {
       flashCatalog('ok', e.payload === 0
-        ? 'Cambios detectados — usando los catálogos integrados.'
-        : `Recargado automáticamente: ${e.payload} catálogo${e.payload === 1 ? '' : 's'} en uso.`)
+        ? 'Changes detected — using the built-in catalogs.'
+        : `Auto-reloaded: ${e.payload} catalog${e.payload === 1 ? '' : 's'} in use.`)
     })
     unlistenError = await listen<string>('hint-catalogs-error', (e) => {
-      flashCatalog('err', `Recarga fallida: ${e.payload}`)
+      flashCatalog('err', `Reload failed: ${e.payload}`)
     })
   })
 
@@ -97,16 +97,16 @@
 
 <div class="panel">
   <section>
-    <h3>Apariencia</h3>
+    <h3>Appearance</h3>
     <label class="toggle">
       <input
         type="checkbox"
         checked={hintsSettings.ghostEnabled}
         onchange={(e) => setGhostEnabled((e.currentTarget as HTMLInputElement).checked)}
       />
-      <span>Mostrar ghost text inline (estilo zsh-autosuggestions)</span>
+      <span>Show inline ghost text (zsh-autosuggestions style)</span>
     </label>
-    <p class="hint-help">→ o End para aceptar la sugerencia.</p>
+    <p class="hint-help">→ or End to accept the suggestion.</p>
 
     <label class="toggle">
       <input
@@ -114,14 +114,14 @@
         checked={hintsSettings.popupEnabled}
         onchange={(e) => setPopupEnabled((e.currentTarget as HTMLInputElement).checked)}
       />
-      <span>Habilitar popup de sugerencias con Ctrl+Espacio</span>
+      <span>Enable the suggestions popup on Ctrl+Space</span>
     </label>
-    <p class="hint-help">↑↓ para navegar, Tab/Enter para aceptar, Esc para cerrar.</p>
+    <p class="hint-help">↑↓ to navigate, Tab/Enter to accept, Esc to close.</p>
   </section>
 
   <section>
-    <h3>Plataforma por defecto</h3>
-    <p class="hint-help">Catálogo de comandos a usar cuando una sesión no tiene plataforma específica.</p>
+    <h3>Default platform</h3>
+    <p class="hint-help">Command catalog to use when a session has no specific platform.</p>
     <select
       value={hintsSettings.defaultPlatform}
       onchange={(e) => setDefaultPlatform((e.currentTarget as HTMLSelectElement).value)}
@@ -135,25 +135,25 @@
   <section>
     <h3>Snippets</h3>
     <p class="hint-help">
-      Los snippets que crees desde el diálogo de Snippets aparecen también como
-      sugerencias prioritarias en el popup (badge ⭐).
+      Snippets you create from the Snippets dialog also show up as priority
+      suggestions in the popup (⭐ badge).
     </p>
   </section>
 
   <section>
-    <h3>Catálogos personalizados</h3>
+    <h3>Custom catalogs</h3>
     <p class="hint-help">
-      Sustituye los comandos integrados por tus propias listas: deja un fichero
-      <code>&lt;plataforma&gt;.json</code> (p.ej. <code>fortigate.json</code>)
-      en la carpeta de catálogos. Se recarga <strong>automáticamente</strong>
-      al guardar el fichero — el botón es solo por si quieres forzarlo.
+      Replace the built-in commands with your own lists: drop a
+      <code>&lt;platform&gt;.json</code> file (e.g. <code>fortigate.json</code>)
+      into the catalogs folder. It reloads <strong>automatically</strong> when
+      you save the file — the button is only there if you want to force it.
     </p>
     <div class="catalog-actions">
       <button type="button" class="catalog-btn" onclick={openCatalogsDir}>
-        <Icon name="folder" size={13} /> Abrir carpeta de catálogos
+        <Icon name="folder" size={13} /> Open catalogs folder
       </button>
       <button type="button" class="catalog-btn" onclick={reloadCatalogs} disabled={reloading}>
-        {reloading ? '↻ Recargando…' : '↻ Recargar catálogos'}
+        {reloading ? '↻ Reloading…' : '↻ Reload catalogs'}
       </button>
     </div>
     {#if catalogStatus}
@@ -165,10 +165,10 @@
   </section>
 
   <section>
-    <h3>Historial</h3>
+    <h3>History</h3>
     <p class="hint-help">
-      Los comandos se guardan automáticamente por sesión. Los que parezcan contener
-      contraseñas o tokens nunca entran al historial.
+      Commands are saved automatically per session. Anything that looks like it
+      contains passwords or tokens never enters the history.
     </p>
     <button
       type="button"
@@ -176,7 +176,7 @@
       onclick={clearAllHistory}
       disabled={clearingHistory}
     >
-      {#if cleared}✓ Historial borrado{:else if clearingHistory}Borrando…{:else}Borrar historial completo{/if}
+      {#if cleared}✓ History cleared{:else if clearingHistory}Clearing…{:else}Clear entire history{/if}
     </button>
   </section>
 </div>

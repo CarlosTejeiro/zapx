@@ -15,11 +15,11 @@
   let pendingRestart = $state(false)
 
   const SOURCE_LABELS: Record<DataDirInfo['source'], string> = {
-    'cli-flag': 'flag --data-dir',
-    'env-var': 'variable ZAPX_DATA_DIR',
-    portable: 'modo portable (marcador junto al ejecutable)',
-    pointer: 'carpeta personalizada',
-    default: 'ubicación por defecto del sistema',
+    'cli-flag': '--data-dir flag',
+    'env-var': 'ZAPX_DATA_DIR variable',
+    portable: 'portable mode (marker next to the executable)',
+    pointer: 'custom folder',
+    default: 'system default location',
   }
 
   onMount(async () => {
@@ -33,23 +33,23 @@
   async function promptRestart() {
     pendingRestart = true
     const yes = await ask(
-      'El cambio se aplica al reiniciar ZAPX. ¿Reiniciar ahora?\n\nLas sesiones abiertas se cerrarán.',
-      { title: 'Reiniciar ZAPX', kind: 'info' },
+      'The change takes effect when ZAPX restarts. Restart now?\n\nOpen sessions will be closed.',
+      { title: 'Restart ZAPX', kind: 'info' },
     )
     if (yes) await restartApp()
   }
 
   async function changeFolder() {
     if (busy) return
-    const dir = await openDialog({ directory: true, title: 'Carpeta de datos de ZAPX' })
+    const dir = await openDialog({ directory: true, title: 'ZAPX data folder' })
     if (typeof dir !== 'string' || !dir) return
     busy = true
     try {
       const summary = await setDataDir(dir)
-      showToast({ kind: 'success', title: 'Carpeta de datos', detail: summary })
+      showToast({ kind: 'success', title: 'Data folder', detail: summary })
       await promptRestart()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Carpeta de datos', detail: String(e) })
+      showToast({ kind: 'error', title: 'Data folder', detail: String(e) })
     } finally {
       busy = false
     }
@@ -62,12 +62,12 @@
       await resetDataDir()
       showToast({
         kind: 'success',
-        title: 'Carpeta de datos',
-        detail: 'A partir del próximo arranque se usará la ubicación por defecto. Los datos actuales no se mueven.',
+        title: 'Data folder',
+        detail: 'The default location will be used from the next launch. Current data is not moved.',
       })
       await promptRestart()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Carpeta de datos', detail: String(e) })
+      showToast({ kind: 'error', title: 'Data folder', detail: String(e) })
     } finally {
       busy = false
     }
@@ -76,63 +76,63 @@
 
 <div class="panel">
   <section>
-    <h3>Carpeta de datos</h3>
+    <h3>Data folder</h3>
     <p class="hint">
-      Dónde guarda ZAPX la base de datos de sesiones (<code>zapx.db</code>),
-      los logs de sesión y los catálogos de snippets/hints. Útil para llevarla
-      a una carpeta sincronizada (Drive, OneDrive) o a una unidad compartida.
+      Where ZAPX keeps the sessions database (<code>zapx.db</code>), session
+      logs and the snippet/hint catalogs. Handy for moving it to a synced
+      folder (Drive, OneDrive) or a network share.
     </p>
 
     {#if !info}
-      <p class="hint">Cargando…</p>
+      <p class="hint">Loading…</p>
     {:else}
       <code class="path">{info.path}</code>
       <p class="hint">
-        Origen: <strong>{SOURCE_LABELS[info.source]}</strong>
+        Source: <strong>{SOURCE_LABELS[info.source]}</strong>
         {#if pendingRestart}
-          · <strong>pendiente de reinicio</strong>
+          · <strong>restart pending</strong>
         {/if}
       </p>
 
       {#if info.portable}
         <p class="notice">
-          Estás en <strong>modo portable</strong>: los datos viven junto al
-          ejecutable y las credenciales se guardan cifradas (AES-256-GCM) en la
-          base de datos en lugar del llavero del sistema. Cualquiera con acceso
-          a la carpeta puede usarlas — trátala como tratarías una llave física.
+          You're in <strong>portable mode</strong>: data lives next to the
+          executable and credentials are stored encrypted (AES-256-GCM) in the
+          database instead of the OS keyring. Anyone with access to the folder
+          can use them — treat it like a physical key.
         </p>
       {:else if !info.changeable}
         <p class="notice">
-          La ubicación está forzada por {SOURCE_LABELS[info.source]} y no puede
-          cambiarse desde aquí.
+          The location is forced by {SOURCE_LABELS[info.source]} and can't be
+          changed here.
         </p>
       {:else}
         <div class="actions">
           <button type="button" class="ok-btn" disabled={busy} onclick={changeFolder}>
-            Cambiar carpeta…
+            Change folder…
           </button>
           {#if info.source === 'pointer'}
             <button type="button" class="ghost-btn" disabled={busy} onclick={useDefault}>
-              Volver a la ubicación por defecto
+              Back to default location
             </button>
           {/if}
         </div>
         <p class="hint">
-          Al cambiarla se copian la base de datos, los logs y los catálogos a la
-          nueva carpeta (si ya contiene datos de ZAPX, se adoptan tal cual). El
-          cambio se aplica tras reiniciar. Por defecto: <code>{info.default_path}</code>
+          Changing it copies the database, logs and catalogs to the new folder
+          (if it already holds ZAPX data, that's adopted as-is). The change
+          takes effect after a restart. Default: <code>{info.default_path}</code>
         </p>
       {/if}
     {/if}
   </section>
 
   <section>
-    <h3>Modo portable (Windows)</h3>
+    <h3>Portable mode (Windows)</h3>
     <p class="hint">
-      Descarga el <code>ZAPX_x64_portable.exe</code> de la release, ponlo en
-      cualquier carpeta o USB y crea al lado un fichero vacío llamado
-      <code>portable</code>. Todos los datos vivirán en <code>data/</code>
-      junto al ejecutable y viajarán con él.
+      Download <code>ZAPX_x64_portable.exe</code> from the release, put it in
+      any folder or USB stick and create an empty file named
+      <code>portable</code> next to it. All data then lives in <code>data/</code>
+      beside the executable and travels with it.
     </p>
   </section>
 </div>
