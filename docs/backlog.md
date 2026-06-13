@@ -5,6 +5,27 @@ block that gates them is closed.
 
 Add entries with format: `- **Feature name**: brief description. Gated by: Bloque N.`
 
+## Planned for 0.7
+
+- **App updates**. Today "Check for updates" fails: the updater plugin is
+  `active: false`, the endpoint is a placeholder (`example.com`), and the
+  release builds no updater artifacts (`createUpdaterArtifacts: false`), so
+  there's no `latest.json` to fetch. Two complementary paths:
+  - **A — check & open (recommended first, works everywhere now)**: replace
+    `handleCheckUpdates` in `App.svelte` to query the GitHub Releases API
+    (`/repos/CarlosTejeiro/zapx/releases/latest`), compare `tag_name` with
+    `getVersion()`, and on a newer version show a notice + button that opens
+    the releases page (shell plugin). No infra, no signing, cross-platform.
+  - **B — native Tauri auto-update (Windows/Linux now, macOS after signing)**:
+    set `bundle.createUpdaterArtifacts: true`, `plugins.updater.active: true`,
+    and point `endpoints` at `https://github.com/CarlosTejeiro/zapx/releases/
+    latest/download/latest.json` (tauri-action generates+uploads it with the
+    `TAURI_SIGNING_PRIVATE_KEY` secret — confirm that secret exists and matches
+    the configured `pubkey`). `check()`/`downloadAndInstall()` are already
+    wired. **macOS blocker**: an unsigned/un-notarized updated `.app` is
+    Gatekeeper-quarantined like the first download, so in-app update on macOS
+    waits for the Apple Developer ID work; Windows + Linux self-update fine.
+
 ## Ideas
 
 - **Third-party forward import**: PuTTY/MobaXterm/SecureCRT also store port
