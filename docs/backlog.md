@@ -9,9 +9,11 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 - **Saved port-forwards (auto-start tunnels per session)**: the tunnel engine
   already supports `-L` / `-D` (SOCKS5) / `-R` (`crates/core-transport/
-  forwards.rs`), but forwards are transient today — configured on a live
-  session via `TunnelsDialog` (keyed by runtime session id) and lost on close,
-  with no DB persistence. Add a `session_forwards` table + migration, an
+  forwards.rs`). The SFTP + Tunnels buttons were re-exposed in the pane header
+  in `ea369cd` (they only show for **connected SSH** panes — verify visibility/
+  UX in the 0.6 review). Forwards are still transient today — configured on a
+  live session via `TunnelsDialog` (keyed by runtime session id) and lost on
+  close, with no DB persistence. Add a `session_forwards` table + migration, an
   editor in the New/Edit Session dialog to define forwards (local/dynamic/
   remote, bind addr+port, target), and auto-open them when the session
   connects — matching SecureCRT/MobaXterm "Port Forwarding" config. Include
