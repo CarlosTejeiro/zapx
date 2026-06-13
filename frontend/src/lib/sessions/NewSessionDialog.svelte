@@ -612,6 +612,9 @@
     align-items: center;
     justify-content: center;
     z-index: 100;
+    /* Keep the dialog inside the window even on short viewports. */
+    padding: 2rem 1rem;
+    overflow: hidden;
   }
 
   .dialog {
@@ -621,11 +624,20 @@
     padding: 1.5rem;
     width: 26rem;
     max-width: 95vw;
+    /* Cap to the viewport and scroll the form body when it's taller. */
+    max-height: 100%;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     color: var(--zx-text);
     font-family: var(--zx-font-ui);
+  }
+
+  .dialog::-webkit-scrollbar { width: 8px; }
+  .dialog::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--zx-text) 22%, transparent);
+    border-radius: 4px;
   }
 
   h2 {
@@ -687,6 +699,13 @@
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: 0.25rem;
+    /* Keep Cancel/Save reachable while the form body scrolls. */
+    position: sticky;
+    bottom: -1.5rem;
+    margin: 0.25rem -1.5rem -1.5rem;
+    padding: 0.85rem 1.5rem;
+    background: var(--zx-surface);
+    border-top: 1px solid var(--zx-border);
   }
 
   button {
