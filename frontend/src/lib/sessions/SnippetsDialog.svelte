@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
+  import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import {
     createSnippet,
     updateSnippet,
@@ -147,12 +148,14 @@
       status = { kind: 'err', text: 'No session is focused. Click a terminal first.' }
       return
     }
+    const content = await resolveSnippet(s.content)
+    if (content === null) return
     try {
-      await sendInputText(focused, s.content)
+      await sendInputText(focused, content)
       if (broadcast.enabled) {
         const others = broadcastTargets(focused)
         for (const other of others) {
-          await sendInputText(other, s.content).catch(() => {})
+          await sendInputText(other, content).catch(() => {})
         }
         status = { kind: 'ok', text: `Sent to ${1 + others.length} sessions.` }
       } else {

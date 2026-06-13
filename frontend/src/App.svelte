@@ -37,6 +37,8 @@
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
   import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
   import Toasts from '$lib/ui/Toasts.svelte'
+  import VariablesDialog from '$lib/snippets/VariablesDialog.svelte'
+  import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
   import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
@@ -724,10 +726,13 @@
     if (!s) return
     const focused = getFocusedSessionId()
     if (!focused) return
-    await sendInputText(focused, s.content).catch(console.error)
+    // Resolve any {{variables}} (prompts the user) before sending.
+    const text = await resolveSnippet(s.content)
+    if (text === null) return
+    await sendInputText(focused, text).catch(console.error)
     if (broadcast.enabled) {
       for (const id of broadcastTargets(focused)) {
-        await sendInputText(id, s.content).catch(() => {})
+        await sendInputText(id, text).catch(() => {})
       }
     }
   }
@@ -1171,6 +1176,7 @@
 {/if}
 
 <Toasts />
+<VariablesDialog />
 
 {#if showAbout}
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->

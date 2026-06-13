@@ -32,6 +32,7 @@
     broadcastTargets,
   } from '$lib/stores/sessionRuntime.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
+  import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import ButtonEditor from './ButtonEditor.svelte'
   import type { Snippet, RecentCommand } from '$lib/bridge/types'
@@ -131,8 +132,11 @@
     }
   }
 
-  function fireSnippet(s: Snippet) {
-    fireText(s.content, s.name)
+  async function fireSnippet(s: Snippet) {
+    // Resolve any {{variables}} (prompts the user) before sending.
+    const text = await resolveSnippet(s.content)
+    if (text === null) return
+    fireText(text, s.name)
   }
 
   function fireRecent(r: RecentCommand) {
