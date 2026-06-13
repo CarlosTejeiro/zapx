@@ -84,17 +84,30 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Native window vibrancy (translucent chrome) — best effort.
-            // macOS: HUD-style sidebar effect; Windows 11: acrylic; Linux: noop.
+            // Native window vibrancy (translucent chrome) — best effort, and
+            // purely cosmetic. It reaches into private macOS APIs (and Windows
+            // DWM) that can misbehave or panic on brand-new OS builds; a panic
+            // here runs inside the `did_finish_launching` ObjC callback, which
+            // can't unwind and would abort the whole app. Contain it so a
+            // failed effect just means opaque chrome, never a crash.
             if let Some(win) = app.get_webview_window("main") {
-                apply_vibrancy(&win);
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| apply_vibrancy(&win)));
+                if r.is_err() {
+                    tracing::warn!("window vibrancy panicked; continuing without it");
+                }
             }
 
             // First launch (no saved window state yet): open centered at
             // ~75% of the monitor work area instead of the fixed config
             // size, like SecureCRT/MobaXterm do. Subsequent launches are
-            // restored by tauri-plugin-window-state.
-            size_window_on_first_run(app);
+            // restored by tauri-plugin-window-state. Also contained — a
+            // monitor-geometry hiccup must not abort launch.
+            {
+                let app_ref: &tauri::App = app;
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    size_window_on_first_run(app_ref)
+                }));
+            }
 
             let resolved = data_dir::resolve(app.handle())?;
             tracing::info!(dir = %resolved.dir.display(), source = ?resolved.source, "data dir");
