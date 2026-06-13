@@ -11,6 +11,8 @@
   import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import Icon from '$lib/icons/Icon.svelte'
+  import SftpDialog from '$lib/terminal/SftpDialog.svelte'
+  import TunnelsDialog from '$lib/terminal/TunnelsDialog.svelte'
 
   interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
   interface TelnetParams { host: string; port: number }
@@ -160,6 +162,14 @@
     pane.ssh?.host ?? pane.savedSession?.host ?? ''
   )
 
+  // SFTP + port-forward dialogs are SSH-only and need the live runtime
+  // session id (the redesign hid TerminalTab's own toolbar, so the pane
+  // header re-exposes these here).
+  const isSsh = $derived(protocol === 'ssh')
+  const runtimeSid = $derived(paneToSession.get(pane.id) ?? null)
+  let showSftp = $state(false)
+  let showTunnels = $state(false)
+
   // Map PylonTheme terminal tokens → xterm ColorPalette
   const terminalPalette = $derived<ColorPalette>({
     background:    theme.terminal.bg,
@@ -224,6 +234,26 @@
         style:color={isLogging ? theme.err : theme.terminal.fg}
         onclick={(e) => { e.stopPropagation(); toggleLogging() }}
       ><Icon name="record" size={10} /></button>
+      {#if isSsh}
+        <button
+          class="ph-btn"
+          type="button"
+          title="SFTP file browser"
+          aria-label="SFTP file browser"
+          disabled={!runtimeSid}
+          style:color={theme.terminal.fg}
+          onclick={(e) => { e.stopPropagation(); showSftp = true }}
+        ><Icon name="transfer" size={12} /></button>
+        <button
+          class="ph-btn"
+          type="button"
+          title="Port forwards (-L / -D / -R)"
+          aria-label="Port forwards"
+          disabled={!runtimeSid}
+          style:color={theme.terminal.fg}
+          onclick={(e) => { e.stopPropagation(); showTunnels = true }}
+        ><Icon name="tunnel" size={12} /></button>
+      {/if}
       {#if onSplitH}
         <button
           class="ph-btn"
@@ -306,6 +336,13 @@
   </div>
 
 </div>
+
+{#if showSftp && runtimeSid}
+  <SftpDialog sessionId={runtimeSid} onClose={() => (showSftp = false)} />
+{/if}
+{#if showTunnels && runtimeSid}
+  <TunnelsDialog sessionId={runtimeSid} onClose={() => (showTunnels = false)} />
+{/if}
 
 <style>
   .pane {

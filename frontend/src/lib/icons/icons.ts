@@ -23,6 +23,10 @@ export const ICON_PATHS = {
   min: '<path d="M3.5 8h9" />',
   max: '<rect x="3.5" y="3.5" width="9" height="9" rx="1" />',
   file: '<path d="M4 1.5h5.5L12 4v10.5H4z" /><path d="M9.5 1.5V4H12" />',
+  /** SFTP / file transfer — up+down arrows between two endpoints. */
+  transfer: '<path d="M5 2.5v9M5 11.5 2.8 9.3M5 11.5 7.2 9.3" /><path d="M11 13.5v-9M11 4.5 8.8 6.7M11 4.5 13.2 6.7" />',
+  /** Tunnel / port forward — two brackets linked by a routed line. */
+  tunnel: '<path d="M4.5 3.5h-2v9h2" /><path d="M11.5 3.5h2v9h-2" /><path d="M5.5 8h5" /><path d="M8.5 6 10.5 8 8.5 10" />',
   link: '<path d="M6.5 9.5 9.5 6.5" /><path d="M7.5 4.5 9 3a2.5 2.5 0 0 1 3.5 3.5L11 8" /><path d="M8.5 11.5 7 13a2.5 2.5 0 0 1-3.5-3.5L5 8" />',
   /** Filled record dot — `fill-current`, no stroke (session logging toggle). */
   record: '<circle cx="8" cy="8" r="4" fill="currentColor" stroke="none" />',
