@@ -7,6 +7,16 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 ## Planned for 0.6
 
+- **Saved port-forwards (auto-start tunnels per session)**: the tunnel engine
+  already supports `-L` / `-D` (SOCKS5) / `-R` (`crates/core-transport/
+  forwards.rs`), but forwards are transient today — configured on a live
+  session via `TunnelsDialog` (keyed by runtime session id) and lost on close,
+  with no DB persistence. Add a `session_forwards` table + migration, an
+  editor in the New/Edit Session dialog to define forwards (local/dynamic/
+  remote, bind addr+port, target), and auto-open them when the session
+  connects — matching SecureCRT/MobaXterm "Port Forwarding" config. Include
+  them in export/import (`transfer.rs`) and the third-party importers
+  (PuTTY tunnels, MobaXterm/SecureCRT forward fields).
 - **Smarter hints — command-sequence learning**: beyond frecency, learn
   per-platform command bigrams ("after `conf t` you usually run `interface…`")
   from `command_history` (already persisted with timestamps per session) and
