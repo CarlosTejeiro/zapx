@@ -17,6 +17,9 @@
 //! skipped. Folders aren't modelled (PuTTY session names sometimes encode a
 //! path with `/`, but that's not standardised, so names are kept as-is).
 
+use core_persistence::SavedForward;
+
+use crate::commands::transfer::SessionForwards;
 use crate::importers::common::{self, Auth, Parsed};
 
 /// One PuTTY session's raw values (strings + dword ints), name decoded.
@@ -30,6 +33,8 @@ pub struct PuttySession {
     pub public_key_file: Option<String>,
     pub serial_line: Option<String>,
     pub serial_speed: Option<u32>,
+    /// PuTTY's `PortForwardings` string, e.g. `L8080=10.0.0.1:80,D1080`.
+    pub port_forwardings: Option<String>,
 }
 
 /// Parse a `.reg` export into PuTTY sessions.
@@ -68,6 +73,7 @@ pub fn parse_reg(content: &str) -> Vec<PuttySession> {
             "SerialLine" => s.serial_line = unquote(value),
             "PortNumber" => s.port = parse_dword(value),
             "SerialSpeed" => s.serial_speed = parse_dword(value),
+            "PortForwardings" => s.port_forwardings = unquote(value).filter(|v| !v.is_empty()),
             _ => {}
         }
     }
@@ -103,6 +109,10 @@ pub fn read_registry() -> Vec<PuttySession> {
         s.serial_line = key.get_value("SerialLine").ok();
         s.port = key.get_value::<u32, _>("PortNumber").ok();
         s.serial_speed = key.get_value::<u32, _>("SerialSpeed").ok();
+        s.port_forwardings = key
+            .get_value::<String, _>("PortForwardings")
+            .ok()
+            .filter(|v| !v.is_empty());
         out.push(s);
     }
     out
@@ -113,10 +123,80 @@ pub fn read_registry() -> Vec<PuttySession> {
     vec![]
 }
 
+/// Parse PuTTY's `PortForwardings` string into native forwards.
+///
+/// Comma-separated specs: `L[bind:]port=host:port` (local), `R…` (remote),
+/// `D[bind:]port` (dynamic SOCKS). An optional `4`/`6` after the type letter
+/// forces the IP version and is ignored. Unparseable specs are warned, not
+/// fatal.
+pub fn parse_port_forwardings(spec: &str, session: &str, warnings: &mut Vec<String>) -> Vec<SavedForward> {
+    let mut out = Vec::new();
+    for raw in spec.split(',') {
+        let item = raw.trim();
+        if item.is_empty() {
+            continue;
+        }
+        let mut chars = item.chars();
+        let kind = match chars.next().map(|c| c.to_ascii_uppercase()) {
+            Some('L') => "local",
+            Some('R') => "remote",
+            Some('D') => "dynamic",
+            _ => {
+                warnings.push(format!("«{session}»: forward «{item}» no reconocido — omitido"));
+                continue;
+            }
+        };
+        let mut rest = chars.as_str();
+        // Optional IP-version selector right after the type letter.
+        if rest.starts_with('4') || rest.starts_with('6') {
+            rest = &rest[1..];
+        }
+        let (source, dest) = match rest.split_once('=') {
+            Some((s, d)) => (s, Some(d)),
+            None => (rest, None),
+        };
+        // source = [bindaddr:]port
+        let (bind_addr, bind_port_s) = match source.rsplit_once(':') {
+            Some((a, p)) => (a.to_owned(), p),
+            None => ("127.0.0.1".to_owned(), source),
+        };
+        let Ok(bind_port) = bind_port_s.trim().parse::<u16>() else {
+            warnings.push(format!("«{session}»: forward «{item}»: puerto inválido — omitido"));
+            continue;
+        };
+        if kind == "dynamic" {
+            out.push(SavedForward { kind: kind.into(), bind_addr, bind_port, target_host: None, target_port: None });
+            continue;
+        }
+        // local/remote need host:port
+        let Some(dest) = dest else {
+            warnings.push(format!("«{session}»: forward «{item}» sin destino — omitido"));
+            continue;
+        };
+        let Some((th, tp_s)) = dest.rsplit_once(':') else {
+            warnings.push(format!("«{session}»: forward «{item}»: destino inválido — omitido"));
+            continue;
+        };
+        let Ok(tp) = tp_s.trim().parse::<u16>() else {
+            warnings.push(format!("«{session}»: forward «{item}»: puerto destino inválido — omitido"));
+            continue;
+        };
+        out.push(SavedForward {
+            kind: kind.into(),
+            bind_addr,
+            bind_port,
+            target_host: Some(th.to_owned()),
+            target_port: Some(tp),
+        });
+    }
+    out
+}
+
 /// Map decoded PuTTY sessions onto the native envelope.
 pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
     let mut warnings = Vec::new();
     let mut rows = Vec::new();
+    let mut forwards: Vec<SessionForwards> = Vec::new();
     let mut idx: i64 = 0;
     for s in sessions {
         // The default profile is a template, not a connectable host.
@@ -155,6 +235,15 @@ pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
                     auth,
                     idx - 1,
                 ));
+                // Saved port-forwards (SSH only).
+                if proto == "ssh" {
+                    if let Some(pf) = &s.port_forwardings {
+                        let fwds = parse_port_forwardings(pf, &s.name, &mut warnings);
+                        if !fwds.is_empty() {
+                            forwards.push(SessionForwards { session_id: idx, forwards: fwds });
+                        }
+                    }
+                }
             }
             "serial" => {
                 let Some(device) = s.serial_line.clone().filter(|d| !d.is_empty()) else {
@@ -176,7 +265,9 @@ pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
             )),
         }
     }
-    Parsed { file: common::envelope(vec![], rows), warnings }
+    let mut file = common::envelope(vec![], rows);
+    file.session_forwards = forwards;
+    Parsed { file, warnings }
 }
 
 /// PuTTY percent-decodes session names (`%XX`, hex). Bad escapes pass through.
@@ -232,6 +323,7 @@ mod tests {
 "Protocol"="ssh"
 "UserName"="admin"
 "PublicKeyFile"="C:\\keys\\id.ppk"
+"PortForwardings"="L8080=10.0.0.1:80,D1080,R2000=localhost:22"
 
 [HKEY_CURRENT_USER\Software\SimonTatham\PuTTY\Sessions\console]
 "Protocol"="serial"
@@ -262,6 +354,24 @@ mod tests {
         assert_eq!(console.protocol, "serial");
         assert!(console.options_json.contains("COM3"));
         assert!(console.options_json.contains("9600")); // 0x2580
+    }
+
+    #[test]
+    fn parses_port_forwardings() {
+        let parsed = from_sessions(&parse_reg(SAMPLE));
+        // The edge router is the first SSH session (file-local id 1).
+        let sf = parsed.file.session_forwards.iter().find(|f| f.session_id == 1).unwrap();
+        assert_eq!(sf.forwards.len(), 3);
+        let local = sf.forwards.iter().find(|f| f.kind == "local").unwrap();
+        assert_eq!(local.bind_port, 8080);
+        assert_eq!(local.target_host.as_deref(), Some("10.0.0.1"));
+        assert_eq!(local.target_port, Some(80));
+        let dyn_f = sf.forwards.iter().find(|f| f.kind == "dynamic").unwrap();
+        assert_eq!(dyn_f.bind_port, 1080);
+        assert!(dyn_f.target_host.is_none());
+        let remote = sf.forwards.iter().find(|f| f.kind == "remote").unwrap();
+        assert_eq!(remote.bind_port, 2000);
+        assert_eq!(remote.target_host.as_deref(), Some("localhost"));
     }
 
     #[test]
