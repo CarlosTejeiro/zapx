@@ -233,6 +233,7 @@ pub fn run() {
             commands::logging::list_session_logs,
             commands::logging::list_all_session_logs,
             commands::logging::open_logs_dir,
+            commands::shell::open_external,
             commands::transfer::export_sessions,
             commands::transfer::import_sessions,
             commands::transfer::import_ssh_config,

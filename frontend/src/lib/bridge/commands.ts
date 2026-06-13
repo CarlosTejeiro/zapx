@@ -614,6 +614,11 @@ export async function restartApp(): Promise<void> {
   return invoke<void>('restart_app')
 }
 
+// Open an http(s) URL in the user's default browser.
+export async function openExternal(url: string): Promise<void> {
+  return invoke<void>('open_external', { url })
+}
+
 // Persist the user-typed password into the backend in-memory cache. Used by
 // the reconnect dialog when the OS keychain denies access on dev builds.
 export async function cacheSessionPassword(

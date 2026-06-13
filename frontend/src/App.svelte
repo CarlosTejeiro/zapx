@@ -74,9 +74,8 @@
     loadSnippets,
     setBarContext,
   } from '$lib/stores/snippets.svelte'
-  import { getSessionPlatform, getSessionTcpMss } from '$lib/bridge/commands'
+  import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
-  import { check as checkUpdate } from '@tauri-apps/plugin-updater'
   import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
@@ -516,23 +515,20 @@
   /// Check the configured update endpoint, ask the user, and install on confirm.
   /// Requires the updater plugin to be `active` in tauri.conf.json with a valid
   /// signing pubkey + endpoint — until then this surfaces a clear error.
+  /// In-app auto-update isn't wired (the repo/releases are private, so there's
+  /// no public manifest a client could read). Open the releases page instead,
+  /// where the latest build can be downloaded.
   async function handleCheckUpdates() {
+    const releasesUrl = 'https://github.com/CarlosTejeiro/zapx/releases'
     try {
-      const update = await checkUpdate()
-      if (!update) {
-        window.alert('ZAPX is up to date.')
-        return
-      }
-      const proceed = window.confirm(
-        `Update ${update.version} available (current: ${update.currentVersion}).\n\n` +
-          `${update.body ?? ''}\n\nDownload and install now?`,
-      )
-      if (!proceed) return
-      await update.downloadAndInstall()
-      window.alert('Update installed. Please restart ZAPX to use it.')
+      await openExternal(releasesUrl)
+      showToast({
+        kind: 'info',
+        title: 'Releases',
+        detail: `Current version ${appVersion}. Opening the releases page…`,
+      })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      window.alert(`Could not check for updates: ${msg}`)
+      showToast({ kind: 'error', title: 'Releases', detail: String(e) })
     }
   }
 

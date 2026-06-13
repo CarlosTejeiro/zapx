@@ -9,6 +9,7 @@ pub mod login_scripts;
 pub mod sessions;
 pub mod settings;
 pub mod sftp;
+pub mod shell;
 pub mod snippets;
 pub mod transfer;
 pub mod vault;
