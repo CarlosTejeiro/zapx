@@ -7,7 +7,22 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 ## Planned for 0.7
 
-- **App updates**. Today "Check for updates" fails: the updater plugin is
+- **App updates — constrained by the private repo.** The code/releases now
+  live in a single **private** repo, so GitHub Releases are private: the
+  anonymous Releases API can't see them, and a client can't ship a token to
+  read them. So GitHub-hosted auto-update is impractical as long as the repo
+  is private. Options:
+  - **Manual distribution** (current reality): the owner hands out the build;
+    "Check for updates" can simply open the (auth-gated) releases page or be
+    hidden until there's a real channel.
+  - **Private update server**: host a `latest.json` + signed bundles on a
+    server you control (token/none), point `plugins.updater.endpoints` there.
+    Works on Windows/Linux; macOS still needs Developer ID signing.
+  - **Public releases again**: if exclusivity constraints lift, revisit the
+    public-releases path below.
+  Original analysis (assumed public releases) kept for reference:
+- **App updates (if releases are public)**. "Check for updates" fails today: the
+  updater plugin is
   `active: false`, the endpoint is a placeholder (`example.com`), and the
   release builds no updater artifacts (`createUpdaterArtifacts: false`), so
   there's no `latest.json` to fetch. Two complementary paths:
