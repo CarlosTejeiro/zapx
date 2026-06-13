@@ -14,14 +14,25 @@
   import {
     visibleSnippets,
     recents,
+    barContext,
+    loadVisibleSnippets,
+    loadSnippets,
     SNIPPET_BAR_LIMIT,
   } from '$lib/stores/snippets.svelte'
-  import { sendInputText } from '$lib/bridge/commands'
+  import {
+    sendInputText,
+    createSnippet,
+    updateSnippet,
+    deleteSnippet,
+  } from '$lib/bridge/commands'
   import {
     getFocusedSessionId,
     broadcast,
     broadcastTargets,
   } from '$lib/stores/sessionRuntime.svelte'
+  import { showToast } from '$lib/ui/toast-store.svelte'
+  import Icon from '$lib/icons/Icon.svelte'
+  import ButtonEditor from './ButtonEditor.svelte'
   import type { Snippet, RecentCommand } from '$lib/bridge/types'
   import type { PylonTheme } from '$lib/themes/index'
 
@@ -30,6 +41,40 @@
   }
 
   let { theme }: Props = $props()
+
+  // Inline button editor: `null` = closed, `'new'` = create, Snippet = edit.
+  let editing = $state<Snippet | 'new' | null>(null)
+
+  async function saveButton(v: {
+    name: string
+    content: string
+    color: string | null
+    platformScoped: boolean
+  }) {
+    const platform = v.platformScoped ? barContext.platform : null
+    try {
+      if (editing && editing !== 'new') {
+        await updateSnippet(editing.id, v.name, v.content, platform, v.color)
+      } else {
+        await createSnippet(v.name, v.content, platform, v.color)
+      }
+      editing = null
+      await Promise.all([loadVisibleSnippets(), loadSnippets()])
+    } catch (e) {
+      flash('err', e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function removeButton(s: Snippet) {
+    try {
+      await deleteSnippet(s.id)
+      editing = null
+      await Promise.all([loadVisibleSnippets(), loadSnippets()])
+      showToast({ kind: 'info', title: 'Botón borrado', detail: s.name })
+    } catch (e) {
+      flash('err', e instanceof Error ? e.message : String(e))
+    }
+  }
 
   let status = $state<{ kind: 'ok' | 'err'; text: string } | null>(null)
   let statusTimer: ReturnType<typeof setTimeout> | null = null
@@ -84,16 +129,14 @@
   let collapsed = $state(false)
 </script>
 
-{#if visibleSnippets.length === 0 && recents.length === 0}
-  <!-- Hide entirely when there's nothing to show. Tools→Snippets… still works. -->
-{:else if collapsed}
+{#if collapsed}
   <div class="bar collapsed" style:background={theme.tabBarBg} style:border-color={theme.border}>
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
       onclick={() => (collapsed = false)}
-      title="Show snippet bar"
-    >▴ Snippets ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recent` : ''}</button>
+      title="Show button bar"
+    >▴ Botones ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recientes` : ''}</button>
   </div>
 {:else}
   <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border}>
@@ -101,27 +144,50 @@
       class="collapse-toggle"
       style:color={theme.textDim}
       onclick={() => (collapsed = true)}
-      title="Hide snippet bar"
+      title="Hide button bar"
     >▾</button>
 
     <div class="snippets">
       {#each visibleSnippets as s, i (s.id)}
-        <button
-          class="snippet-btn"
-          style:color={theme.textPrimary}
-          style:background={theme.itemActiveBg}
-          style:border-color={theme.border}
-          onclick={() => fireSnippet(s)}
-          title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1} — ` : ''}${s.content}`}
-        >
-          {#if i < SNIPPET_BAR_LIMIT}
-            <span class="key-pill" style:color={theme.accent2}>{i + 1}</span>
-          {/if}
-          <span class="snippet-name">{s.name}</span>
-        </button>
+        <!-- Each button: click fires it; a hover pencil opens the editor. The
+             optional color paints a left accent stripe. -->
+        <span class="btn-wrap">
+          <button
+            class="snippet-btn"
+            style:color={theme.textPrimary}
+            style:background={s.color ? `color-mix(in srgb, ${s.color} 18%, transparent)` : theme.itemActiveBg}
+            style:border-color={s.color ?? theme.border}
+            style:border-left={s.color ? `3px solid ${s.color}` : `1px solid ${theme.border}`}
+            onclick={() => fireSnippet(s)}
+            title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1} — ` : ''}${s.content}`}
+          >
+            {#if i < SNIPPET_BAR_LIMIT}
+              <span class="key-pill" style:color={theme.accent2}>{i + 1}</span>
+            {/if}
+            <span class="snippet-name">{s.name}</span>
+          </button>
+          <button
+            class="edit-dot"
+            style:color={theme.textDim}
+            style:background={theme.tabBarBg}
+            title="Editar botón"
+            aria-label="Editar botón"
+            onclick={(e) => { e.stopPropagation(); editing = s }}
+          ><Icon name="pencil" size={10} /></button>
+        </span>
       {/each}
 
-      {#if recents.length > 0 && visibleSnippets.length > 0}
+      <!-- Create a new button (SecureCRT-style). -->
+      <button
+        class="add-btn"
+        style:color={theme.textDim}
+        style:border-color={theme.border}
+        onclick={() => (editing = 'new')}
+        title="Nuevo botón"
+        aria-label="Nuevo botón"
+      ><Icon name="plus" size={12} /></button>
+
+      {#if recents.length > 0}
         <span class="divider" style:background={theme.border}></span>
       {/if}
 
@@ -131,9 +197,9 @@
           style:color={theme.textPrimary}
           style:border-color={theme.border}
           onclick={() => fireRecent(r)}
-          title={`Recent: ${r.text}`}
+          title={`Reciente: ${r.text}`}
         >
-          <span class="recent-mark" title="From your recent history">⏱</span>
+          <span class="recent-mark" title="De tu historial reciente">⏱</span>
           <span class="snippet-name">{shortLabel(r.text)}</span>
         </button>
       {/each}
@@ -141,6 +207,19 @@
 
     {#if status}
       <span class="status" class:err={status.kind === 'err'}>{status.text}</span>
+    {/if}
+
+    {#if editing}
+      {#key editing}
+        <ButtonEditor
+          {theme}
+          snippet={editing === 'new' ? null : editing}
+          platform={barContext.platform}
+          onSave={saveButton}
+          onDelete={editing === 'new' ? undefined : () => removeButton(editing as Snippet)}
+          onClose={() => (editing = null)}
+        />
+      {/key}
     {/if}
   </div>
 {/if}
@@ -156,7 +235,49 @@
     min-height: 28px;
     flex-shrink: 0;
     user-select: none;
+    position: relative; /* anchors the ButtonEditor popover */
   }
+
+  /* Button + hover edit affordance. The edit dot floats at the top-right. */
+  .btn-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .edit-dot {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid;
+    border-color: inherit;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    z-index: 2;
+  }
+  .btn-wrap:hover .edit-dot { display: inline-flex; }
+  .edit-dot:hover { filter: brightness(1.3); }
+
+  .add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    border: 1px dashed;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    flex-shrink: 0;
+    transition: filter 0.1s;
+  }
+  .add-btn:hover { filter: brightness(1.3); }
 
   .bar.collapsed {
     padding: 2px 8px;

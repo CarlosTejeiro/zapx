@@ -65,6 +65,9 @@ pub struct Snippet {
     /// `None` = global (visible in every session). `Some(p)` = scoped to a
     /// single platform (matching the `core_hints::Platform::as_str()` form).
     pub platform: Option<String>,
+    /// Optional accent color (hex) for the button-bar tile. `None` = default
+    /// theme tint.
+    pub color: Option<String>,
 }
 
 /// One row from `command_history`, used by the hint engine for
@@ -198,6 +201,9 @@ impl Database {
         }
         if version < 13 {
             conn.execute_batch(include_str!("migrations/013_broadcast_groups.sql"))?;
+        }
+        if version < 14 {
+            conn.execute_batch(include_str!("migrations/014_snippet_color.sql"))?;
         }
         Ok(())
     }
@@ -960,7 +966,7 @@ impl Database {
     pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform
+            "SELECT id, name, content, sort_order, created_at, platform, color
              FROM snippets ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -971,6 +977,7 @@ impl Database {
                 sort_order: row.get(3)?,
                 created_at: row.get(4)?,
                 platform: row.get(5)?,
+                color: row.get(6)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -985,7 +992,7 @@ impl Database {
     ) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform
+            "SELECT id, name, content, sort_order, created_at, platform, color
              FROM snippets
              WHERE platform IS NULL OR platform = ?1
              ORDER BY (platform IS NULL) DESC, sort_order, name",
@@ -998,6 +1005,7 @@ impl Database {
                 sort_order: row.get(3)?,
                 created_at: row.get(4)?,
                 platform: row.get(5)?,
+                color: row.get(6)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1020,6 +1028,7 @@ impl Database {
         name: &str,
         content: &str,
         platform: Option<&str>,
+        color: Option<&str>,
     ) -> Result<i64, Error> {
         let conn = self.conn.lock().unwrap();
         // Next sort_order = current max + 1; keeps user-created entries after seeds.
@@ -1031,9 +1040,9 @@ impl Database {
             )
             .unwrap_or(1);
         conn.execute(
-            "INSERT INTO snippets (name, content, sort_order, platform)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![name, content, next, platform],
+            "INSERT INTO snippets (name, content, sort_order, platform, color)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![name, content, next, platform, color],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -1044,11 +1053,12 @@ impl Database {
         name: &str,
         content: &str,
         platform: Option<&str>,
+        color: Option<&str>,
     ) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute(
-            "UPDATE snippets SET name = ?1, content = ?2, platform = ?3 WHERE id = ?4",
-            rusqlite::params![name, content, platform, id],
+            "UPDATE snippets SET name = ?1, content = ?2, platform = ?3, color = ?4 WHERE id = ?5",
+            rusqlite::params![name, content, platform, color, id],
         )?;
         if n == 0 {
             return Err(Error::NotFound);

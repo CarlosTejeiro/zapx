@@ -256,7 +256,7 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         {
             continue;
         }
-        db.create_snippet(&sn.name, &sn.content, sn.platform.as_deref())
+        db.create_snippet(&sn.name, &sn.content, sn.platform.as_deref(), sn.color.as_deref())
             .map_err(internal)?;
         summary.snippets_added += 1;
     }
@@ -447,7 +447,7 @@ mod tests {
             .unwrap();
         let gid = src.create_broadcast_group("grid").unwrap();
         src.set_broadcast_group_members(gid, &[bastion, spine]).unwrap();
-        src.create_snippet("brief", "show ip int brief", Some("cisco_ios")).unwrap();
+        src.create_snippet("brief", "show ip int brief", Some("cisco_ios"), None).unwrap();
         src.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
             .unwrap();
 

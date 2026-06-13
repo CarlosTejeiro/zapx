@@ -76,6 +76,8 @@ export interface Snippet {
   created_at: string
   /** Platform key (matching PlatformInfo.id) or null for global. */
   platform: string | null
+  /** Optional accent color (hex) for the button-bar tile; null = theme tint. */
+  color: string | null
 }
 
 /** Item in the "Recents" zone of the snippet bar — a frequently-typed command

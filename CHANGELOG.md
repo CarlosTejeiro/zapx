@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     rebuilding the `SubRep` folder tree. RDP/VNC bookmarks are skipped.
   - **SecureCRT**: walks the `Config/Sessions` directory of per-session
     `.ini` files, turning subfolders into ZAPX folders.
+- **Customizable button bar**: the bottom snippet bar is now a SecureCRT-style
+  button bar — create buttons inline with the `+`, edit/delete them on hover,
+  and give each an accent color. Buttons are platform-scoped or global; the
+  first nine still fire with `Ctrl+Shift+1..9`. Snippets gain a `color` field
+  (also editable in Tools → Snippets).
 
 ## [0.4.0] - 2026-06-12
 

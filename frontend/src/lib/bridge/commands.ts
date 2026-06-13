@@ -267,8 +267,9 @@ export async function createSnippet(
   name: string,
   content: string,
   platform: string | null = null,
+  color: string | null = null,
 ): Promise<number> {
-  return invoke<number>('create_snippet', { name, content, platform })
+  return invoke<number>('create_snippet', { name, content, platform, color })
 }
 
 export async function updateSnippet(
@@ -276,8 +277,9 @@ export async function updateSnippet(
   name: string,
   content: string,
   platform: string | null = null,
+  color: string | null = null,
 ): Promise<void> {
-  return invoke<void>('update_snippet', { id, name, content, platform })
+  return invoke<void>('update_snippet', { id, name, content, platform, color })
 }
 
 export async function deleteSnippet(id: number): Promise<void> {

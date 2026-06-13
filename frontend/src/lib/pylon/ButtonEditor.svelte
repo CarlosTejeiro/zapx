@@ -1,0 +1,241 @@
+<script lang="ts">
+  /// Inline editor popover for a button-bar button (a snippet). Used by
+  /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
+  import type { PylonTheme } from '$lib/themes/index'
+  import type { Snippet } from '$lib/bridge/types'
+
+  interface Props {
+    theme: PylonTheme
+    /** Editing an existing button, or null when creating a new one. */
+    snippet: Snippet | null
+    /** Focused session's platform (null/'' = no recognised platform). When
+     *  absent, the button can only be global. */
+    platform: string | null
+    onSave: (v: { name: string; content: string; color: string | null; platformScoped: boolean }) => void
+    onDelete?: () => void
+    onClose: () => void
+  }
+
+  const { theme, snippet, platform, onSave, onDelete, onClose }: Props = $props()
+
+  // svelte-ignore state_referenced_locally
+  const hasPlatform = !!platform && platform !== 'generic'
+
+  // One-shot capture of the props into editable local state — intentional:
+  // the parent wraps this in `{#key editing}` so a different target remounts
+  // the component and re-runs these initializers with fresh props.
+  // svelte-ignore state_referenced_locally
+  let name = $state(snippet?.name ?? '')
+  // svelte-ignore state_referenced_locally
+  let content = $state(snippet?.content ?? '')
+  // svelte-ignore state_referenced_locally
+  let color = $state<string | null>(snippet?.color ?? null)
+  // Existing snippet keeps its scope; new buttons default to the current
+  // platform when there is one (that's what the bar is showing).
+  // svelte-ignore state_referenced_locally
+  let platformScoped = $state(
+    snippet ? snippet.platform !== null : hasPlatform,
+  )
+
+  // Palette tuned to read on both light and dark themes.
+  const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
+
+  function save() {
+    if (!name.trim() || !content.trim()) return
+    onSave({
+      name: name.trim(),
+      content,
+      color,
+      platformScoped: hasPlatform && platformScoped,
+    })
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+    // Ctrl/Cmd+Enter saves (the textarea owns plain Enter for newlines).
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save() }
+  }
+</script>
+
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="editor"
+  style:background={theme.sidebarBg}
+  style:border="1px solid {theme.border}"
+  style:box-shadow={theme.windowShadow}
+  style:font-family={theme.fontUi}
+  role="dialog"
+  aria-label={snippet ? 'Edit button' : 'New button'}
+  tabindex="-1"
+  onkeydown={onKeydown}
+>
+  <div class="row">
+    <input
+      class="name"
+      placeholder="Etiqueta del botón"
+      bind:value={name}
+      style:background={theme.bodyBg}
+      style:color={theme.textPrimary}
+      style:border="1px solid {theme.border}"
+    />
+    <div class="swatches">
+      <button
+        class="swatch none"
+        class:sel={color === null}
+        title="Sin color (tema)"
+        style:border-color={theme.border}
+        style:color={theme.textDim}
+        onclick={() => (color = null)}
+      >✕</button>
+      {#each SWATCHES as c (c)}
+        <button
+          class="swatch"
+          class:sel={color === c}
+          style:background={c}
+          style:box-shadow={color === c ? `0 0 0 2px ${theme.accent}` : 'none'}
+          title={c}
+          onclick={() => (color = c)}
+          aria-label={`Color ${c}`}
+        ></button>
+      {/each}
+    </div>
+  </div>
+
+  <textarea
+    class="content"
+    placeholder="Comando(s) a enviar"
+    bind:value={content}
+    spellcheck="false"
+    style:background={theme.bodyBg}
+    style:color={theme.textPrimary}
+    style:border="1px solid {theme.border}"
+    style:font-family={theme.fontMono}
+  ></textarea>
+
+  <div class="footer">
+    {#if hasPlatform}
+      <label class="scope" style:color={theme.textMuted} title="Mostrar solo en sesiones de esta plataforma">
+        <input type="checkbox" bind:checked={platformScoped} />
+        solo {platform}
+      </label>
+    {:else}
+      <span class="scope" style:color={theme.textDim}>global</span>
+    {/if}
+    <span class="spacer"></span>
+    {#if onDelete}
+      <button class="btn danger" style:color={theme.err} onclick={onDelete}>Borrar</button>
+    {/if}
+    <button class="btn" style:color={theme.textMuted} style:border="1px solid {theme.border}" onclick={onClose}>Cancelar</button>
+    <button
+      class="btn primary"
+      disabled={!name.trim() || !content.trim()}
+      style:background={theme.accent}
+      style:color={theme.onAccent}
+      onclick={save}
+    >Guardar</button>
+  </div>
+</div>
+
+<style>
+  .editor {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 8px;
+    width: 360px;
+    max-width: calc(100vw - 24px);
+    border-radius: 7px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 400;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .name {
+    flex: 1;
+    min-width: 0;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  .swatches {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: transform 0.1s;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.none {
+    background: transparent;
+    border: 1px solid;
+    font-size: 9px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .swatch.none.sel { font-weight: 700; }
+
+  .content {
+    min-height: 56px;
+    max-height: 160px;
+    resize: vertical;
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    outline: none;
+  }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .scope input { accent-color: var(--zx-accent); }
+
+  .spacer { flex: 1; }
+
+  .btn {
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.danger { margin-right: auto; }
+  .btn.primary { font-weight: 600; }
+  .btn.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
+</style>

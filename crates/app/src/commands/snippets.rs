@@ -39,7 +39,7 @@ pub async fn list_snippets_for_platform(
             .map_err(|e| AppError::Internal(e.to_string()))?;
         if !already {
             for (name, content) in default_snippets_for(&platform) {
-                let _ = state.db.create_snippet(name, content, Some(&platform));
+                let _ = state.db.create_snippet(name, content, Some(&platform), None);
             }
         }
     }
@@ -55,13 +55,14 @@ pub async fn create_snippet(
     name: String,
     content: String,
     platform: Option<String>,
+    color: Option<String>,
 ) -> Result<i64, AppError> {
     if name.trim().is_empty() {
         return Err(AppError::Internal("snippet name is required".into()));
     }
     state
         .db
-        .create_snippet(name.trim(), &content, platform.as_deref())
+        .create_snippet(name.trim(), &content, platform.as_deref(), color.as_deref())
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -72,13 +73,14 @@ pub async fn update_snippet(
     name: String,
     content: String,
     platform: Option<String>,
+    color: Option<String>,
 ) -> Result<(), AppError> {
     if name.trim().is_empty() {
         return Err(AppError::Internal("snippet name is required".into()));
     }
     state
         .db
-        .update_snippet(id, name.trim(), &content, platform.as_deref())
+        .update_snippet(id, name.trim(), &content, platform.as_deref(), color.as_deref())
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 

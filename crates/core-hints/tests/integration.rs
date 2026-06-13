@@ -63,7 +63,7 @@ fn catalog_fills_when_history_empty() {
 fn snippet_outranks_history() {
     let db = open_tmp_db();
     // main's snippets table is (name, content) — global, not session-scoped.
-    db.create_snippet("list", "ls -lah --color", None).unwrap();
+    db.create_snippet("list", "ls -lah --color", None, None).unwrap();
     let engine = HintEngine::new(&db);
     engine.record(None, "ls -la").unwrap();
     engine.record(None, "ls -la").unwrap(); // bump freq

@@ -27,18 +27,23 @@
   let status = $state<{ kind: 'ok' | 'err'; text: string } | null>(null)
   let platforms = $state<PlatformInfo[]>([])
 
+  /** Button-bar accent palette (mirrors ButtonEditor). `null` = theme tint. */
+  const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
+
   // Add form
   let showAdd = $state(false)
   let newName = $state('')
   let newContent = $state('')
   /** Empty string = global; otherwise a Platform.as_str() value. */
   let newPlatform = $state('')
+  let newColor = $state<string | null>(null)
 
   // Edit form
   let editingId = $state<number | null>(null)
   let editName = $state('')
   let editContent = $state('')
   let editPlatform = $state('')
+  let editColor = $state<string | null>(null)
 
   onMount(async () => {
     // Pull platforms once; the list is bundled, doesn't change at runtime.
@@ -79,10 +84,11 @@
       return
     }
     try {
-      await createSnippet(newName.trim(), newContent, newPlatform || null)
+      await createSnippet(newName.trim(), newContent, newPlatform || null, newColor)
       newName = ''
       newContent = ''
       newPlatform = ''
+      newColor = null
       showAdd = false
       status = { kind: 'ok', text: 'Snippet added.' }
       await refresh()
@@ -97,6 +103,7 @@
     editName = s.name
     editContent = s.content
     editPlatform = s.platform ?? ''
+    editColor = s.color ?? null
   }
 
   async function commitEdit() {
@@ -106,7 +113,7 @@
       return
     }
     try {
-      await updateSnippet(editingId, editName.trim(), editContent, editPlatform || null)
+      await updateSnippet(editingId, editName.trim(), editContent, editPlatform || null, editColor)
       editingId = null
       status = { kind: 'ok', text: 'Snippet updated.' }
       await refresh()
@@ -217,6 +224,15 @@
             {/each}
           </select>
         </label>
+        <label>
+          <span>Color</span>
+          <div class="swatch-row">
+            <button type="button" class="swatch none" class:sel={newColor === null} onclick={() => (newColor = null)} title="Sin color">✕</button>
+            {#each SWATCHES as c (c)}
+              <button type="button" class="swatch" class:sel={newColor === c} style:background={c} onclick={() => (newColor = c)} aria-label={c}></button>
+            {/each}
+          </div>
+        </label>
         <div class="form-actions">
           <button type="button" class="btn" onclick={() => (showAdd = false)}>Cancel</button>
           <button type="submit" class="btn primary" disabled={!newName.trim()}>Save</button>
@@ -247,6 +263,12 @@
                       <option value={p.id}>{p.name}</option>
                     {/each}
                   </select>
+                  <div class="swatch-row">
+                    <button type="button" class="swatch none" class:sel={editColor === null} onclick={() => (editColor = null)} title="Sin color">✕</button>
+                    {#each SWATCHES as c (c)}
+                      <button type="button" class="swatch" class:sel={editColor === c} style:background={c} onclick={() => (editColor = c)} aria-label={c}></button>
+                    {/each}
+                  </div>
                   <div class="form-actions">
                     <button type="button" class="btn" onclick={cancelEdit}>Cancel</button>
                     <button type="submit" class="btn primary" disabled={!editName.trim()}>Save</button>
@@ -434,6 +456,33 @@
 
   .btn.danger:hover {
     background: color-mix(in srgb, var(--zx-err) 15%, transparent);
+  }
+
+  .swatch-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .swatch {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--zx-border);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: transform 0.1s;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.sel { box-shadow: 0 0 0 2px var(--zx-accent); }
+  .swatch.none {
+    background: transparent;
+    color: var(--zx-text-dim);
+    font-size: 10px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .msg {
