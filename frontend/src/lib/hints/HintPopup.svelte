@@ -15,6 +15,7 @@
       case 'snippet': return '⭐'
       case 'history': return '⟳'
       case 'catalog': return '📘'
+      case 'sequence': return '↪'
     }
   }
 
@@ -23,6 +24,7 @@
       case 'snippet': return h.label ? `snippet · ${h.label}` : 'snippet'
       case 'history': return 'history'
       case 'catalog': return `catalog · ${h.source.platform}`
+      case 'sequence': return 'usual next'
     }
   }
 

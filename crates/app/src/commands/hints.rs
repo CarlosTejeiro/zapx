@@ -39,11 +39,20 @@ pub async fn get_hints(
     saved_session_id: Option<i64>,
     prefix: String,
     limit: Option<usize>,
+    // The command the user most recently ran in this session — boosts its
+    // usual continuations (sequence learning).
+    last_command: Option<String>,
 ) -> Result<Vec<Hint>, AppError> {
     let platform = resolve_platform(&state, saved_session_id);
     let engine = HintEngine::new(&state.db);
     engine
-        .suggest(saved_session_id, platform, &prefix, limit.unwrap_or(5))
+        .suggest(
+            saved_session_id,
+            platform,
+            &prefix,
+            limit.unwrap_or(5),
+            last_command.as_deref(),
+        )
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -63,11 +72,21 @@ pub async fn record_command(
     state: State<'_, AppState>,
     saved_session_id: Option<i64>,
     command: String,
+    // The previously-executed command in this session, if any — recorded as
+    // a `prev → command` transition for sequence learning.
+    prev_command: Option<String>,
 ) -> Result<(), AppError> {
     let engine = HintEngine::new(&state.db);
     engine
         .record(saved_session_id, &command)
-        .map_err(|e| AppError::Internal(e.to_string()))
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if let Some(prev) = prev_command.as_deref() {
+        let platform = resolve_platform(&state, saved_session_id);
+        // Best-effort: a transition that fails to record shouldn't fail the
+        // history write the user actually cares about.
+        let _ = engine.record_transition(platform, prev, &command);
+    }
+    Ok(())
 }
 
 #[tauri::command]

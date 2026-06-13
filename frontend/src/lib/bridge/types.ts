@@ -204,6 +204,7 @@ export type HintSource =
   | { kind: 'history' }
   | { kind: 'catalog'; platform: string }
   | { kind: 'snippet' }
+  | { kind: 'sequence' }
 
 export interface Hint {
   text: string

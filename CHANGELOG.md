@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Smarter hints — command-sequence learning**: ZAPX now learns which command
+  you usually run right after another (per platform) and boosts that
+  continuation in the hint popup the moment you start typing it — e.g. after
+  `configure terminal`, `interface …` floats to the top. Learned suggestions
+  show a "usual next" badge. Pure local heuristic over your own history (counts
+  + recency), no telemetry; generic/unrecognised platforms don't learn, and
+  clearing the command history clears the learned sequences too.
 - **Saved port-forwards (auto-start tunnels per session)**: SSH sessions can
   now carry `-L` (local), `-D` (dynamic SOCKS5) and `-R` (remote) forwards,
   edited in the New/Edit Session dialog and opened automatically when the

@@ -33,7 +33,7 @@ fn record_and_suggest_history() {
     engine.record(None, "ls -lh").unwrap();
     engine.record(None, "git status").unwrap();
 
-    let hints = engine.suggest(None, Platform::Generic, "ls", 10).unwrap();
+    let hints = engine.suggest(None, Platform::Generic, "ls", 10, None).unwrap();
     assert_eq!(hints.len(), 2);
     assert!(hints.iter().all(|h| h.text.starts_with("ls")));
     assert!(hints.iter().all(|h| matches!(h.source, HintSource::History)));
@@ -45,7 +45,7 @@ fn sensitive_not_recorded() {
     let engine = HintEngine::new(&db);
     engine.record(None, "password: hunter2").unwrap();
     engine.record(None, "export API_KEY=abc").unwrap();
-    let hints = engine.suggest(None, Platform::Generic, "p", 10).unwrap();
+    let hints = engine.suggest(None, Platform::Generic, "p", 10, None).unwrap();
     assert!(hints.is_empty(), "sensitive commands must not enter history");
 }
 
@@ -53,7 +53,7 @@ fn sensitive_not_recorded() {
 fn catalog_fills_when_history_empty() {
     let db = open_tmp_db();
     let engine = HintEngine::new(&db);
-    let hints = engine.suggest(None, Platform::Linux, "system", 5).unwrap();
+    let hints = engine.suggest(None, Platform::Linux, "system", 5, None).unwrap();
     assert!(!hints.is_empty());
     assert!(hints.iter().all(|h| h.text.starts_with("system")));
     assert!(matches!(hints[0].source, HintSource::Catalog { platform: Platform::Linux }));
@@ -68,7 +68,7 @@ fn snippet_outranks_history() {
     engine.record(None, "ls -la").unwrap();
     engine.record(None, "ls -la").unwrap(); // bump freq
 
-    let hints = engine.suggest(None, Platform::Generic, "ls", 5).unwrap();
+    let hints = engine.suggest(None, Platform::Generic, "ls", 5, None).unwrap();
     assert!(matches!(hints[0].source, HintSource::Snippet));
     assert_eq!(hints[0].text, "ls -lah --color");
     assert_eq!(hints[0].label.as_deref(), Some("list"));
@@ -81,7 +81,7 @@ fn dedupe_keeps_higher_source() {
     // The catalog already has "ls -la"; if the user also typed it, history
     // should win since it scores higher.
     engine.record(None, "ls -la").unwrap();
-    let hints = engine.suggest(None, Platform::Linux, "ls -la", 5).unwrap();
+    let hints = engine.suggest(None, Platform::Linux, "ls -la", 5, None).unwrap();
     let ls = hints.iter().find(|h| h.text == "ls -la").unwrap();
     assert!(matches!(ls.source, HintSource::History));
 }
@@ -91,7 +91,7 @@ fn empty_prefix_returns_empty() {
     let db = open_tmp_db();
     let engine = HintEngine::new(&db);
     engine.record(None, "anything").unwrap();
-    let hints = engine.suggest(None, Platform::Linux, "", 5).unwrap();
+    let hints = engine.suggest(None, Platform::Linux, "", 5, None).unwrap();
     assert!(hints.is_empty());
 }
 
@@ -132,7 +132,7 @@ fn detect_then_suggest_pipeline_fortigate() {
     // FortiGate catalog should populate them.
     let db = open_tmp_db();
     let engine = HintEngine::new(&db);
-    let hints = engine.suggest(None, platform, "diagnose sniffer", 5).unwrap();
+    let hints = engine.suggest(None, platform, "diagnose sniffer", 5, None).unwrap();
     assert!(!hints.is_empty(), "FortiGate catalog must include diagnose sniffer commands");
     assert!(
         hints.iter().any(|h| h.text.contains("diagnose sniffer packet")),
@@ -162,12 +162,12 @@ fn user_catalog_override_replaces_bundled_for_one_platform() {
     let engine = HintEngine::new(&db);
     // Bundled would have many `diagnose sniffer` entries; the override has none.
     let hints = engine
-        .suggest(None, Platform::Fortigate, "diagnose sniffer", 5)
+        .suggest(None, Platform::Fortigate, "diagnose sniffer", 5, None)
         .unwrap();
     assert!(hints.is_empty(), "override replaces, not merges");
 
     // But the user-supplied entry IS reachable.
-    let hits = engine.suggest(None, Platform::Fortigate, "just-my", 5).unwrap();
+    let hits = engine.suggest(None, Platform::Fortigate, "just-my", 5, None).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].text, "just-my-one-command");
 
@@ -201,4 +201,45 @@ fn reload_with_invalid_json_surfaces_error() {
 
     // Reset so unrelated tests aren't affected.
     catalog::init(None);
+}
+
+#[test]
+fn sequence_learning_boosts_usual_next_command() {
+    let db = open_tmp_db();
+    let engine = HintEngine::new(&db);
+    // Teach the bigram a few times: after "configure terminal" → "interface…".
+    for _ in 0..3 {
+        engine
+            .record_transition(Platform::CiscoIos, "configure terminal", "interface GigabitEthernet0/1")
+            .unwrap();
+    }
+    // The follower is also in history (so it's a candidate for the prefix).
+    engine.record(None, "interface GigabitEthernet0/1").unwrap();
+    engine.record(None, "interface Vlan10").unwrap();
+
+    // Without the last command, both interface entries are plain history.
+    let plain = engine
+        .suggest(None, Platform::CiscoIos, "interface", 5, None)
+        .unwrap();
+    // With the last command, the learned continuation leads.
+    let boosted = engine
+        .suggest(None, Platform::CiscoIos, "interface", 5, Some("configure terminal"))
+        .unwrap();
+    assert_eq!(boosted[0].text, "interface GigabitEthernet0/1");
+    let top_plain = &plain[0].text;
+    // The boost actually changed the ranking (or at least pinned the learned one).
+    assert!(
+        boosted[0].text == "interface GigabitEthernet0/1"
+            && (top_plain != "interface GigabitEthernet0/1" || plain.len() == boosted.len()),
+        "boosted: {:?}, plain: {:?}",
+        boosted.iter().map(|h| &h.text).collect::<Vec<_>>(),
+        plain.iter().map(|h| &h.text).collect::<Vec<_>>(),
+    );
+
+    // Generic platform never learns transitions.
+    engine
+        .record_transition(Platform::Generic, "a", "b")
+        .unwrap();
+    let none = db.next_commands_after("generic", "a", 5).unwrap();
+    assert!(none.is_empty(), "generic transitions must be dropped");
 }

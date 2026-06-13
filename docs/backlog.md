@@ -5,15 +5,6 @@ block that gates them is closed.
 
 Add entries with format: `- **Feature name**: brief description. Gated by: Bloque N.`
 
-## Planned for 0.6
-
-- **Smarter hints — command-sequence learning**: beyond frecency, learn
-  per-platform command bigrams ("after `conf t` you usually run `interface…`")
-  from `command_history` (already persisted with timestamps per session) and
-  boost those continuations in the hint popup right after the previous
-  command runs. Pure local heuristic (counts + recency decay), no telemetry;
-  fits in `core-hints` next to the existing frecency scorer.
-
 ## Ideas
 
 - **Third-party forward import**: PuTTY/MobaXterm/SecureCRT also store port

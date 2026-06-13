@@ -220,6 +220,9 @@ impl Database {
         if version < 15 {
             conn.execute_batch(include_str!("migrations/015_session_forwards.sql"))?;
         }
+        if version < 16 {
+            conn.execute_batch(include_str!("migrations/016_command_transitions.sql"))?;
+        }
         Ok(())
     }
 
@@ -1236,7 +1239,54 @@ impl Database {
             )?,
             None => conn.execute("DELETE FROM command_history", [])?,
         };
+        // Transitions are platform-keyed (not session-scoped); clear them
+        // wholesale only on a global wipe.
+        if session_id.is_none() {
+            conn.execute("DELETE FROM command_transitions", [])?;
+        }
         Ok(())
+    }
+
+    /// Record that `next` followed `prev` for `platform` (insert-or-bump).
+    /// Used by the command-sequence learner.
+    pub fn record_transition(&self, platform: &str, prev: &str, next: &str) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let updated = conn.execute(
+            "UPDATE command_transitions
+                SET freq = freq + 1, last_used = datetime('now')
+              WHERE platform = ?1 AND prev = ?2 AND next = ?3",
+            rusqlite::params![platform, prev, next],
+        )?;
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO command_transitions (platform, prev, next) VALUES (?1, ?2, ?3)",
+                rusqlite::params![platform, prev, next],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Commands that frequently follow `prev` on `platform`, as
+    /// `(next_command, freq)` ordered by frequency. Powers the next-command
+    /// boost in the hint engine.
+    pub fn next_commands_after(
+        &self,
+        platform: &str,
+        prev: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, i64)>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT next, freq FROM command_transitions
+              WHERE platform = ?1 AND prev = ?2
+              ORDER BY freq DESC, last_used DESC
+              LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![platform, prev, limit as i64],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        )?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Read global snippets (managed by the dedicated snippets dialog).

@@ -477,15 +477,19 @@ export async function getHints(
   savedSessionId: number | null,
   prefix: string,
   limit: number = 5,
+  // The last command run in this session — boosts its usual continuations.
+  lastCommand: string | null = null,
 ): Promise<Hint[]> {
-  return invoke<Hint[]>('get_hints', { savedSessionId, prefix, limit })
+  return invoke<Hint[]>('get_hints', { savedSessionId, prefix, limit, lastCommand })
 }
 
 export async function recordCommand(
   savedSessionId: number | null,
   command: string,
+  // The previously-run command — recorded as a prev→command transition.
+  prevCommand: string | null = null,
 ): Promise<void> {
-  return invoke<void>('record_command', { savedSessionId, command })
+  return invoke<void>('record_command', { savedSessionId, command, prevCommand })
 }
 
 export async function setSessionPlatform(

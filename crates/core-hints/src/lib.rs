@@ -116,6 +116,9 @@ pub enum HintSource {
     History,
     Catalog { platform: Platform },
     Snippet,
+    /// A command the user usually runs right after the previous one (learned
+    /// per platform). Surfaced/boosted by the sequence learner.
+    Sequence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +182,28 @@ impl<'a> HintEngine<'a> {
         Ok(())
     }
 
+    /// Learn that `command` followed `prev` on `platform`. No-op for the
+    /// generic platform (too noisy to be useful) or sensitive/empty lines.
+    pub fn record_transition(
+        &self,
+        platform: Platform,
+        prev: &str,
+        command: &str,
+    ) -> Result<(), Error> {
+        let (prev, next) = (prev.trim(), command.trim());
+        if platform == Platform::Generic
+            || prev.is_empty()
+            || next.is_empty()
+            || prev == next
+            || is_sensitive(prev)
+            || is_sensitive(next)
+        {
+            return Ok(());
+        }
+        self.db.record_transition(platform.as_str(), prev, next)?;
+        Ok(())
+    }
+
     /// Return top-scoring suggestions for `prefix`. Combines all three
     /// sources, dedupes by exact command text (snippet > history > catalog),
     /// and trims to `limit` entries.
@@ -188,6 +213,7 @@ impl<'a> HintEngine<'a> {
         platform: Platform,
         prefix: &str,
         limit: usize,
+        last_command: Option<&str>,
     ) -> Result<Vec<Hint>, Error> {
         if prefix.is_empty() {
             return Ok(Vec::new());
@@ -241,6 +267,33 @@ impl<'a> HintEngine<'a> {
                     score: 20.0 + (prefix.len() as f32) * 0.5,
                     label: None,
                 });
+            }
+        }
+
+        // --- 4. Sequence learning ---
+        // Commands the user usually runs right after `last_command` get a
+        // boost (if already a candidate) or are surfaced as their own source
+        // (when they match the prefix but aren't otherwise in range). This is
+        // what makes "after `conf t` → `interface …`" float to the top.
+        if let Some(prev) = last_command.map(str::trim).filter(|p| !p.is_empty()) {
+            if platform != Platform::Generic {
+                for (next, freq) in self.db.next_commands_after(platform.as_str(), prev, 16)? {
+                    if !next.to_ascii_lowercase().starts_with(&prefix_lower) {
+                        continue;
+                    }
+                    let boost = 25.0 * (1.0 + freq as f32).ln();
+                    match candidates.iter_mut().find(|h| h.text == next) {
+                        Some(hit) => hit.score += boost,
+                        None => candidates.push(Hint {
+                            text: next,
+                            source: HintSource::Sequence,
+                            // Base above plain history (~50–70) so a learned
+                            // continuation leads, but below snippets (100).
+                            score: 70.0 + boost,
+                            label: None,
+                        }),
+                    }
+                }
             }
         }
 

@@ -62,6 +62,8 @@ export class HintController {
   private opts: HintControllerOpts
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private lastPrefixRequested = ''
+  // Last command submitted in this session — context for sequence learning.
+  private lastSubmitted: string | null = null
   private cellDims: XtermCellDims = { width: 8, height: 16 }
 
   constructor(opts: HintControllerOpts) {
@@ -81,8 +83,10 @@ export class HintController {
   onOutgoing(data: Uint8Array): string | null {
     const submitted = this.buffer.feed(data)
     if (submitted !== null && submitted.length > 0) {
-      // Persist asynchronously; backend filters out sensitive lines.
-      recordCommand(this.opts.savedSessionId, submitted).catch(console.error)
+      // Persist asynchronously; backend filters out sensitive lines. Pass the
+      // previous command so the backend learns the prev→submitted transition.
+      recordCommand(this.opts.savedSessionId, submitted, this.lastSubmitted).catch(console.error)
+      this.lastSubmitted = submitted
     }
     return submitted
   }
@@ -167,7 +171,7 @@ export class HintController {
     if (!this.opts.ghostEnabled() && !this.opts.popupEnabled()) return
     this.lastPrefixRequested = prefix
     try {
-      const hints = await getHints(this.opts.savedSessionId, prefix, 8)
+      const hints = await getHints(this.opts.savedSessionId, prefix, 8, this.lastSubmitted)
       // Drop stale responses if the user kept typing.
       if (this.lastPrefixRequested !== prefix) return
       // Also: the buffer may have moved on; only commit if still matching.
