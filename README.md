@@ -5,7 +5,8 @@
 **Status: alpha — functional but not yet hardened for production.**
 
 ZAPX is a multi-protocol terminal client built for network engineers who need a lightweight, fast,
-and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free and open source under Apache 2.0.
+and modern replacement for SecureCRT, MobaXterm, or PuTTY. Free to use; the source is proprietary
+(see [License](#license)).
 
 ---
 
@@ -150,4 +151,13 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+**Proprietary — © Carlos Tejeiro. All rights reserved.** See [LICENSE](LICENSE).
+The app is free to download and use; the source code is not licensed for reuse,
+redistribution or modification.
+
+Third-party open-source components are under their own permissive licenses; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+> Releases up to and including 0.6.0 were published under Apache 2.0 and remain
+> available under that license for those specific versions; this proprietary
+> license applies from 0.7.0 onward.

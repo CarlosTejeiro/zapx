@@ -17,8 +17,11 @@ members = [
 [workspace.package]
 edition    = "2021"
 version    = "0.0.1"
-authors    = ["ZAPX contributors"]
-license    = "Apache-2.0"
+authors    = ["Carlos Tejeiro"]
+# Proprietary — see LICENSE. Not an SPDX identifier; workspace crates are
+# never published to a registry.
+license-file = "LICENSE"
+publish    = false
 repository = "https://github.com/CarlosTejeiro/zapx"
 rust-version = "1.80"
 

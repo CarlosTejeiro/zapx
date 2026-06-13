@@ -1,7 +1,9 @@
 # Contributing to ZAPX
 
-Thank you for your interest. ZAPX is in pre-alpha; the codebase is moving fast. Read this before
-opening a PR.
+> **ZAPX is proprietary software (© Carlos Tejeiro, all rights reserved).**
+> The source is not open for external contributions or reuse. This document
+> is the internal development guide for the project owner and authorized
+> collaborators.
 
 ## Development setup
 

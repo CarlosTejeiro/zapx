@@ -2,7 +2,8 @@
 targets = []
 
 # ---------------------------------------------------------------------------
-# Licenses — only permissive licenses accepted
+# Licenses — dependencies must be permissive. ZAPX's own crates are
+# proprietary (license-file, publish = false) and are skipped via `private`.
 # ---------------------------------------------------------------------------
 [licenses]
 allow = [
@@ -18,6 +19,8 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.8
+# Don't license-check our own workspace crates (they're `publish = false`).
+private = { ignore = true }
 
 # ---------------------------------------------------------------------------
 # Security advisories — deny all; exceptions require explicit justification
