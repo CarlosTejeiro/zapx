@@ -5,7 +5,7 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-06-13
 
 ### Added
 - **Multi-send on regular tabs**: with multi-exec on (Ctrl+Shift+M), the
@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and give each an accent color. Buttons are platform-scoped or global; the
   first nine still fire with `Ctrl+Shift+1..9`. Snippets gain a `color` field
   (also editable in Tools → Snippets).
+
+### Changed
+- **UI unified to English** — the remaining Spanish strings (toasts,
+  confirmations, command palette, dialogs and panels) now match the English
+  menus, Settings and Snippets UI.
 
 ## [0.4.0] - 2026-06-12
 
