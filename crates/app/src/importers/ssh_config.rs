@@ -170,6 +170,7 @@ pub fn parse(path: &Path, home: &Path) -> std::io::Result<ParsedSshConfig> {
             broadcast_groups: vec![],
             snippets: vec![],
             highlight_rules: vec![],
+            session_forwards: vec![],
         },
         warnings,
     })

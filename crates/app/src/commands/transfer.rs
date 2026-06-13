@@ -19,7 +19,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use core_persistence::{BroadcastGroup, Database, Folder, HighlightRule, SavedSession, Snippet};
+use core_persistence::{
+    BroadcastGroup, Database, Folder, HighlightRule, SavedForward, SavedSession, Snippet,
+};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -42,6 +44,16 @@ pub struct ExportFile {
     pub snippets: Vec<Snippet>,
     #[serde(default)]
     pub highlight_rules: Vec<HighlightRule>,
+    /// Port-forwards keyed by file-local session id (remapped on import).
+    #[serde(default)]
+    pub session_forwards: Vec<SessionForwards>,
+}
+
+/// The saved forwards of one session, referenced by its file-local id.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionForwards {
+    pub session_id: i64,
+    pub forwards: Vec<SavedForward>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +93,18 @@ pub fn build_export(db: &Database, app_version: &str) -> Result<ExportFile, AppE
             s
         })
         .collect();
+    // Forwards per session — only sessions that actually have any.
+    let session_forwards = {
+        let sessions: &Vec<SavedSession> = &sessions;
+        let mut out = Vec::new();
+        for s in sessions {
+            let fwds = db.list_session_forwards(s.id).map_err(internal)?;
+            if !fwds.is_empty() {
+                out.push(SessionForwards { session_id: s.id, forwards: fwds });
+            }
+        }
+        out
+    };
     Ok(ExportFile {
         zapx_export: EXPORT_VERSION,
         app_version: app_version.to_owned(),
@@ -90,6 +114,7 @@ pub fn build_export(db: &Database, app_version: &str) -> Result<ExportFile, AppE
         broadcast_groups: db.list_broadcast_groups().map_err(internal)?,
         snippets: db.list_snippets().map_err(internal)?,
         highlight_rules: db.list_highlight_rules().map_err(internal)?,
+        session_forwards,
     })
 }
 
@@ -169,6 +194,9 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         )
     };
     let mut session_map: HashMap<i64, i64> = HashMap::new();
+    // Old ids of sessions we actually created (not skipped) — only these get
+    // their forwards applied, so re-import doesn't clobber existing sessions.
+    let mut added_olds: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut needs_via: Vec<(i64, i64)> = Vec::new(); // (new_id, old_via_id)
     for s in &file.sessions {
         if let Some(existing) = existing_sessions.iter().find(|e| identity(e) == identity(s)) {
@@ -211,7 +239,18 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
             }
         }
         session_map.insert(s.id, new_id);
+        added_olds.insert(s.id);
         summary.sessions_added += 1;
+    }
+
+    // 2b. Saved port-forwards — applied only to sessions we just created.
+    for sf in &file.session_forwards {
+        if !added_olds.contains(&sf.session_id) {
+            continue;
+        }
+        if let Some(&new_id) = session_map.get(&sf.session_id) {
+            db.set_session_forwards(new_id, &sf.forwards).map_err(internal)?;
+        }
     }
 
     // 3. Second pass: ProxyJump bastions, now that every id is known.
@@ -445,6 +484,13 @@ mod tests {
             .unwrap();
         src.set_login_script(spine, Some(r#"[{"expect":"login:","send":"admin"}]"#))
             .unwrap();
+        src.set_session_forwards(spine, &[core_persistence::SavedForward {
+            kind: "local".into(),
+            bind_addr: "127.0.0.1".into(),
+            bind_port: 8080,
+            target_host: Some("10.0.0.9".into()),
+            target_port: Some(80),
+        }]).unwrap();
         let gid = src.create_broadcast_group("grid").unwrap();
         src.set_broadcast_group_members(gid, &[bastion, spine]).unwrap();
         src.create_snippet("brief", "show ip int brief", Some("cisco_ios"), None).unwrap();
@@ -469,6 +515,11 @@ mod tests {
         let new_bastion = sessions.iter().find(|s| s.name == "jump").unwrap();
         assert_eq!(new_spine.via_session_id, Some(new_bastion.id));
         assert!(new_spine.login_script_json.is_some());
+        // Forwards travel with their session, remapped to the new id.
+        let fwds = dst.list_session_forwards(new_spine.id).unwrap();
+        assert_eq!(fwds.len(), 1);
+        assert_eq!(fwds[0].bind_port, 8080);
+        assert_eq!(fwds[0].target_host.as_deref(), Some("10.0.0.9"));
         let folders = dst.list_folders().unwrap();
         let new_child = folders.iter().find(|f| f.name == "Spines").unwrap();
         let new_parent = folders.iter().find(|f| f.name == "DC").unwrap();
@@ -504,6 +555,7 @@ mod tests {
             broadcast_groups: vec![],
             snippets: vec![],
             highlight_rules: vec![],
+            session_forwards: vec![],
         };
         assert!(apply_import(&db, &file).is_err());
         let _ = std::fs::remove_file(path);

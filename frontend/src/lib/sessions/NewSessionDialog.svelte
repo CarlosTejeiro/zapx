@@ -16,8 +16,10 @@
     listPlatforms,
     setSessionPlatform,
     getSessionPlatform,
+    getSessionForwards,
+    setSessionForwards,
   } from '$lib/bridge/commands'
-  import type { Folder, AuthMethod, SavedSession, LoginStep, PlatformInfo } from '$lib/bridge/types'
+  import type { Folder, AuthMethod, SavedSession, LoginStep, PlatformInfo, SavedForward } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
 
@@ -88,6 +90,13 @@
       } catch {
         loginSteps = []
       }
+      // Preload saved port-forwards.
+      try {
+        forwards = await getSessionForwards(existing.id)
+        if (forwards.length > 0) showForwards = true
+      } catch {
+        forwards = []
+      }
     } else if (protocol === 'serial') {
       loadPorts()
     }
@@ -121,6 +130,16 @@
   }
   function removeStep(idx: number) {
     loginSteps.splice(idx, 1)
+  }
+
+  // Optional saved port-forwards (SSH only), auto-started on connect.
+  let showForwards = $state(false)
+  let forwards = $state<SavedForward[]>([])
+  function addForward() {
+    forwards.push({ kind: 'local', bind_addr: '127.0.0.1', bind_port: 0, target_host: '', target_port: 0 })
+  }
+  function removeForward(idx: number) {
+    forwards.splice(idx, 1)
   }
 
   /// Native file picker for the SSH private key.
@@ -286,6 +305,19 @@
       // In edit mode push unconditionally so clearing all steps takes effect.
       if (existing || cleanSteps.length > 0) {
         await setLoginScript(id, cleanSteps)
+      }
+      // Persist saved port-forwards (SSH only). Dynamic forwards carry no
+      // target; drop empty/incomplete rows. Push unconditionally in SSH so
+      // clearing them takes effect.
+      if (protocol === 'ssh') {
+        const cleanForwards = forwards
+          .filter((f) => f.bind_port > 0 && (f.kind === 'dynamic' || (f.target_host?.trim() && (f.target_port ?? 0) > 0)))
+          .map((f) => f.kind === 'dynamic'
+            ? { ...f, target_host: null, target_port: null }
+            : { ...f, target_host: f.target_host!.trim() })
+        if (existing || cleanForwards.length > 0) {
+          await setSessionForwards(id, cleanForwards)
+        }
       }
       // Persist the command-hint platform for this session (skip "generic"
       // and null since both fall back to the global default).
@@ -511,6 +543,38 @@
       {/each}
       <button type="button" class="add-step" onclick={addStep}>+ Add step</button>
     </details>
+
+    {#if protocol === 'ssh'}
+      <details class="login-script" bind:open={showForwards}>
+        <summary>Port forwards ({forwards.length})</summary>
+        <p class="hint">
+          Tunnels opened automatically when this session connects.
+          <strong>Local</strong> (-L) binds a local port to a remote target;
+          <strong>Dynamic</strong> (-D) is a local SOCKS5 proxy;
+          <strong>Remote</strong> (-R) binds a port on the server back to a local target.
+        </p>
+        {#each forwards as f, idx (idx)}
+          <div class="fwd">
+            <select class="fwd-kind" bind:value={f.kind} title="Forward type">
+              <option value="local">Local -L</option>
+              <option value="dynamic">Dynamic -D</option>
+              <option value="remote">Remote -R</option>
+            </select>
+            <input class="fwd-bind" placeholder="bind (127.0.0.1)" bind:value={f.bind_addr} spellcheck="false" />
+            <input class="fwd-port" type="number" min={0} max={65535} placeholder="port" bind:value={f.bind_port} title="bind port (0 = auto)" />
+            {#if f.kind !== 'dynamic'}
+              <span class="fwd-arrow" aria-hidden="true">→</span>
+              <input class="fwd-target" placeholder="target host" bind:value={f.target_host} spellcheck="false" />
+              <input class="fwd-port" type="number" min={1} max={65535} placeholder="port" bind:value={f.target_port} title="target port" />
+            {:else}
+              <span class="fwd-socks">SOCKS5 proxy</span>
+            {/if}
+            <button type="button" class="step-rm" onclick={() => removeForward(idx)} title="Remove forward"><Icon name="x" size={12} /></button>
+          </div>
+        {/each}
+        <button type="button" class="add-step" onclick={addForward}>+ Add forward</button>
+      </details>
+    {/if}
 
     {#if error}
       <p class="error">{error}</p>
@@ -780,5 +844,40 @@
   .add-step:hover {
     color: var(--zx-text);
     border-color: var(--zx-accent);
+  }
+
+  .fwd {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.3rem;
+  }
+  .fwd-kind {
+    width: 6.5rem;
+    font-size: 0.76rem;
+    flex-shrink: 0;
+  }
+  .fwd-bind,
+  .fwd-target {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--zx-font-mono);
+    font-size: 0.78rem;
+  }
+  .fwd-port {
+    width: 4rem;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+    font-family: var(--zx-font-mono);
+  }
+  .fwd-arrow {
+    color: var(--zx-text-dim);
+    flex-shrink: 0;
+  }
+  .fwd-socks {
+    flex: 1;
+    font-size: 0.74rem;
+    color: var(--zx-text-dim);
+    font-style: italic;
   }
 </style>

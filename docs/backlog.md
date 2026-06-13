@@ -7,18 +7,6 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 ## Planned for 0.6
 
-- **Saved port-forwards (auto-start tunnels per session)**: the tunnel engine
-  already supports `-L` / `-D` (SOCKS5) / `-R` (`crates/core-transport/
-  forwards.rs`). The SFTP + Tunnels buttons were re-exposed in the pane header
-  in `ea369cd` (they only show for **connected SSH** panes — verify visibility/
-  UX in the 0.6 review). Forwards are still transient today — configured on a
-  live session via `TunnelsDialog` (keyed by runtime session id) and lost on
-  close, with no DB persistence. Add a `session_forwards` table + migration, an
-  editor in the New/Edit Session dialog to define forwards (local/dynamic/
-  remote, bind addr+port, target), and auto-open them when the session
-  connects — matching SecureCRT/MobaXterm "Port Forwarding" config. Include
-  them in export/import (`transfer.rs`) and the third-party importers
-  (PuTTY tunnels, MobaXterm/SecureCRT forward fields).
 - **Smarter hints — command-sequence learning**: beyond frecency, learn
   per-platform command bigrams ("after `conf t` you usually run `interface…`")
   from `command_history` (already persisted with timestamps per session) and
@@ -28,6 +16,9 @@ Add entries with format: `- **Feature name**: brief description. Gated by: Bloqu
 
 ## Ideas
 
+- **Third-party forward import**: PuTTY/MobaXterm/SecureCRT also store port
+  forwards; map them into the new `session_forwards` table during import
+  (the native export/import already carries them).
 - **Linux packaging — AUR / Flathub / Snap**: the AppImage/deb/rpm already
   work on Arch, but native channels help adoption. Cheapest first: publish a
   `zapx-bin` PKGBUILD to the AUR that repacks the released .deb (update via

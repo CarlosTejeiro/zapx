@@ -112,6 +112,17 @@ export interface ForwardInfo {
   target_port: number | null
 }
 
+// A port-forward saved on a session (auto-started on connect), mirroring
+// core_persistence::SavedForward. `target_*` are null for dynamic (SOCKS5).
+export interface SavedForward {
+  /** "local" (-L), "dynamic" (-D, SOCKS5) or "remote" (-R). */
+  kind: 'local' | 'dynamic' | 'remote'
+  bind_addr: string
+  bind_port: number
+  target_host: string | null
+  target_port: number | null
+}
+
 // Mirror of core-transport `HostKeyStatus` (serde tag = "status").
 export type HostKeyStatus =
   | { status: 'known' }

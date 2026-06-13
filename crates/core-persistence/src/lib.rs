@@ -55,6 +55,18 @@ pub struct BroadcastGroup {
     pub session_ids: Vec<i64>,
 }
 
+/// A port-forward saved on a session, auto-started when it connects.
+/// `target_*` are `None` for dynamic (SOCKS5) forwards.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedForward {
+    /// "local" (-L), "dynamic" (-D, SOCKS5) or "remote" (-R).
+    pub kind: String,
+    pub bind_addr: String,
+    pub bind_port: u16,
+    pub target_host: Option<String>,
+    pub target_port: Option<u16>,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Snippet {
     pub id: i64,
@@ -204,6 +216,9 @@ impl Database {
         }
         if version < 14 {
             conn.execute_batch(include_str!("migrations/014_snippet_color.sql"))?;
+        }
+        if version < 15 {
+            conn.execute_batch(include_str!("migrations/015_session_forwards.sql"))?;
         }
         Ok(())
     }
@@ -605,6 +620,57 @@ impl Database {
         if n == 0 {
             return Err(Error::NotFound);
         }
+        Ok(())
+    }
+
+    /// List the port-forwards saved on a session, in display order.
+    pub fn list_session_forwards(&self, session_id: i64) -> Result<Vec<SavedForward>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT kind, bind_addr, bind_port, target_host, target_port
+             FROM session_forwards WHERE session_id = ?1 ORDER BY sort_order, id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![session_id], |row| {
+            Ok(SavedForward {
+                kind: row.get(0)?,
+                bind_addr: row.get(1)?,
+                bind_port: row.get::<_, i64>(2)? as u16,
+                target_host: row.get(3)?,
+                target_port: row.get::<_, Option<i64>>(4)?.map(|p| p as u16),
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Replace the saved port-forwards of a session (delete-then-insert).
+    pub fn set_session_forwards(
+        &self,
+        session_id: i64,
+        forwards: &[SavedForward],
+    ) -> Result<(), Error> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM session_forwards WHERE session_id = ?1",
+            rusqlite::params![session_id],
+        )?;
+        for (idx, f) in forwards.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO session_forwards
+                 (session_id, kind, bind_addr, bind_port, target_host, target_port, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    session_id,
+                    f.kind,
+                    f.bind_addr,
+                    f.bind_port as i64,
+                    f.target_host,
+                    f.target_port.map(|p| p as i64),
+                    idx as i64,
+                ],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 

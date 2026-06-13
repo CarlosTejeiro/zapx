@@ -9,6 +9,7 @@ import type {
   AuthMethod,
   HostKeyStatus,
   ForwardInfo,
+  SavedForward,
   SftpEntry,
   Snippet,
   RecentCommand,
@@ -294,6 +295,16 @@ export async function getLoginScript(savedSessionId: number): Promise<LoginStep[
 
 export async function setLoginScript(savedSessionId: number, steps: LoginStep[]): Promise<void> {
   return invoke<void>('set_login_script', { savedSessionId, steps })
+}
+
+// ── saved port-forwards (auto-started on connect) ────────────────────────────
+
+export async function getSessionForwards(savedSessionId: number): Promise<SavedForward[]> {
+  return invoke<SavedForward[]>('get_session_forwards', { savedSessionId })
+}
+
+export async function setSessionForwards(savedSessionId: number, forwards: SavedForward[]): Promise<void> {
+  return invoke<void>('set_session_forwards', { savedSessionId, forwards })
 }
 
 /** Send raw text to a live session (uses the existing `send_input` command). */

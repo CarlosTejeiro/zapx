@@ -165,6 +165,8 @@ pub fn run() {
             commands::forwards::add_remote_forward,
             commands::forwards::list_forwards,
             commands::forwards::remove_forward,
+            commands::forwards::get_session_forwards,
+            commands::forwards::set_session_forwards,
             commands::sftp::sftp_list_dir,
             commands::sftp::sftp_stat,
             commands::sftp::sftp_canonicalize,

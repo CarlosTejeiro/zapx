@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Saved port-forwards (auto-start tunnels per session)**: SSH sessions can
+  now carry `-L` (local), `-D` (dynamic SOCKS5) and `-R` (remote) forwards,
+  edited in the New/Edit Session dialog and opened automatically when the
+  session connects — like SecureCRT/MobaXterm "Port Forwarding". Per-forward
+  failures (e.g. a bind port already in use) are logged and skipped, never
+  fatal to the connection. Forwards travel with export/import (remapped to the
+  new session, applied only to newly-created sessions).
+- **SFTP and Tunnels buttons back in the pane header**: the 0.2 redesign had
+  hidden the toolbar that hosted them, so both features were unreachable in
+  the UI. They now appear in each connected SSH pane's header.
+
 ## [0.5.0] - 2026-06-13
 
 ### Added

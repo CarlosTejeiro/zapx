@@ -5,6 +5,7 @@
 
 use tauri::State;
 
+use core_persistence::SavedForward;
 use core_transport::{ForwardInfo, RemoteForwardRegistry, SharedSshHandle};
 
 use crate::error::AppError;
@@ -160,4 +161,89 @@ pub async fn remove_forward(
         vec.retain(|c| c.info.id != forward_id);
     }
     Ok(())
+}
+
+// ── Persisted forwards (auto-started on connect) ─────────────────────────────
+
+/// The port-forwards saved on a session (shown in the New/Edit Session
+/// dialog and auto-started on connect).
+#[tauri::command]
+pub async fn get_session_forwards(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+) -> Result<Vec<SavedForward>, AppError> {
+    state
+        .db
+        .list_session_forwards(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Replace the saved port-forwards of a session.
+#[tauri::command]
+pub async fn set_session_forwards(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+    forwards: Vec<SavedForward>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_session_forwards(saved_session_id, &forwards)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Open every saved forward against a freshly-connected SSH session and store
+/// the controllers under `live_session_id`. Per-forward failures (e.g. a bind
+/// port already in use) are logged and skipped — they must not abort the
+/// session open. Called from `open_saved_session` after the session is live.
+pub async fn autostart_saved_forwards(
+    state: &AppState,
+    live_session_id: &str,
+    handle: SharedSshHandle,
+    registry: RemoteForwardRegistry,
+    forwards: &[SavedForward],
+) {
+    for f in forwards {
+        let opened = match f.kind.as_str() {
+            "local" => match (f.target_host.clone(), f.target_port) {
+                (Some(th), Some(tp)) => {
+                    core_transport::open_local_forward(handle.clone(), f.bind_addr.clone(), f.bind_port, th, tp).await
+                }
+                _ => {
+                    tracing::warn!("saved local forward missing target; skipped");
+                    continue;
+                }
+            },
+            "dynamic" => {
+                core_transport::open_dynamic_forward(handle.clone(), f.bind_addr.clone(), f.bind_port).await
+            }
+            "remote" => match (f.target_host.clone(), f.target_port) {
+                (Some(th), Some(tp)) => {
+                    core_transport::open_remote_forward(handle.clone(), registry.clone(), f.bind_addr.clone(), f.bind_port, th, tp).await
+                }
+                _ => {
+                    tracing::warn!("saved remote forward missing target; skipped");
+                    continue;
+                }
+            },
+            other => {
+                tracing::warn!("unknown saved forward kind {other:?}; skipped");
+                continue;
+            }
+        };
+        match opened {
+            Ok(controller) => state
+                .forwards
+                .lock()
+                .unwrap()
+                .entry(live_session_id.to_owned())
+                .or_default()
+                .push(controller),
+            Err(e) => tracing::warn!(
+                "auto-start {} forward {}:{} failed: {e}",
+                f.kind,
+                f.bind_addr,
+                f.bind_port
+            ),
+        }
+    }
 }

@@ -1154,6 +1154,11 @@ pub async fn open_saved_session(
                 std::mem::drop(spawn_mss_emitter(app.clone(), session_id.clone(), w));
             }
 
+            // Clone the shared handles before they move into ActiveSession so
+            // saved forwards can be auto-started against the same connection.
+            let fwd_handle = ssh_handle.clone();
+            let fwd_registry = remote_forwards.clone();
+
             state.sessions.lock().unwrap().insert(
                 session_id.clone(),
                 ActiveSession {
@@ -1169,6 +1174,20 @@ pub async fn open_saved_session(
                     stats_task: Some(stats_task),
                 },
             );
+
+            // Auto-start saved port-forwards (best-effort; failures are logged,
+            // never fatal to the session open).
+            let saved_forwards = state.db.list_session_forwards(saved_session_id).unwrap_or_default();
+            if !saved_forwards.is_empty() {
+                crate::commands::forwards::autostart_saved_forwards(
+                    &state,
+                    &session_id,
+                    fwd_handle,
+                    fwd_registry,
+                    &saved_forwards,
+                )
+                .await;
+            }
 
             state.db.touch_session(saved_session_id).ok();
             tracing::debug!(session_id, saved_session_id, "saved session opened");
