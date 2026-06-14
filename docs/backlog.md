@@ -26,8 +26,12 @@ Add entries with format: `- **Feature name**: brief description.`
 - **Regex in login-script expects**: the schema already carries `is_regex`
   (`crates/app/src/login_script.rs`); wire it so expect patterns can be regex,
   not just literal.
-- **SFTP polish**: drag & drop files from the OS file manager, and "edit
-  remote file" (download → open in a local editor → re-upload on save).
+- **SFTP drag & drop upload (blocked)**: dropping OS files to upload needs
+  Tauri's native drag-drop (`dragDropEnabled: true`) to get file paths, but
+  that disables the HTML5 drag-drop the sidebar (session reorder) and button
+  bar (reorder) rely on — and breaks them on Windows. Not worth trading two
+  working features for it; the Upload button covers uploads. ("Edit remote
+  file" shipped in 0.8.)
 
 ## Linux packaging
 

@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-14
+
+### Added
+- **Regex in login-script expects**: a step's `expect` can now be a regular
+  expression (per-step `.*` toggle in the New/Edit Session dialog), matched
+  against the ANSI-stripped output. An invalid regex falls back to literal
+  matching with a warning. Great for variable prompts like `[\w.-]+[#>]\s*$`.
+- **Edit remote files (SFTP)**: an "Edit" action in the SFTP browser downloads
+  the file to a temp copy, opens it in your OS default editor, and re-uploads
+  it on every save until the session closes — edit remote configs with your
+  own editor, no manual download/upload round-trip.
+
 ## [0.7.0] - 2026-06-14
 
 ### Added
