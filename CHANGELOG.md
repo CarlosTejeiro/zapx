@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bookmark when possible, otherwise a session is created for the gateway —
   so the forwards auto-start on connect. (PuTTY already supported; SecureCRT
   forward storage still pending a sample.)
+- **Arch Linux packaging**: a from-source `PKGBUILD` under `packaging/arch/`
+  builds and installs ZAPX on Arch (`makepkg -si`). It clones the private repo
+  over SSH at the release tag, so it's for your own/collaborators' machines —
+  not the public AUR (private repo, no anonymous download).
+
+### Changed
+- **Release notes now include the CHANGELOG**: the release workflow appends
+  this version's `CHANGELOG.md` section to the GitHub release body (after the
+  curated `docs/releases/<tag>.md` notes, when present).
 
 ## [0.8.0] - 2026-06-14
 

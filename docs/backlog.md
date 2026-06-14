@@ -37,10 +37,11 @@ Add entries with format: `- **Feature name**: brief description.`
 
 ## Linux packaging
 
-- **AUR / Flathub / Snap**: the AppImage/deb/rpm already run on Arch. Cheapest
-  first: a `zapx-bin` PKGBUILD on the AUR that repacks the released .deb
-  (CI-updated per release). Then Flathub (manifest + review) and optionally
-  Snapcraft. Note: with a private releases repo, the package source URLs need a
-  reachable download location.
+- **AUR / Flathub / Snap**: a from-source Arch `PKGBUILD` ships in
+  `packaging/arch/` (clones the private repo over SSH at the tag — for own use,
+  not the AUR). Still pending for *public* distribution: a `zapx-bin` PKGBUILD
+  on the AUR that repacks the released .deb, Flathub (manifest + review), and
+  Snapcraft — all blocked by the private releases repo (source URLs need a
+  reachable download location).
 
 <!-- Add out-of-scope ideas below this line -->
