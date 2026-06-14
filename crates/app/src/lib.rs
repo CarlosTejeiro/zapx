@@ -191,6 +191,7 @@ pub fn run() {
             commands::sftp::sftp_download_file,
             commands::sftp::sftp_upload_file,
             commands::sftp::sftp_cancel_transfer,
+            commands::sftp::sftp_edit_file,
             commands::snippets::list_snippets,
             commands::snippets::list_snippets_for_platform,
             commands::snippets::list_recent_command_snippets,

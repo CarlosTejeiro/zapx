@@ -13,8 +13,10 @@
     sftpDownloadFile,
     sftpUploadFile,
     sftpCancelTransfer,
+    sftpEditFile,
     type SftpProgressEvent,
   } from '$lib/bridge/commands'
+  import { showToast } from '$lib/ui/toast-store.svelte'
   import type { SftpEntry } from '$lib/bridge/types'
 
   interface Props {
@@ -182,6 +184,23 @@
       error = fmt(e)
     } finally {
       busy = ''
+    }
+  }
+
+  /// Open the selected file in the OS editor; saves re-upload automatically
+  /// (the backend watches the temp copy until the session closes).
+  async function editSelected() {
+    if (!selectedEntry || selectedEntry.kind === 'dir') return
+    const full = joinPath(path, selectedEntry.name)
+    try {
+      await sftpEditFile(sessionId, full)
+      showToast({
+        kind: 'info',
+        title: 'Editing remote file',
+        detail: `${selectedEntry.name} — saves upload back automatically`,
+      })
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
     }
   }
 
@@ -383,6 +402,9 @@
         {#if selectedEntry.kind === 'file' || selectedEntry.kind === 'symlink'}
           <button class="btn" onclick={() => { showDownload = true; showMkdir = false; showRename = false; showUpload = false; downloadTo = '' }}>
             ⬇ Download
+          </button>
+          <button class="btn" onclick={editSelected} title="Open in your editor; saves upload back automatically">
+            <Icon name="pencil" size={12} /> Edit
           </button>
         {/if}
         <button class="btn" onclick={() => { showRename = true; showMkdir = false; showDownload = false; showUpload = false; renameTo = selectedEntry?.name ?? '' }}>

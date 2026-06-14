@@ -169,6 +169,12 @@ export async function listForwards(sessionId: string): Promise<ForwardInfo[]> {
   return invoke<ForwardInfo[]>('list_forwards', { sessionId })
 }
 
+// Download a remote file, open it in the OS default editor, and re-upload on
+// every save until the session closes. Returns the local temp path.
+export async function sftpEditFile(sessionId: string, remotePath: string): Promise<string> {
+  return invoke<string>('sftp_edit_file', { sessionId, remotePath })
+}
+
 // One active forward plus the live session it belongs to.
 export interface SessionForwardInfo {
   session_id: string

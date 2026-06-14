@@ -915,11 +915,24 @@
       },
     ).then((fn) => { unlistenPlatform = fn })
 
+    // SFTP "edit remote file": the backend re-uploads on each save and emits
+    // these so the user gets feedback that their edit landed.
+    let unlistenEditSaved: UnlistenFn | null = null
+    listen<string>('sftp-edit-saved', (e) => {
+      showToast({ kind: 'success', title: 'Uploaded', detail: e.payload })
+    }).then((fn) => { unlistenEditSaved = fn })
+    let unlistenEditError: UnlistenFn | null = null
+    listen<string>('sftp-edit-error', (e) => {
+      showToast({ kind: 'error', title: 'Upload failed', detail: e.payload })
+    }).then((fn) => { unlistenEditError = fn })
+
     return () => {
       document.removeEventListener('keydown', onKeydown)
       if (unlistenStats) unlistenStats()
       if (unlistenPlatform) unlistenPlatform()
       if (unlistenMss) unlistenMss()
+      if (unlistenEditSaved) unlistenEditSaved()
+      if (unlistenEditError) unlistenEditError()
     }
   })
 </script>
