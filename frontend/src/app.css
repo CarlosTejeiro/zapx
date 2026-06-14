@@ -93,13 +93,11 @@ html, body {
   50%       { opacity: 0; }
 }
 
-/* Cursor glow — themes with glows: true set data-glow on the pylon shell. */
+/* Cursor glow — themes with glows: true set data-glow on the pylon shell.
+   Static drop-shadow only: this used to animate the `filter` on an infinite
+   loop, which forces WebKitGTK to re-blur every frame forever (a constant
+   repaint that pins CPU on Linux). A static glow repaints only when the cursor
+   moves or blinks. */
 .pylon-shell[data-glow="true"] :global(.xterm-cursor-layer) {
   filter: drop-shadow(0 0 6px var(--cursor-glow, rgba(244, 114, 182, 0.55)));
-  animation: pylon-cursor-glow 1.6s ease-in-out infinite;
-}
-
-@keyframes pylon-cursor-glow {
-  0%, 100% { filter: drop-shadow(0 0 4px var(--cursor-glow, rgba(244, 114, 182, 0.45))); }
-  50%      { filter: drop-shadow(0 0 9px var(--cursor-glow, rgba(244, 114, 182, 0.75))); }
 }

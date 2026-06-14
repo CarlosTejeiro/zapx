@@ -5,6 +5,26 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-06-14
+
+### Fixed
+- **High CPU on Linux (WebKitWebProcess pinned near 100%)**: on many NVIDIA
+  setups — especially under Wayland — WebKitGTK's DMABUF renderer drives the
+  web process into a busy repaint loop, so the webview pegs a CPU core even
+  when idle. ZAPX now sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` at startup on
+  Linux (only when you haven't set it yourself), falling back to a renderer
+  that idles correctly. Affects the AppImage and any Linux build.
+
+### Changed
+- **Linux: opaque window** — window transparency is now off on Linux (it stays
+  on for macOS vibrancy / Windows acrylic). The window already fills the screen
+  with an opaque background and square corners, so there's no visual change —
+  it just drops the per-frame alpha compositing WebKitGTK was doing for nothing.
+- **Cheaper cursor glow** — the glow themes (Phosphor, Amber) no longer animate
+  the cursor's `drop-shadow` filter on an infinite loop (a constant repaint).
+  The glow is now static, which looks the same at rest but stops the continuous
+  CPU draw.
+
 ## [0.9.0] - 2026-06-14
 
 ### Added

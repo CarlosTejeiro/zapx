@@ -68,6 +68,18 @@ fn size_window_on_first_run(app: &tauri::App) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux/WebKitGTK: on many NVIDIA setups (especially under Wayland) the
+    // DMABUF-based renderer drives WebKitWebProcess into a busy repaint loop —
+    // the webview pegs a core at 100% CPU instead of idling, even when nothing
+    // on screen is changing. Disabling that renderer falls back to a path that
+    // idles correctly. Set it before the webview is created, only on Linux, and
+    // only when the user hasn't chosen a value themselves (power users keep
+    // control / can re-enable it). Harmless on non-NVIDIA Linux.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
