@@ -107,6 +107,7 @@ dependencies = [
  "core-transport",
  "core-vault",
  "notify",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

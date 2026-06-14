@@ -23,9 +23,8 @@ use core_transport::SessionCmd;
 pub struct LoginStep {
     /// Pattern to wait for in the (ANSI-stripped) output stream.
     pub expect: String,
-    /// If true, `expect` should be treated as a regex (currently not yet wired
-    /// — falls back to literal matching). Kept on the wire so the UI / DB
-    /// schema is forward-compatible.
+    /// If true, `expect` is a regex (matched against the ANSI-stripped output).
+    /// An invalid regex falls back to literal matching with a warning.
     #[serde(default)]
     pub is_regex: bool,
     /// Bytes to send when `expect` matches (interpreted as UTF-8).
@@ -52,8 +51,45 @@ pub struct LoginProgress {
 
 const MAX_BUF: usize = 64 * 1024;
 
+/// Precompiled matcher for one step's `expect`. Built once at construction so
+/// the per-chunk data callback never recompiles a regex.
+enum Matcher {
+    /// Empty pattern — never matches (step is effectively a no-op wait).
+    Empty,
+    /// Literal substring (ANSI already stripped before searching).
+    Literal(String),
+    Regex(regex::Regex),
+}
+
+impl Matcher {
+    fn build(expect: &str, is_regex: bool, session_id: &str) -> Self {
+        if expect.is_empty() {
+            return Matcher::Empty;
+        }
+        if is_regex {
+            match regex::Regex::new(expect) {
+                Ok(re) => return Matcher::Regex(re),
+                Err(e) => tracing::warn!(
+                    session_id = %session_id,
+                    "login script: invalid regex {expect:?} ({e}); falling back to literal"
+                ),
+            }
+        }
+        Matcher::Literal(expect.to_owned())
+    }
+
+    fn is_match(&self, haystack: &str) -> bool {
+        match self {
+            Matcher::Empty => false,
+            Matcher::Literal(p) => haystack.contains(p.as_str()),
+            Matcher::Regex(re) => re.is_match(haystack),
+        }
+    }
+}
+
 pub struct LoginRunner {
     steps: Vec<LoginStep>,
+    matchers: Vec<Matcher>,
     cmd_tx: UnboundedSender<SessionCmd>,
     inner: Mutex<RunnerInner>,
     on_progress: Box<dyn Fn(LoginProgress) + Send + Sync>,
@@ -75,8 +111,13 @@ impl LoginRunner {
     ) -> Self {
         let first_timeout = steps.first().map(|s| s.timeout_ms).unwrap_or(10_000);
         let total = steps.len();
+        let matchers = steps
+            .iter()
+            .map(|s| Matcher::build(&s.expect, s.is_regex, &session_id))
+            .collect();
         let runner = Self {
             steps,
+            matchers,
             cmd_tx,
             session_id: session_id.clone(),
             on_progress,
@@ -131,8 +172,8 @@ impl LoginRunner {
 
         let stripped = strip_ansi(&inner.buffer);
         let step = &self.steps[inner.index];
-        // is_regex flag honoured at the schema level; literal-only for v1.
-        if !step.expect.is_empty() && stripped.contains(step.expect.as_str()) {
+        // Literal or regex match per the step's `is_regex` (precompiled).
+        if self.matchers[inner.index].is_match(&stripped) {
             let _ = self
                 .cmd_tx
                 .send(SessionCmd::Data(step.send.as_bytes().to_vec()));
@@ -219,5 +260,19 @@ mod tests {
     fn strip_ansi_osc() {
         let s = strip_ansi(b"\x1b]0;title\x07Plain text");
         assert_eq!(s, "Plain text");
+    }
+
+    #[test]
+    fn matcher_literal_and_regex() {
+        assert!(Matcher::build("Password:", false, "s").is_match("Enter Password: "));
+        assert!(!Matcher::build("Password:", false, "s").is_match("login:"));
+        // Regex: a prompt ending in '#' or '>' (typical network device).
+        let re = Matcher::build(r"[\w.-]+[#>]\s*$", true, "s");
+        assert!(re.is_match("router1# "));
+        assert!(re.is_match("sw-core>"));
+        assert!(!re.is_match("Password:"));
+        // Invalid regex falls back to literal (matches the raw pattern text).
+        let bad = Matcher::build("(unclosed", true, "s");
+        assert!(bad.is_match("see (unclosed here"));
     }
 }

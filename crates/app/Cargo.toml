@@ -38,6 +38,7 @@ core-logging       = { path = "../core-logging" }
 window-vibrancy    = "0.6"
 chrono             = { workspace = true }
 notify             = { workspace = true }
+regex              = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # Read PuTTY sessions straight from HKCU when importing on Windows. The

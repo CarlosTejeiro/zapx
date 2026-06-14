@@ -538,6 +538,10 @@
             bind:value={step.timeout_ms}
             title="timeout (ms)"
           />
+          <label class="step-rx" title="Treat 'expect' as a regular expression">
+            <input type="checkbox" bind:checked={step.is_regex} />
+            .*
+          </label>
           <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step"><Icon name="x" size={12} /></button>
         </div>
       {/each}
@@ -832,6 +836,18 @@
     font-size: 0.78rem;
     flex-shrink: 0;
   }
+
+  .step-rx {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-family: var(--zx-font-mono);
+    font-size: 0.72rem;
+    color: var(--zx-text-muted);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .step-rx input { accent-color: var(--zx-accent); }
 
   .step-rm {
     background: transparent;
