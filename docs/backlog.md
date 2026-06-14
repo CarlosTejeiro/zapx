@@ -19,9 +19,25 @@ Add entries with format: `- **Feature name**: brief description.`
 
 ## Features
 
-- **Importers: SecureCRT port forwards**: PuTTY (`PortForwardings`) and
-  MobaXterm (`[PortForwarding]`) tunnel import are done. SecureCRT stores
-  forwards in its session config too; needs a real sample to map reliably.
+- **Importers: SecureCRT port forwards** (planned for 0.10): PuTTY
+  (`PortForwardings`) and MobaXterm (`[PortForwarding]`) tunnel import are done.
+  Session import already works (`importers/securecrt.rs` walks `Sessions/` and
+  parses the typed `S:/D:/B:` `.ini` keys: protocol, host, port, user, identity,
+  serial). What's missing is reading the **forward** keys into `session_forwards`
+  — the rest of the pipeline (`session_forwards` → `apply_import`) is in place
+  from PuTTY/MobaXterm.
+  - Blocker: SecureCRT's forward storage format isn't publicly documented. The
+    VanDyke "import PuTTY into SecureCRT" script only mentions it copies
+    "tunnels (port forward settings)" without specifying the keys/encoding.
+  - Need: a real session `.ini` that has forwards configured (ideally a Local
+    `-L` and a Dynamic `-D`). Locations: Windows
+    `%APPDATA%\VanDyke\Config\Sessions\<name>.ini`; macOS
+    `~/Library/Application Support/VanDyke/SecureCRT/Config/Sessions/<name>.ini`;
+    Linux `~/.vandyke/SecureCRT/Config/Sessions/<name>.ini`. Drop it in `temp/`
+    (gitignored). Passwords are encrypted in the file — fine to share.
+  - Then: reverse-engineer the forward keys, add parsing to `decode_session`,
+    and add a test against the sample (mirror `imports_port_forwardings` in
+    `importers/mobaxterm.rs`).
 - **MobaXterm jump-host import**: a MobaXterm bookmark with "connect through
   SSH gateway" encodes the gateway inline (the `%2%host%port%user%` fields);
   could map to ZAPX `via_session_id` (ProxyJump) on import. Sample available.
