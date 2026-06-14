@@ -40,3 +40,6 @@ docs/internal/
 
 # npm lockfile — pnpm-lock.yaml is canonical in this repo
 frontend/package-lock.json
+
+# Local scratch / sensitive samples (never commit)
+temp/

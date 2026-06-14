@@ -19,10 +19,12 @@ Add entries with format: `- **Feature name**: brief description.`
 
 ## Features
 
-- **Importers: MobaXterm / SecureCRT port forwards**: PuTTY tunnel import is
-  done (`importers/putty.rs` → `session_forwards`). MobaXterm/SecureCRT store
-  forwards in less-documented structures; needs real sample files to map them
-  reliably into `session_forwards` during import.
+- **Importers: SecureCRT port forwards**: PuTTY (`PortForwardings`) and
+  MobaXterm (`[PortForwarding]`) tunnel import are done. SecureCRT stores
+  forwards in its session config too; needs a real sample to map reliably.
+- **MobaXterm jump-host import**: a MobaXterm bookmark with "connect through
+  SSH gateway" encodes the gateway inline (the `%2%host%port%user%` fields);
+  could map to ZAPX `via_session_id` (ProxyJump) on import. Sample available.
 - **Regex in login-script expects**: the schema already carries `is_regex`
   (`crates/app/src/login_script.rs`); wire it so expect patterns can be regex,
   not just literal.

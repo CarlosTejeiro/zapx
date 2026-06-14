@@ -5,6 +5,16 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-14
+
+### Added
+- **Import MobaXterm port forwards**: the `[PortForwarding]` tunnels in a
+  MobaXterm `.mobaconf`/`.ini` now import too. Each tunnel (Local/Dynamic/
+  Remote) is attached to its SSH gateway — matched against an imported
+  bookmark when possible, otherwise a session is created for the gateway —
+  so the forwards auto-start on connect. (PuTTY already supported; SecureCRT
+  forward storage still pending a sample.)
+
 ## [0.8.0] - 2026-06-14
 
 ### Added

@@ -143,7 +143,7 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 
 - [ ] Code signing: Apple Developer ID (macOS notarization, fixes the "damaged" prompt) + Windows certificate
 - [ ] App updates: private update server (Windows/Linux self-update; macOS gated on signing)
-- [ ] Importers: MobaXterm / SecureCRT port forwards (PuTTY already supported)
+- [ ] Importers: SecureCRT port forwards (PuTTY + MobaXterm already supported)
 - [ ] Linux packaging: AUR (`zapx-bin`), Flathub, Snap
 - [ ] Regex matching in login-script expects
 - [ ] SFTP drag & drop + edit remote files with a local editor
