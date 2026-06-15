@@ -5,6 +5,7 @@
   import { FitAddon } from '@xterm/addon-fit'
   import { SearchAddon } from '@xterm/addon-search'
   import { invoke } from '@tauri-apps/api/core'
+  import { writeText as clipboardWriteText } from '@tauri-apps/plugin-clipboard-manager'
   import { listen } from '@tauri-apps/api/event'
   import type { UnlistenFn } from '@tauri-apps/api/event'
   import '@xterm/xterm/css/xterm.css'
@@ -316,12 +317,20 @@
     )
 
     // Copy-on-select: when the user releases the mouse with a non-empty
-    // selection, push it to the clipboard. Silently ignore failures (e.g.
-    // browser denying clipboard access).
+    // selection, push it to the clipboard. We write through Tauri's native
+    // clipboard rather than navigator.clipboard because WebKitGTK (Linux)
+    // drops the newlines from the browser clipboard API — multi-line output
+    // would paste as a single line. The native clipboard preserves them, and
+    // it's the same path on macOS/Windows. Fall back to the browser API if the
+    // native write fails; ignore failures silently either way.
     container.addEventListener('mouseup', () => {
       if (term?.hasSelection()) {
         const sel = term.getSelection()
-        if (sel) navigator.clipboard.writeText(sel).catch(() => {})
+        if (sel) {
+          clipboardWriteText(sel).catch(() =>
+            navigator.clipboard.writeText(sel).catch(() => {}),
+          )
+        }
       }
     })
 

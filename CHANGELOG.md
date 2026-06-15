@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-06-15
+
+### Fixed
+- **Copying from the terminal kept newlines on Linux**: selecting multi-line
+  output and pasting it dropped the line breaks (everything landed on one line)
+  on Linux/WebKitGTK, because the browser clipboard API strips them there.
+  Copy-on-select now writes through Tauri's native clipboard, which preserves
+  newlines; same path on macOS/Windows, with the browser API as a fallback.
+
 ## [0.9.2] - 2026-06-15
 
 ### Fixed

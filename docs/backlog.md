@@ -51,22 +51,6 @@ Add entries with format: `- **Feature name**: brief description.`
   working features for it; the Upload button covers uploads. ("Edit remote
   file" shipped in 0.8.)
 
-## Known issues
-
-- **Copy from terminal loses line breaks (Linux/WebKitGTK)**: selecting
-  multi-line output (e.g. a device `show run interface`) and pasting into a text
-  editor lands on a single line — newlines are dropped. Reported on Linux only;
-  not seen on macOS/Windows, which points at WebKitGTK's
-  `navigator.clipboard.writeText` (used by copy-on-select in
-  `terminal/TerminalTab.svelte` ~L322) rather than xterm's `getSelection()`.
-  - Likely fix: write the selection via the Tauri **clipboard-manager** plugin
-    (native GTK clipboard) instead of the browser async clipboard API. Verify it
-    doesn't regress copy on macOS/Windows before shipping.
-  - Need from the reporter to confirm the exact case: (a) does it happen with
-    short, clearly-separate lines or only with long lines that wrap in the
-    terminal? (b) which app are they pasting into? (c) does copy-on-select vs an
-    explicit copy shortcut behave differently? Then fix in 0.9.3.
-
 ## Linux packaging
 
 - **AUR / Flathub / Snap**: a from-source Arch `PKGBUILD` ships in
