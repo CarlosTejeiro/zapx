@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-06-15
+
+### Fixed
+- **Linux high CPU — the DMABUF fix now actually applies**: 0.9.1 set
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1` from inside the process, which runs *after*
+  WebKit has already started its web/GPU process, so it had no effect (CPU
+  stayed high unless you launched with the variable set in the shell). ZAPX now
+  re-execs itself once at startup with the variable already in the environment,
+  so WebKit sees it from the first moment — the same result as
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1 zapx`, automatically. Still Linux-only and
+  skipped when you've set the variable yourself.
+
 ## [0.9.1] - 2026-06-14
 
 ### Fixed
