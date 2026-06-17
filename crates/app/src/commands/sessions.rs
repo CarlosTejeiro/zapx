@@ -443,24 +443,27 @@ pub async fn open_ssh_session(
     let on_detected = make_detection_callback(app.clone(), session_id.clone(), None);
     let tcp_mss = transport.tcp_mss();
     let mss_watcher = transport.take_mss_watcher();
-    let (cmd_tx, ssh_handle, remote_forwards) = transport.start_io_loop(make_on_data(
-        session_id.clone(),
-        lg,
-        hl,
-        empty_login_slot(),
-        Arc::clone(&rx_total),
-        Some(Arc::clone(&detector)),
-        Some(on_detected),
-        move |data| {
-            let _ = app_handle.emit(
-                "terminal-data",
-                TerminalDataPayload {
-                    session_id: sid.clone(),
-                    data,
-                },
-            );
-        },
-    ));
+    let (cmd_tx, ssh_handle, remote_forwards) = transport.start_io_loop(
+        make_on_data(
+            session_id.clone(),
+            lg,
+            hl,
+            empty_login_slot(),
+            Arc::clone(&rx_total),
+            Some(Arc::clone(&detector)),
+            Some(on_detected),
+            move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            },
+        ),
+        make_on_close(app.clone(), session_id.clone()),
+    );
     let stats_task =
         Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
     // Live MSS polling for the same session. Dropped automatically when the
@@ -1119,24 +1122,27 @@ pub async fn open_saved_session(
             );
             let tcp_mss = transport.tcp_mss();
             let mss_watcher = transport.take_mss_watcher();
-            let (cmd_tx, ssh_handle, remote_forwards) = transport.start_io_loop(make_on_data(
-                session_id.clone(),
-                lg,
-                hl,
-                login_slot_for_closure,
-                Arc::clone(&rx_total),
-                Some(Arc::clone(&detector)),
-                Some(on_detected),
-                move |data| {
-                    let _ = app_handle.emit(
-                        "terminal-data",
-                        TerminalDataPayload {
-                            session_id: sid.clone(),
-                            data,
-                        },
-                    );
-                },
-            ));
+            let (cmd_tx, ssh_handle, remote_forwards) = transport.start_io_loop(
+                make_on_data(
+                    session_id.clone(),
+                    lg,
+                    hl,
+                    login_slot_for_closure,
+                    Arc::clone(&rx_total),
+                    Some(Arc::clone(&detector)),
+                    Some(on_detected),
+                    move |data| {
+                        let _ = app_handle.emit(
+                            "terminal-data",
+                            TerminalDataPayload {
+                                session_id: sid.clone(),
+                                data,
+                            },
+                        );
+                    },
+                ),
+                make_on_close(app.clone(), session_id.clone()),
+            );
 
             // Wire up the optional login automation (no-op if the session has no script).
             maybe_install_login_runner(
@@ -1535,4 +1541,19 @@ pub async fn create_serial_session(
 struct TerminalDataPayload {
     session_id: String,
     data: Vec<u8>,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct DisconnectPayload {
+    session_id: String,
+}
+
+/// Build the `on_close` callback for an SSH session: when the remote side drops
+/// the link (server closed the channel, or keepalives went unanswered), emit
+/// `session-disconnected` so the frontend can show a reconnect affordance and
+/// optionally auto-reconnect. Not fired when the user closes the tab.
+fn make_on_close(app: AppHandle, session_id: String) -> impl FnOnce() + Send + 'static {
+    move || {
+        let _ = app.emit("session-disconnected", DisconnectPayload { session_id });
+    }
 }

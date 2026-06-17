@@ -137,6 +137,10 @@ pub fn run() {
             let db = core_persistence::Database::open(&db_path)
                 .map_err(|e| format!("DB init failed: {e}"))?;
 
+            // Push the persisted SSH keepalive interval into core-transport
+            // before any session can be opened.
+            commands::settings::apply_persisted_keepalive(&db);
+
             let rules = db.list_highlight_rules().unwrap_or_default();
             let highlighter = Arc::new(RwLock::new(core_highlight::Highlighter::new(
                 rules
@@ -256,6 +260,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::get_setting,
             commands::settings::set_setting,
+            commands::settings::set_ssh_keepalive,
             commands::settings::list_color_schemes,
             commands::hints::get_hints,
             commands::hints::record_command,

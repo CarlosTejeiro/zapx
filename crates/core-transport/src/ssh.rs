@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -11,6 +12,31 @@ use russh_keys::key;
 
 use crate::error::Error;
 use crate::SessionCmd;
+
+/// Global SSH keepalive interval in seconds (0 = disabled). It's a single
+/// user-wide preference, so a global avoids threading the value through every
+/// connect signature (including the whole bastion chain). Read when each russh
+/// client config is built, so it takes effect on connections opened afterwards.
+static SSH_KEEPALIVE_SECS: AtomicU64 = AtomicU64::new(0);
+
+/// Set the SSH server-alive interval (seconds; 0 disables). Affects sessions
+/// opened after this call.
+pub fn set_keepalive_secs(secs: u64) {
+    SSH_KEEPALIVE_SECS.store(secs, Ordering::Relaxed);
+}
+
+/// russh client config carrying the configured keepalive. `keepalive_max` is
+/// how many unanswered keepalives russh tolerates before dropping the link —
+/// which then surfaces as a normal disconnect (and drives auto-reconnect).
+fn build_client_config() -> Arc<client::Config> {
+    let mut config = client::Config::default();
+    let secs = SSH_KEEPALIVE_SECS.load(Ordering::Relaxed);
+    if secs > 0 {
+        config.keepalive_interval = Some(std::time::Duration::from_secs(secs));
+        config.keepalive_max = 3;
+    }
+    Arc::new(config)
+}
 
 // ---------------------------------------------------------------------------
 // Remote forward (-R) registry
@@ -266,7 +292,7 @@ async fn capture_host_key(host: &str, port: u16) -> Result<key::PublicKey, Error
     let handler = KeyCaptureHandler {
         captured: Arc::clone(&captured),
     };
-    let config = Arc::new(client::Config::default());
+    let config = build_client_config();
     // The session is dropped at the end of this fn, closing the connection.
     let _session = client::connect(config, (host.to_owned(), port), handler)
         .await
@@ -406,6 +432,7 @@ impl SshTransport {
     pub fn start_io_loop(
         self,
         on_data: impl Fn(Vec<u8>) + Send + Sync + 'static,
+        on_close: impl FnOnce() + Send + 'static,
     ) -> (
         tokio::sync::mpsc::UnboundedSender<SessionCmd>,
         Arc<tokio::sync::Mutex<client::Handle<SshClientHandler>>>,
@@ -423,12 +450,18 @@ impl SshTransport {
             // the I/O loop — dropping bastions would tear the tunnel down.
             let _session = session_for_task;
             let _bastions = bastions;
+            // Did the loop end because the REMOTE side closed (vs. the user
+            // closing the tab, which drops cmd_tx)? Only the former should fire
+            // on_close → the app emits a disconnect event and may reconnect.
+            let mut remote_closed = false;
             loop {
                 tokio::select! {
                     cmd = rx.recv() => {
                         match cmd {
                             Some(SessionCmd::Data(data)) => {
                                 if channel.data(data.as_ref()).await.is_err() {
+                                    // Write failed → the link is gone.
+                                    remote_closed = true;
                                     break;
                                 }
                             }
@@ -438,7 +471,7 @@ impl SshTransport {
                                     .await
                                     .ok();
                             }
-                            None => break, // cmd_tx dropped → session closed
+                            None => break, // cmd_tx dropped → user closed the tab
                         }
                     }
                     msg = channel.wait() => {
@@ -450,15 +483,22 @@ impl SshTransport {
                             Some(ChannelMsg::ExtendedData { ref data, .. }) => {
                                 on_data(data.to_vec());
                             }
-                            // Channel closed or shell exited
+                            // Channel closed or shell exited (incl. dropped link
+                            // after keepalives went unanswered).
                             Some(ChannelMsg::ExitStatus { .. })
                             | Some(ChannelMsg::Close)
                             | Some(ChannelMsg::Eof)
-                            | None => break,
+                            | None => {
+                                remote_closed = true;
+                                break;
+                            }
                             _ => {}
                         }
                     }
                 }
+            }
+            if remote_closed {
+                on_close();
             }
         });
 
@@ -524,7 +564,7 @@ async fn connect_only(
     let mss = crate::tcp_mss::query(&stream);
     let watcher = crate::tcp_mss::MssWatcher::new(&stream);
 
-    let config = Arc::new(client::Config::default());
+    let config = build_client_config();
     let forwards = new_remote_forward_registry();
     let handler = SshClientHandler {
         host: host.clone(),
@@ -655,7 +695,7 @@ pub async fn connect_authenticated_via(
         .await
         .map_err(Error::Ssh)?;
     let stream = channel.into_stream();
-    let config = Arc::new(client::Config::default());
+    let config = build_client_config();
     // Bastion: discard the registry — the resulting handle is only used as
     // a hop for direct-tcpip channels, never the final SSH session.
     let handler = SshClientHandler {
@@ -698,7 +738,7 @@ async fn open_shell_via_async(
 
     // Run a fresh SSH client over that tunneled stream. The strict
     // known_hosts handler is keyed to the TARGET, not the bastion.
-    let config = Arc::new(client::Config::default());
+    let config = build_client_config();
     let forwards = new_remote_forward_registry();
     let handler = SshClientHandler {
         host: target_host.clone(),
