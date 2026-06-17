@@ -45,7 +45,7 @@ All customizable in **Settings → Shortcuts**. Defaults:
 | `Ctrl+Shift+M` | Toggle multi-exec broadcast |
 | `Ctrl+Shift+S` | Snippets |
 | `Ctrl+Shift+1..9` | Fire snippet 1..9 |
-| `Ctrl+F` | In-terminal search |
+| `Ctrl+F` | In-terminal search — match count, highlight-all, case/word/regex (`Enter` / `Shift+Enter` to step) |
 | `Ctrl+,` | Settings |
 | `Escape` | Close search / close dialog |
 

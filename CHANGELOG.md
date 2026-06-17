@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-06-17
+
+### Added
+- **Proper in-terminal search** (`Ctrl+F`): the search bar now highlights every
+  match (and marks them on the scrollbar), shows a live match counter
+  (`3 / 12`), and adds **match-case**, **whole-word** and **regex** toggles.
+  `Enter` jumps to the next match, `Shift+Enter` to the previous; the input
+  turns red when there are no results.
+
 ## [0.9.3] - 2026-06-15
 
 ### Fixed

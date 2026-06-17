@@ -178,6 +178,58 @@
   let showSearch = $state(false)
   let searchQuery = $state('')
   let searchAddon: SearchAddon | null = null
+  let searchInput = $state<HTMLInputElement | null>(null)
+  let searchCaseSensitive = $state(false)
+  let searchWholeWord = $state(false)
+  let searchRegex = $state(false)
+  // Active match index + total, reported by the addon (decorations enabled).
+  let searchResult = $state<{ resultIndex: number; resultCount: number }>({
+    resultIndex: -1,
+    resultCount: 0,
+  })
+
+  // Search options from the current toggles. `decorations` highlights every
+  // match (and marks them on the scrollbar overview); the addon then fires
+  // onDidChangeResults so the bar can show "3 / 12".
+  function searchOptions(incremental: boolean) {
+    return {
+      incremental,
+      caseSensitive: searchCaseSensitive,
+      wholeWord: searchWholeWord,
+      regex: searchRegex,
+      decorations: {
+        matchBackground: effectivePalette.yellow ?? '#b58900',
+        matchOverviewRuler: effectivePalette.yellow ?? '#b58900',
+        activeMatchBackground: effectivePalette.cursor ?? '#e0af68',
+        activeMatchColorOverviewRuler: effectivePalette.cursor ?? '#e0af68',
+      },
+    }
+  }
+
+  // findNext/findPrevious throw on a malformed regex while the user is still
+  // typing the pattern — swallow it and just report "no results".
+  function searchRun(direction: 'next' | 'prev', incremental: boolean) {
+    if (!searchAddon) return
+    if (!searchQuery) {
+      searchAddon.clearDecorations()
+      searchResult = { resultIndex: -1, resultCount: 0 }
+      return
+    }
+    try {
+      const opts = searchOptions(incremental)
+      if (direction === 'prev') searchAddon.findPrevious(searchQuery, opts)
+      else searchAddon.findNext(searchQuery, opts)
+    } catch {
+      searchResult = { resultIndex: -1, resultCount: 0 }
+    }
+  }
+
+  function closeSearch() {
+    showSearch = false
+    searchAddon?.clearDecorations()
+    searchQuery = ''
+    searchResult = { resultIndex: -1, resultCount: 0 }
+  }
 
   // Port-forwards + SFTP browser (only for SSH sessions)
   let showTunnels = $state(false)
@@ -287,6 +339,9 @@
     searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(searchAddon)
+    searchAddon.onDidChangeResults((e) => {
+      searchResult = e
+    })
     term.open(container)
     fitAddon.fit()
     // Focus immediately so the user can start typing the moment the tab
@@ -339,13 +394,12 @@
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== 'keydown') return true
       if (e.ctrlKey && e.key === 'f') {
-        showSearch = !showSearch
-        if (!showSearch) searchAddon?.clearDecorations()
+        if (showSearch) closeSearch()
+        else showSearch = true
         return false
       }
       if (e.key === 'Escape' && showSearch) {
-        showSearch = false
-        searchAddon?.clearDecorations()
+        closeSearch()
         return false
       }
 
@@ -546,15 +600,15 @@
     })
   })
 
-  // Reactive search: run whenever query changes and search bar is open
+  // Reactive search: re-run incrementally whenever the query or any toggle
+  // changes while the bar is open (so flipping case/word/regex updates live).
   $effect(() => {
-    if (showSearch && searchAddon) {
-      if (searchQuery) {
-        searchAddon.findNext(searchQuery, { incremental: true })
-      } else {
-        searchAddon.clearDecorations()
-      }
-    }
+    if (showSearch && searchAddon) searchRun('next', true)
+  })
+
+  // Focus the input when the bar opens.
+  $effect(() => {
+    if (showSearch) searchInput?.focus()
   })
 
   // Reactive appearance: push new theme/font settings to the live terminal
@@ -688,7 +742,7 @@
     <!-- search toggle -->
     <button
       class="toolbar-btn"
-      onclick={() => { showSearch = !showSearch; if (!showSearch) { searchAddon?.clearDecorations(); searchQuery = '' } }}
+      onclick={() => { if (showSearch) closeSearch(); else showSearch = true }}
       title="Search (Ctrl+F)"
     >
       🔍
@@ -701,17 +755,26 @@
     <div class="search-bar">
       <input
         class="search-input"
+        class:no-match={searchQuery !== '' && searchResult.resultCount === 0}
+        bind:this={searchInput}
         bind:value={searchQuery}
         placeholder="Search…"
-        oninput={() => searchAddon?.findNext(searchQuery, { incremental: true })}
         onkeydown={(e) => {
-          if (e.key === 'Enter') searchAddon?.findNext(searchQuery)
-          if (e.key === 'Escape') { showSearch = false; searchAddon?.clearDecorations(); searchQuery = '' }
+          if (e.key === 'Enter') { e.preventDefault(); searchRun(e.shiftKey ? 'prev' : 'next', false) }
+          if (e.key === 'Escape') closeSearch()
         }}
       />
-      <button class="search-nav" onclick={() => searchAddon?.findNext(searchQuery)}>▼</button>
-      <button class="search-nav" onclick={() => searchAddon?.findPrevious(searchQuery)}>▲</button>
-      <button class="search-nav" onclick={() => { showSearch = false; searchAddon?.clearDecorations(); searchQuery = '' }}><Icon name="x" size={11} /></button>
+      <span class="search-count">
+        {#if searchQuery}
+          {searchResult.resultCount === 0 ? 'No results' : `${searchResult.resultIndex + 1}/${searchResult.resultCount}`}
+        {/if}
+      </span>
+      <button class="search-toggle" class:active={searchCaseSensitive} title="Match case" onclick={() => (searchCaseSensitive = !searchCaseSensitive)}>Aa</button>
+      <button class="search-toggle" class:active={searchWholeWord} title="Whole word" onclick={() => (searchWholeWord = !searchWholeWord)}>W</button>
+      <button class="search-toggle" class:active={searchRegex} title="Regular expression" onclick={() => (searchRegex = !searchRegex)}>.*</button>
+      <button class="search-nav" title="Previous match (Shift+Enter)" onclick={() => searchRun('prev', false)}>▲</button>
+      <button class="search-nav" title="Next match (Enter)" onclick={() => searchRun('next', false)}>▼</button>
+      <button class="search-nav" title="Close (Esc)" onclick={closeSearch}><Icon name="x" size={11} /></button>
     </div>
   {/if}
 
@@ -950,6 +1013,41 @@
   }
 
   .search-input:focus {
+    border-color: #3b82f6;
+  }
+
+  .search-input.no-match {
+    border-color: #ef4444;
+  }
+
+  .search-count {
+    font-size: 0.7rem;
+    color: #a1a1aa;
+    font-variant-numeric: tabular-nums;
+    min-width: 3.5rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .search-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    color: #71717a;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.72rem;
+    font-family: monospace;
+    line-height: 1.4;
+  }
+
+  .search-toggle:hover {
+    color: #e4e4e7;
+  }
+
+  .search-toggle.active {
+    color: #e4e4e7;
+    background: #3b82f6;
     border-color: #3b82f6;
   }
 
