@@ -5,6 +5,11 @@
 
   import { onMount } from 'svelte'
   import { getSetting, setSetting } from '$lib/bridge/commands'
+  import {
+    connectionSettings,
+    applyKeepalive,
+    applyAutoReconnect,
+  } from '$lib/stores/settings.svelte'
 
   type Priority = 'auto' | 'pageant-first' | 'openssh-only' | 'pageant-only'
 
@@ -56,6 +61,42 @@
 </script>
 
 <div class="panel">
+  <section>
+    <h3>Connection reliability</h3>
+    <p class="hint-help">
+      Keepalive sends a periodic probe so idle SSH sessions aren't dropped by
+      firewalls or servers; it also lets ZAPX notice a dead link quickly.
+      Auto-reconnect re-opens a session when the link drops.
+    </p>
+
+    <label class="row">
+      <span>SSH keepalive interval</span>
+      <span class="num">
+        <input
+          type="number"
+          min="0"
+          max="3600"
+          step="5"
+          value={connectionSettings.keepaliveSecs}
+          onchange={(e) => {
+            const n = parseInt((e.currentTarget as HTMLInputElement).value, 10)
+            void applyKeepalive(Number.isNaN(n) ? 0 : Math.max(0, Math.min(3600, n)))
+          }}
+        />
+        <span class="unit">s (0 = off)</span>
+      </span>
+    </label>
+
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={connectionSettings.autoReconnect}
+        onchange={(e) => void applyAutoReconnect((e.currentTarget as HTMLInputElement).checked)}
+      />
+      <span>Auto-reconnect when a session drops</span>
+    </label>
+  </section>
+
   <section>
     <h3>SSH agent priority (Windows)</h3>
     <p class="hint-help">
@@ -150,5 +191,44 @@
     border-radius: 0.2rem;
     padding: 0 0.3rem;
     font-size: 0.72rem;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.82rem;
+    max-width: 22rem;
+  }
+
+  .num {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .num input {
+    width: 5rem;
+    background: var(--zx-surface-2);
+    border: 1px solid var(--zx-border);
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.4rem;
+    color: var(--zx-text);
+    font-size: 0.82rem;
+    font-family: inherit;
+  }
+
+  .unit {
+    color: var(--zx-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    cursor: pointer;
   }
 </style>

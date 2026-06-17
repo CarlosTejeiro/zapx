@@ -480,6 +480,11 @@ export async function listColorSchemes(): Promise<ColorScheme[]> {
   return invoke<ColorScheme[]>('list_color_schemes')
 }
 
+/** Persist and apply the SSH keepalive interval in seconds (0 disables). */
+export async function setSshKeepalive(secs: number): Promise<void> {
+  return invoke<void>('set_ssh_keepalive', { secs })
+}
+
 export async function openTelnetSession(
   host: string,
   port: number,

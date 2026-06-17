@@ -1,4 +1,4 @@
-import { getSetting, setSetting, listColorSchemes } from '$lib/bridge/commands'
+import { getSetting, setSetting, setSshKeepalive, listColorSchemes } from '$lib/bridge/commands'
 import type { ColorScheme } from '$lib/bridge/types'
 
 // ── reactive global terminal settings ──────────────────────────────────────
@@ -10,6 +10,15 @@ export const terminalSettings = $state({
   cursorStyle: 'block' as 'block' | 'underline' | 'bar',
   cursorBlink: true,
   activeColorScheme: 'One Dark',
+})
+
+// ── connection reliability settings ─────────────────────────────────────────
+
+export const connectionSettings = $state({
+  // SSH server-alive interval in seconds (0 = off). Backend default is 60.
+  keepaliveSecs: 60,
+  // Auto-reconnect a session when the remote drops the link.
+  autoReconnect: true,
 })
 
 export const colorSchemes = $state<ColorScheme[]>([])
@@ -32,6 +41,8 @@ export async function loadSettings(): Promise<void> {
     'terminal.cursorStyle',
     'terminal.cursorBlink',
     'terminal.activeColorScheme',
+    'ssh.keepalive_secs',
+    'connection.autoReconnect',
   ]
   try {
     const values = await Promise.all(keys.map((k) => getSetting(k)))
@@ -42,9 +53,25 @@ export async function loadSettings(): Promise<void> {
     if (values[4] !== null && values[4] !== undefined)
       terminalSettings.cursorBlink = values[4] === 'true'
     if (values[5]) terminalSettings.activeColorScheme = values[5]
+    if (values[6] !== null && values[6] !== undefined) {
+      const n = parseInt(values[6], 10)
+      if (!Number.isNaN(n)) connectionSettings.keepaliveSecs = n
+    }
+    if (values[7] !== null && values[7] !== undefined)
+      connectionSettings.autoReconnect = values[7] === 'true'
   } catch {
     // use defaults
   }
+}
+
+export async function applyKeepalive(secs: number): Promise<void> {
+  connectionSettings.keepaliveSecs = secs
+  await setSshKeepalive(secs)
+}
+
+export async function applyAutoReconnect(enabled: boolean): Promise<void> {
+  connectionSettings.autoReconnect = enabled
+  await setSetting('connection.autoReconnect', String(enabled))
 }
 
 export async function applyColorScheme(name: string): Promise<void> {

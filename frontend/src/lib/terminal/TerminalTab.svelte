@@ -31,7 +31,7 @@
     unregisterSession,
   } from '$lib/stores/sessionRuntime.svelte'
   import { matchAction } from '$lib/stores/keybindings.svelte'
-  import { terminalSettings, colorSchemes } from '$lib/stores/settings.svelte'
+  import { terminalSettings, colorSchemes, connectionSettings } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
   import { HintController } from '$lib/hints/controller.svelte'
   import GhostText from '$lib/hints/GhostText.svelte'
@@ -160,6 +160,11 @@
   let container: HTMLDivElement
   let sessionId = $state<string | null>(null)
   let errorMsg = $state<string | null>(null)
+  // Reconnect state: the remote dropped the link (vs. the user closing the tab).
+  let disconnected = $state(false)
+  let reconnecting = $state(false)
+  let reconnectAttempt = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   // Held for $effect theme/font reactivity — set inside onMount.
   let term: InstanceType<typeof Terminal> | null = null
   let hintController = $state<HintController | null>(null)
@@ -325,6 +330,58 @@
     return new Date(iso).toLocaleString()
   }
 
+  // Open the backend session for this pane's parameters and return its id.
+  // Factored out so reconnect can re-run it.
+  async function doOpen(): Promise<string> {
+    if (!term) throw new Error('terminal not ready')
+    if (savedSession) return await openSavedSession(savedSession.id, term.cols, term.rows)
+    if (ssh) return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
+    if (telnet) return await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
+    return await invoke<string>('open_local_session')
+  }
+
+  function clearReconnectTimer() {
+    if (reconnectTimer != null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
+  // Re-open the session in place, reusing the same xterm (scrollback is kept).
+  async function reconnect() {
+    if (!term || reconnecting) return
+    clearReconnectTimer()
+    reconnecting = true
+    errorMsg = null
+    try {
+      const id = await doOpen()
+      sessionId = id
+      disconnected = false
+      reconnecting = false
+      reconnectAttempt = 0
+      if (paneId != null) registerSession(paneId, id)
+      onSessionOpen?.()
+      showToast({ kind: 'success', title: 'Reconnected' })
+      term.focus()
+    } catch (e) {
+      reconnecting = false
+      errorMsg = fmtError(e)
+      scheduleReconnect()
+    }
+  }
+
+  // Auto-reconnect with linear backoff (2s, 4s … capped 15s), a few attempts.
+  function scheduleReconnect() {
+    if (!connectionSettings.autoReconnect) return
+    if (reconnectAttempt >= 6) return
+    reconnectAttempt += 1
+    const delay = Math.min(2000 * reconnectAttempt, 15000)
+    clearReconnectTimer()
+    reconnectTimer = setTimeout(() => {
+      void reconnect()
+    }, delay)
+  }
+
   onMount(async () => {
     term = new Terminal({
       cursorBlink: terminalSettings.cursorBlink,
@@ -468,15 +525,7 @@
         }
       }
 
-      if (savedSession) {
-        sessionId = await openSavedSession(savedSession.id, term.cols, term.rows)
-      } else if (ssh) {
-        sessionId = await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
-      } else if (telnet) {
-        sessionId = await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
-      } else {
-        sessionId = await invoke<string>('open_local_session')
-      }
+      sessionId = await doOpen()
     } catch (e) {
       if (isKeyringMissing(e)) {
         onNeedPassword?.()
@@ -546,6 +595,21 @@
       }
     })
 
+    // Remote dropped the link (server closed, or keepalives went unanswered).
+    // Mark the pane disconnected and kick off auto-reconnect if enabled; the
+    // banner offers a manual retry either way.
+    const unlistenDisc: UnlistenFn = await listen<{ session_id: string }>(
+      'session-disconnected',
+      (event) => {
+        if (event.payload.session_id !== sessionId) return
+        if (paneId != null) unregisterSession(paneId)
+        sessionId = null
+        disconnected = true
+        onSessionError?.()
+        scheduleReconnect()
+      },
+    )
+
     // Forward keyboard input to the PTY (and to every other registered
     // session when MultiExec broadcast is on).
     term.onData((data: string) => {
@@ -583,8 +647,10 @@
 
     onDestroy(async () => {
       observer.disconnect()
+      clearReconnectTimer()
       unlisten()
       unlistenLogin()
+      unlistenDisc()
       hintController?.clear()
       hintController = null
       term?.dispose()
@@ -778,7 +844,19 @@
     </div>
   {/if}
 
-  {#if errorMsg}
+  {#if disconnected}
+    <div class="disconnected-bar">
+      <span class="disconnected-icon">⚠</span>
+      <span class="disconnected-text">
+        {#if reconnecting}Reconnecting…{:else}Connection lost{/if}
+      </span>
+      <button class="reconnect-btn" onclick={() => reconnect()} disabled={reconnecting}>
+        Reconnect
+      </button>
+    </div>
+  {/if}
+
+  {#if errorMsg && !disconnected}
     <div class="error">
       <span class="error-icon">⚠</span>
       <pre class="error-text">{errorMsg}</pre>
@@ -1150,6 +1228,46 @@
 
   :global(.xterm-screen) {
     background-color: var(--term-bg, #09090b);
+  }
+
+  .disconnected-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.75rem;
+    background: rgba(245, 158, 11, 0.12);
+    border-left: 3px solid #f59e0b;
+    color: #fbbf24;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  .disconnected-icon {
+    font-size: 0.95rem;
+  }
+
+  .disconnected-text {
+    flex: 1;
+  }
+
+  .reconnect-btn {
+    background: #f59e0b;
+    color: #1c1917;
+    border: none;
+    border-radius: 0.25rem;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .reconnect-btn:hover {
+    background: #fbbf24;
+  }
+
+  .reconnect-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 
   .error {
