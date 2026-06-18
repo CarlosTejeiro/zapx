@@ -20,6 +20,9 @@
     onActivate: (id: number) => void
     onAdd: () => void
     onClose: (id: number) => void
+    onRename?: (id: number, label: string) => void
+    onDuplicate?: (id: number) => void
+    onSetColor?: (id: number, color: string) => void
     onToggleSplit?: () => void
     onToggleMulti?: () => void
   }
@@ -33,6 +36,9 @@
     onActivate,
     onAdd,
     onClose,
+    onRename,
+    onDuplicate,
+    onSetColor,
     onToggleSplit,
     onToggleMulti,
   }: Props = $props()
@@ -45,6 +51,40 @@
   }
 
   let hoveredTab = $state<number | null>(null)
+
+  // Swatch palette for the per-tab colour (right-click → colour).
+  const TAB_COLORS = [
+    '#ef4444', '#f59e0b', '#eab308', '#22c55e',
+    '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+  ]
+
+  // Inline rename (double-click the label).
+  let editingTab = $state<number | null>(null)
+  let editValue = $state('')
+
+  function startRename(tab: TabEntry) {
+    editingTab = tab.id
+    editValue = tab.label
+  }
+  function commitRename() {
+    if (editingTab != null) onRename?.(editingTab, editValue)
+    editingTab = null
+  }
+
+  // Right-click context menu.
+  let menuTab = $state<number | null>(null)
+  let menuX = $state(0)
+  let menuY = $state(0)
+
+  function openMenu(e: MouseEvent, tab: TabEntry) {
+    e.preventDefault()
+    menuTab = tab.id
+    menuX = e.clientX
+    menuY = e.clientY
+  }
+  function closeMenu() {
+    menuTab = null
+  }
 </script>
 
 <div
@@ -68,9 +108,12 @@
         in:fly={{ y: -8, duration: 180, easing: cubicOut }}
         style:background={active ? theme.tabActiveBg : theme.tabIdleBg}
         style:border={active ? `1px solid ${theme.border}` : '1px solid transparent'}
+        style:border-left={`3px solid ${tab.color}`}
         style:border-radius={theme.radius}
         style:box-shadow={active ? `inset 0 -2px 0 ${theme.accent}` : 'none'}
         onclick={() => onActivate(tab.id)}
+        ondblclick={() => startRename(tab)}
+        oncontextmenu={(e) => openMenu(e, tab)}
         onmouseenter={() => hoveredTab = tab.id}
         onmouseleave={() => hoveredTab = null}
         role="button"
@@ -78,9 +121,27 @@
         onkeydown={(e) => e.key === 'Enter' && onActivate(tab.id)}
       >
         <span class="tab-dot" style:background={statusColor(tab.status)}></span>
-        <span class="tab-label" style:color={active ? theme.textPrimary : theme.textMuted}>
-          {tab.label}
-        </span>
+        {#if editingTab === tab.id}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="tab-rename"
+            bind:value={editValue}
+            autofocus
+            onclick={(e) => e.stopPropagation()}
+            onblur={commitRename}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+              if (e.key === 'Escape') { editingTab = null }
+            }}
+          />
+        {:else}
+          <span
+            class="tab-label"
+            style:color={active ? theme.textPrimary : theme.textMuted}
+          >
+            {tab.label}
+          </span>
+        {/if}
         {#if active || hovered}
           <button
             class="tab-close"
@@ -133,6 +194,47 @@
   </div>
 
 </div>
+
+{#if menuTab !== null}
+  <button
+    class="menu-backdrop"
+    aria-label="Close menu"
+    onclick={closeMenu}
+    oncontextmenu={(e) => { e.preventDefault(); closeMenu() }}
+  ></button>
+  <div
+    class="tab-menu"
+    style:left="{menuX}px"
+    style:top="{menuY}px"
+    style:background={theme.tabActiveBg}
+    style:border="1px solid {theme.border}"
+    style:color={theme.textPrimary}
+  >
+    <button
+      class="menu-item"
+      onclick={() => {
+        const t = tabs.find((x) => x.id === menuTab)
+        if (t) startRename(t)
+        closeMenu()
+      }}
+    >Rename</button>
+    <button
+      class="menu-item"
+      onclick={() => { if (menuTab != null) onDuplicate?.(menuTab); closeMenu() }}
+    >Duplicate</button>
+    <div class="menu-colors">
+      {#each TAB_COLORS as c (c)}
+        <button
+          class="swatch"
+          style:background={c}
+          title="Set tab colour"
+          aria-label="Set tab colour"
+          onclick={() => { if (menuTab != null) onSetColor?.(menuTab, c); closeMenu() }}
+        ></button>
+      {/each}
+    </div>
+  </div>
+{/if}
 
 <style>
   .tabbar {
@@ -253,5 +355,76 @@
 
   .tab-action-btn:hover {
     background: var(--item-hover-bg, rgba(255,255,255,0.06));
+  }
+
+  .tab-rename {
+    flex: 1;
+    min-width: 0;
+    background: var(--item-hover-bg, rgba(255,255,255,0.1));
+    border: 1px solid var(--text-primary, #888);
+    border-radius: 3px;
+    color: var(--text-primary, #2c2924);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 1px 4px;
+    outline: none;
+  }
+
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: default;
+  }
+
+  .tab-menu {
+    position: fixed;
+    z-index: 401;
+    min-width: 150px;
+    padding: 4px;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12.5px;
+  }
+
+  .menu-item {
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: inherit;
+    font: inherit;
+  }
+
+  .menu-item:hover {
+    background: var(--item-hover-bg, rgba(255,255,255,0.08));
+  }
+
+  .menu-colors {
+    display: flex;
+    gap: 5px;
+    padding: 6px 10px 4px;
+    flex-wrap: wrap;
+  }
+
+  .swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.3);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .swatch:hover {
+    transform: scale(1.15);
   }
 </style>

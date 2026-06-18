@@ -453,6 +453,14 @@ pub async fn import_securecrt(
     finish_import(&state, parsed.file, parsed.warnings)
 }
 
+/// Write arbitrary UTF-8 text to `path`. Used by "save terminal buffer to
+/// file" (the frontend dumps the xterm scrollback and picks the path via the
+/// save dialog). Kept generic and tiny; no env data is touched.
+#[tauri::command]
+pub async fn save_text_file(path: String, content: String) -> Result<(), AppError> {
+    std::fs::write(&path, content).map_err(|e| AppError::Internal(format!("{path}: {e}")))
+}
+
 // ── tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

@@ -39,6 +39,7 @@
   import { hintsSettings } from '$lib/hints/store.svelte'
   import { recordCommand } from '$lib/bridge/commands'
   import { showToast } from '$lib/ui/toast-store.svelte'
+  import { save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 
   const DEFAULT_PALETTE: ColorPalette = {
     background: '#282c34', foreground: '#abb2bf', cursor: '#528bff',
@@ -367,6 +368,52 @@
       reconnecting = false
       errorMsg = fmtError(e)
       scheduleReconnect()
+    }
+  }
+
+  // Force a reconnect from the toolbar: tear down the live session, then
+  // re-open in place. Works whether or not the link is currently up.
+  async function manualReconnect() {
+    if (reconnecting) return
+    const old = sessionId
+    sessionId = null
+    if (paneId != null) unregisterSession(paneId)
+    if (old) await invoke('close_session', { sessionId: old }).catch(() => {})
+    await reconnect()
+  }
+
+  // Clear the terminal scrollback (and screen).
+  function clearScrollback() {
+    term?.clear()
+  }
+
+  // Dump the whole scrollback as plain text (trailing blank lines trimmed).
+  function dumpBuffer(): string {
+    if (!term) return ''
+    const buf = term.buffer.active
+    const lines: string[] = []
+    for (let i = 0; i < buf.length; i++) {
+      const line = buf.getLine(i)
+      lines.push(line ? line.translateToString(true) : '')
+    }
+    while (lines.length && lines[lines.length - 1] === '') lines.pop()
+    return lines.length ? lines.join('\n') + '\n' : ''
+  }
+
+  // Save the scrollback to a text file the user picks.
+  async function saveBuffer() {
+    const label = savedSession?.name ?? ssh?.host ?? telnet?.host ?? 'session'
+    try {
+      const path = await saveFileDialog({
+        title: 'Save terminal output',
+        defaultPath: `${label}.txt`,
+        filters: [{ name: 'Text', extensions: ['txt', 'log'] }],
+      })
+      if (!path) return
+      await invoke('save_text_file', { path, content: dumpBuffer() })
+      showToast({ kind: 'success', title: 'Saved', detail: path })
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Save failed', detail: fmtError(e) })
     }
   }
 
@@ -804,6 +851,21 @@
     {/if}
 
     <span class="flex-1"></span>
+
+    <button
+      class="toolbar-btn"
+      onclick={manualReconnect}
+      disabled={reconnecting}
+      title="Reconnect this session"
+    >
+      ⟳
+    </button>
+    <button class="toolbar-btn" onclick={clearScrollback} title="Clear scrollback">
+      ⌫
+    </button>
+    <button class="toolbar-btn" onclick={saveBuffer} title="Save output to file…">
+      ⭳
+    </button>
 
     <!-- search toggle -->
     <button

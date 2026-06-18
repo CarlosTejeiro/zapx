@@ -431,6 +431,37 @@
     }
   }
 
+  function renameTab(id: number, label: string) {
+    const t = tabs.find((x) => x.id === id)
+    if (t) t.label = label.trim() || t.label
+  }
+
+  function setTabColor(id: number, color: string) {
+    const t = tabs.find((x) => x.id === id)
+    if (t) t.color = color
+  }
+
+  // Open a new tab with the same connection parameters as `id`'s first pane.
+  function duplicateTab(id: number) {
+    const tab = tabs.find((t) => t.id === id)
+    if (!tab) return
+    const first = tabPanes(tab)[0]
+    if (!first) return
+    if (first.savedSession) {
+      openSavedSessionTab(first.savedSession)
+      return
+    }
+    const pane = mkPane(first.label, {
+      ssh: first.ssh,
+      telnet: first.telnet,
+    } as Partial<PaneData>)
+    const newTab = mkTab(pane)
+    newTab.color = tab.color
+    tabs = [...tabs, newTab]
+    activeTabId = newTab.id
+    focusedPaneId = pane.id
+  }
+
   function activateTab(id: number) {
     activeTabId = id
     const tab = tabs.find((t) => t.id === id)
@@ -1071,6 +1102,9 @@
         onActivate={activateTab}
         onAdd={addLocalTab}
         onClose={closeTab}
+        onRename={renameTab}
+        onDuplicate={duplicateTab}
+        onSetColor={setTabColor}
         onToggleSplit={handleSplitFocused}
         onToggleMulti={() => multiOn = !multiOn}
       />

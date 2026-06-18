@@ -253,6 +253,7 @@ pub fn run() {
             commands::transfer::import_putty,
             commands::transfer::import_mobaxterm,
             commands::transfer::import_securecrt,
+            commands::transfer::save_text_file,
             commands::data_dir::get_data_dir_info,
             commands::data_dir::set_data_dir,
             commands::data_dir::reset_data_dir,
