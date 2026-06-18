@@ -14,6 +14,7 @@ import type {
   Snippet,
   RecentCommand,
   LoginStep,
+  Trigger,
 } from './types'
 
 export async function listSessions(): Promise<SavedSession[]> {
@@ -317,6 +318,14 @@ export async function getLoginScript(savedSessionId: number): Promise<LoginStep[
 
 export async function setLoginScript(savedSessionId: number, steps: LoginStep[]): Promise<void> {
   return invoke<void>('set_login_script', { savedSessionId, steps })
+}
+
+export async function getSessionTriggers(savedSessionId: number): Promise<Trigger[]> {
+  return invoke<Trigger[]>('get_session_triggers', { savedSessionId })
+}
+
+export async function setSessionTriggers(savedSessionId: number, triggers: Trigger[]): Promise<void> {
+  return invoke<void>('set_session_triggers', { savedSessionId, triggers })
 }
 
 // ── saved port-forwards (auto-started on connect) ────────────────────────────

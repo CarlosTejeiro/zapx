@@ -7,6 +7,7 @@ mod importers;
 mod login_script;
 mod menu;
 mod state;
+mod triggers;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -254,6 +255,8 @@ pub fn run() {
             commands::transfer::import_mobaxterm,
             commands::transfer::import_securecrt,
             commands::transfer::save_text_file,
+            commands::triggers::get_session_triggers,
+            commands::triggers::set_session_triggers,
             commands::data_dir::get_data_dir_info,
             commands::data_dir::set_data_dir,
             commands::data_dir::reset_data_dir,

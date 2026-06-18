@@ -202,7 +202,7 @@ impl LoginRunner {
 
 /// Strip ANSI CSI / OSC escape sequences so literal patterns match coloured
 /// prompts. Returns a lossy UTF-8 string suitable for `String::contains`.
-fn strip_ansi(bytes: &[u8]) -> String {
+pub(crate) fn strip_ansi(bytes: &[u8]) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {

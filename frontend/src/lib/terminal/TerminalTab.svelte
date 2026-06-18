@@ -642,6 +642,22 @@
       }
     })
 
+    // Output triggers that fired a notify/bell action.
+    const unlistenTrigger: UnlistenFn = await listen<{
+      session_id: string
+      kind: string
+      text: string
+    }>('trigger-fired', (event) => {
+      if (event.payload.session_id !== sessionId) return
+      const isBell = event.payload.kind === 'bell'
+      if (isBell) term?.write('\x07') // ring the terminal bell
+      showToast({
+        kind: isBell ? 'warning' : 'info',
+        title: isBell ? '🔔 Trigger' : 'Trigger',
+        detail: event.payload.text,
+      })
+    })
+
     // Remote dropped the link (server closed, or keepalives went unanswered).
     // Mark the pane disconnected and kick off auto-reconnect if enabled; the
     // banner offers a manual retry either way.
@@ -697,6 +713,7 @@
       clearReconnectTimer()
       unlisten()
       unlistenLogin()
+      unlistenTrigger()
       unlistenDisc()
       hintController?.clear()
       hintController = null

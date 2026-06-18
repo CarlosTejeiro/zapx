@@ -58,6 +58,25 @@ export interface LoginStep {
   timeout_ms: number
 }
 
+// One output trigger, mirroring app::triggers::Trigger. When `pattern` matches
+// a line of output, `action` fires: "notify" (toast), "send" (type text+Enter),
+// or "bell".
+export interface Trigger {
+  pattern: string
+  is_regex: boolean
+  action: 'notify' | 'send' | 'bell'
+  text: string
+  enabled: boolean
+}
+
+// Payload of the `trigger-fired` Tauri event (notify/bell actions).
+export interface TriggerFiredEvent {
+  session_id: string
+  /** "notify" | "bell" */
+  kind: string
+  text: string
+}
+
 // Payload of `login-script-progress` Tauri event, mirroring LoginProgress.
 export interface LoginProgressEvent {
   session_id: string

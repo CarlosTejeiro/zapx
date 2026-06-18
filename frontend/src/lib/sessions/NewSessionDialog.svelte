@@ -18,8 +18,10 @@
     getSessionPlatform,
     getSessionForwards,
     setSessionForwards,
+    getSessionTriggers,
+    setSessionTriggers,
   } from '$lib/bridge/commands'
-  import type { Folder, AuthMethod, SavedSession, LoginStep, PlatformInfo, SavedForward } from '$lib/bridge/types'
+  import type { Folder, AuthMethod, SavedSession, LoginStep, Trigger, PlatformInfo, SavedForward } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
 
@@ -90,6 +92,13 @@
       } catch {
         loginSteps = []
       }
+      // Preload output triggers.
+      try {
+        triggers = await getSessionTriggers(existing.id)
+        if (triggers.length > 0) showTriggers = true
+      } catch {
+        triggers = []
+      }
       // Preload saved port-forwards.
       try {
         forwards = await getSessionForwards(existing.id)
@@ -130,6 +139,16 @@
   }
   function removeStep(idx: number) {
     loginSteps.splice(idx, 1)
+  }
+
+  // Optional output triggers: fire an action when a pattern appears in output.
+  let showTriggers = $state(false)
+  let triggers = $state<Trigger[]>([])
+  function addTrigger() {
+    triggers.push({ pattern: '', is_regex: false, action: 'notify', text: '', enabled: true })
+  }
+  function removeTrigger(idx: number) {
+    triggers.splice(idx, 1)
   }
 
   // Optional saved port-forwards (SSH only), auto-started on connect.
@@ -305,6 +324,14 @@
       // In edit mode push unconditionally so clearing all steps takes effect.
       if (existing || cleanSteps.length > 0) {
         await setLoginScript(id, cleanSteps)
+      }
+      // Persist output triggers (drop rows with no pattern). Push
+      // unconditionally in edit mode so clearing them takes effect.
+      const cleanTriggers = triggers
+        .filter((t) => t.pattern.trim())
+        .map((t) => ({ ...t, text: unescape(t.text) }))
+      if (existing || cleanTriggers.length > 0) {
+        await setSessionTriggers(id, cleanTriggers)
       }
       // Persist saved port-forwards (SSH only). Dynamic forwards carry no
       // target; drop empty/incomplete rows. Push unconditionally in SSH so
@@ -546,6 +573,45 @@
         </div>
       {/each}
       <button type="button" class="add-step" onclick={addStep}>+ Add step</button>
+    </details>
+
+    <details class="login-script" bind:open={showTriggers}>
+      <summary>Triggers ({triggers.length})</summary>
+      <p class="hint">
+        When a <strong>pattern</strong> matches a line of output, fire an action:
+        <strong>notify</strong> (toast), <strong>send</strong> (type the text + Enter
+        back), or <strong>bell</strong>. Use <code>\n</code> for a newline in send.
+      </p>
+      {#each triggers as trig, idx (idx)}
+        <div class="step">
+          <label class="step-rx" title="Enable this trigger">
+            <input type="checkbox" bind:checked={trig.enabled} />
+          </label>
+          <input
+            class="step-expect"
+            placeholder="pattern (e.g. %LINK-3)"
+            bind:value={trig.pattern}
+            spellcheck="false"
+          />
+          <select class="step-timeout" bind:value={trig.action} title="action">
+            <option value="notify">notify</option>
+            <option value="send">send</option>
+            <option value="bell">bell</option>
+          </select>
+          <input
+            class="step-send"
+            placeholder={trig.action === 'send' ? 'text to send' : 'message (optional)'}
+            bind:value={trig.text}
+            spellcheck="false"
+          />
+          <label class="step-rx" title="Treat 'pattern' as a regular expression">
+            <input type="checkbox" bind:checked={trig.is_regex} />
+            .*
+          </label>
+          <button type="button" class="step-rm" onclick={() => removeTrigger(idx)} title="Remove trigger"><Icon name="x" size={12} /></button>
+        </div>
+      {/each}
+      <button type="button" class="add-step" onclick={addTrigger}>+ Add trigger</button>
     </details>
 
     {#if protocol === 'ssh'}

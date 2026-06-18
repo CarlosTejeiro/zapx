@@ -223,6 +223,9 @@ impl Database {
         if version < 16 {
             conn.execute_batch(include_str!("migrations/016_command_transitions.sql"))?;
         }
+        if version < 17 {
+            conn.execute_batch(include_str!("migrations/017_session_triggers.sql"))?;
+        }
         Ok(())
     }
 
@@ -1026,6 +1029,39 @@ impl Database {
 
     pub fn get_login_script(&self, session_id: i64) -> Result<Option<String>, Error> {
         Ok(self.get_session(session_id)?.login_script_json)
+    }
+
+    /// Output triggers, stored as a JSON array on the session. Kept as dedicated
+    /// queries (not part of the SavedSession SELECT) so the column is additive.
+    pub fn set_session_triggers(
+        &self,
+        session_id: i64,
+        triggers_json: Option<&str>,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions SET triggers_json = ?1 WHERE id = ?2",
+            rusqlite::params![triggers_json, session_id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    pub fn get_session_triggers(&self, session_id: i64) -> Result<Option<String>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT triggers_json FROM sessions WHERE id = ?1",
+                rusqlite::params![session_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
+                other => Error::from(other),
+            })?;
+        Ok(json)
     }
 
     // -----------------------------------------------------------------------
