@@ -188,45 +188,78 @@
   let searchCaseSensitive = $state(false)
   let searchWholeWord = $state(false)
   let searchRegex = $state(false)
-  // Active match index + total, reported by the addon (decorations enabled).
-  let searchResult = $state<{ resultIndex: number; resultCount: number }>({
-    resultIndex: -1,
-    resultCount: 0,
-  })
+  // Total matches in the buffer and the 1-based position of the active match.
+  // We count ourselves rather than read the SearchAddon's result event, whose
+  // decoration-based count is debounced and was reporting a stale 0 ("No
+  // results") right after a search. The active match is xterm's own selection.
+  let matchCount = $state(0)
+  let activeMatch = $state(0)
 
-  // Search options from the current toggles. `decorations` highlights every
-  // match (and marks them on the scrollbar overview); the addon then fires
-  // onDidChangeResults so the bar can show "3 / 12".
   function searchOptions(incremental: boolean) {
     return {
       incremental,
       caseSensitive: searchCaseSensitive,
       wholeWord: searchWholeWord,
       regex: searchRegex,
-      decorations: {
-        matchBackground: effectivePalette.yellow ?? '#b58900',
-        matchOverviewRuler: effectivePalette.yellow ?? '#b58900',
-        activeMatchBackground: effectivePalette.cursor ?? '#e0af68',
-        activeMatchColorOverviewRuler: effectivePalette.cursor ?? '#e0af68',
-      },
     }
   }
 
-  // findNext/findPrevious throw on a malformed regex while the user is still
-  // typing the pattern — swallow it and just report "no results".
-  function searchRun(direction: 'next' | 'prev', incremental: boolean) {
+  // Count matches in the whole buffer (scrollback included) for the current
+  // query + toggles. Deterministic, so the counter is never wrongly empty.
+  function countMatches(): number {
+    if (!term || !searchQuery) return 0
+    const buf = term.buffer.active
+    let text = ''
+    for (let i = 0; i < buf.length; i++) {
+      text += (buf.getLine(i)?.translateToString(true) ?? '') + '\n'
+    }
+    try {
+      const flags = searchCaseSensitive ? 'g' : 'gi'
+      let source: string
+      if (searchRegex) {
+        source = searchQuery
+      } else {
+        const esc = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        source = searchWholeWord ? `\\b${esc}\\b` : esc
+      }
+      return (text.match(new RegExp(source, flags)) ?? []).length
+    } catch {
+      return 0 // malformed regex while typing
+    }
+  }
+
+  // Fresh search (typing / toggles changed): recount and jump to the first
+  // match. `incremental` keeps the selection following the query as it grows.
+  function refreshSearch() {
     if (!searchAddon) return
-    if (!searchQuery) {
-      searchAddon.clearDecorations()
-      searchResult = { resultIndex: -1, resultCount: 0 }
+    matchCount = countMatches()
+    if (!searchQuery || matchCount === 0) {
+      activeMatch = 0
       return
     }
     try {
-      const opts = searchOptions(incremental)
-      if (direction === 'prev') searchAddon.findPrevious(searchQuery, opts)
-      else searchAddon.findNext(searchQuery, opts)
+      searchAddon.findNext(searchQuery, searchOptions(true))
+      activeMatch = 1
     } catch {
-      searchResult = { resultIndex: -1, resultCount: 0 }
+      matchCount = 0
+      activeMatch = 0
+    }
+  }
+
+  // Step to the next/previous match (arrows / Enter). xterm wraps around; we
+  // keep a 1-based counter in lockstep.
+  function navigate(direction: 'next' | 'prev') {
+    if (!searchAddon || !searchQuery || matchCount === 0) return
+    try {
+      if (direction === 'prev') {
+        searchAddon.findPrevious(searchQuery, searchOptions(false))
+        activeMatch = activeMatch <= 1 ? matchCount : activeMatch - 1
+      } else {
+        searchAddon.findNext(searchQuery, searchOptions(false))
+        activeMatch = activeMatch >= matchCount ? 1 : activeMatch + 1
+      }
+    } catch {
+      /* invalid regex — ignore */
     }
   }
 
@@ -234,7 +267,8 @@
     showSearch = false
     searchAddon?.clearDecorations()
     searchQuery = ''
-    searchResult = { resultIndex: -1, resultCount: 0 }
+    matchCount = 0
+    activeMatch = 0
   }
 
   // Port-forwards + SFTP browser (only for SSH sessions)
@@ -443,9 +477,6 @@
     searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(searchAddon)
-    searchAddon.onDidChangeResults((e) => {
-      searchResult = e
-    })
     term.open(container)
     fitAddon.fit()
     // Focus immediately so the user can start typing the moment the tab
@@ -730,10 +761,10 @@
     })
   })
 
-  // Reactive search: re-run incrementally whenever the query or any toggle
-  // changes while the bar is open (so flipping case/word/regex updates live).
+  // Reactive search: recount + jump to first match whenever the query or any
+  // toggle changes while the bar is open (so flipping case/word/regex updates).
   $effect(() => {
-    if (showSearch && searchAddon) searchRun('next', true)
+    if (showSearch && searchAddon) refreshSearch()
   })
 
   // Focus the input when the bar opens.
@@ -900,25 +931,25 @@
     <div class="search-bar">
       <input
         class="search-input"
-        class:no-match={searchQuery !== '' && searchResult.resultCount === 0}
+        class:no-match={searchQuery !== '' && matchCount === 0}
         bind:this={searchInput}
         bind:value={searchQuery}
         placeholder="Search…"
         onkeydown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); searchRun(e.shiftKey ? 'prev' : 'next', false) }
+          if (e.key === 'Enter') { e.preventDefault(); navigate(e.shiftKey ? 'prev' : 'next') }
           if (e.key === 'Escape') closeSearch()
         }}
       />
       <span class="search-count">
         {#if searchQuery}
-          {searchResult.resultCount === 0 ? 'No results' : `${searchResult.resultIndex + 1}/${searchResult.resultCount}`}
+          {matchCount === 0 ? 'No results' : `${activeMatch || 1}/${matchCount}`}
         {/if}
       </span>
       <button class="search-toggle" class:active={searchCaseSensitive} title="Match case" onclick={() => (searchCaseSensitive = !searchCaseSensitive)}>Aa</button>
       <button class="search-toggle" class:active={searchWholeWord} title="Whole word" onclick={() => (searchWholeWord = !searchWholeWord)}>W</button>
       <button class="search-toggle" class:active={searchRegex} title="Regular expression" onclick={() => (searchRegex = !searchRegex)}>.*</button>
-      <button class="search-nav" title="Previous match (Shift+Enter)" onclick={() => searchRun('prev', false)}>▲</button>
-      <button class="search-nav" title="Next match (Enter)" onclick={() => searchRun('next', false)}>▼</button>
+      <button class="search-nav" title="Previous match (Shift+Enter)" onclick={() => navigate('prev')}>▲</button>
+      <button class="search-nav" title="Next match (Enter)" onclick={() => navigate('next')}>▼</button>
       <button class="search-nav" title="Close (Esc)" onclick={closeSearch}><Icon name="x" size={11} /></button>
     </div>
   {/if}

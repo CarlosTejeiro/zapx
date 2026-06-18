@@ -5,6 +5,17 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-06-18
+
+### Fixed
+- **In-terminal search counter & navigation** (`Ctrl+F`): the bar could show
+  "No results" even when matches existed, and the highlight could end up on the
+  wrong match after stepping next then previous. Both came from the search
+  addon's debounced match decorations. ZAPX now counts matches itself (always
+  accurate) and lets xterm's selection mark the active match, so the counter is
+  right and navigation lands cleanly. (Trade-off: matches are no longer all
+  highlighted at once — only the active one is selected.)
+
 ## [0.10.0] - 2026-06-18
 
 ### Added
