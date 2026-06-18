@@ -5,6 +5,23 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-18
+
+### Added
+- **Connection reliability** — SSH **keepalive** (configurable server-alive
+  interval, default 60s; Settings → SSH) keeps idle sessions alive and lets
+  ZAPX notice dead links fast. When a link drops, a **"Connection lost" banner**
+  offers a one-click reconnect, and **auto-reconnect** retries with backoff
+  (toggle in Settings → SSH). Reconnect reuses the same terminal/scrollback.
+- **Output triggers** — per session, when a **pattern** (literal or regex)
+  matches a line of output, fire an action: **notify** (toast), **send** (type
+  text + Enter back), or **bell**. Edited in the session dialog; a 300 ms
+  per-trigger cooldown guards against send-loops.
+- **Tab & session UX** — double-click a tab to **rename** it; right-click for a
+  menu to **duplicate** the session or set a **colour** (shown as a left accent
+  stripe). New terminal toolbar buttons: **reconnect**, **clear scrollback**,
+  and **save output to file**.
+
 ## [0.9.4] - 2026-06-17
 
 ### Added

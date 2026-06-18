@@ -16,8 +16,10 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Proprietary software 
 |---|---|
 | **Protocols** | SSH2 (password / public key / SSH agent / 2FA keyboard-interactive), Telnet, Serial (COM / TTY), local shell |
 | **Jump hosts & tunnels** | ProxyJump through saved sessions, port forwarding `-L` / `-D` (SOCKS5) / `-R` |
+| **Reliability** | SSH keepalive (configurable), auto-reconnect on drop with a one-click banner, reconnect/clear/save-output toolbar |
+| **Triggers** | Per-session regex/literal on output → notify, auto-send text, or ring the bell |
 | **SFTP** | File browser with streaming up/downloads, progress and cancellation |
-| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar) |
+| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar); tabs rename / colour / duplicate |
 | **Splits & multi-exec** | Recursive split panes, grid view, broadcast typing to many sessions |
 | **Login automation** | Expect-like login scripts (expect/send steps) per saved session |
 | **Hints & snippets** | Command autocomplete from history + vendor catalogs (12 platforms), per-platform snippets on `Ctrl+Shift+1..9`, automatic platform detection from the prompt |
