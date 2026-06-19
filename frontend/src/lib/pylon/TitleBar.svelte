@@ -324,7 +324,9 @@
     margin: 4px 0;
   }
 
-  .tb-controls { display: flex; height: 100%; }
+  /* Sit above the window resize handles (z-index 9999) so the min/max/close
+     buttons stay clickable where the top-right corner handle overlaps them. */
+  .tb-controls { display: flex; height: 100%; position: relative; z-index: 10000; }
 
   .tb-ctrl {
     background: none;

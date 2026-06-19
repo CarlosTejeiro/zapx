@@ -5,6 +5,16 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-06-19
+
+### Fixed
+- **Maximize button did nothing** — the custom titlebar's maximize toggle was
+  missing the `toggle-maximize` / `unmaximize` window permissions, so the call
+  was silently denied. Added them (plus `is-maximized`).
+- **Can't resize from the window corners** — the corner resize handles were only
+  8×8 px, too small to grab reliably (the edges worked). Enlarged them to 16 px;
+  the window control buttons now stack above the handles so they stay clickable.
+
 ## [0.10.1] - 2026-06-18
 
 ### Fixed

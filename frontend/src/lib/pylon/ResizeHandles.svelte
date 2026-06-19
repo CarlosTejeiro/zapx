@@ -40,15 +40,16 @@
     background: transparent;
   }
 
-  /* Edges */
-  .rh-n  { top: 0;    left: 8px;  right: 8px;  height: 4px; cursor: n-resize; }
-  .rh-s  { bottom: 0; left: 8px;  right: 8px;  height: 4px; cursor: s-resize; }
-  .rh-e  { top: 8px;  bottom: 8px; right: 0;   width: 4px;  cursor: e-resize; }
-  .rh-w  { top: 8px;  bottom: 8px; left: 0;    width: 4px;  cursor: w-resize; }
+  /* Edges — inset by the corner size so the (larger) corner handles own the
+     corners. Corners are declared after the edges, so they also stack on top. */
+  .rh-n  { top: 0;    left: 16px; right: 16px; height: 5px; cursor: n-resize; }
+  .rh-s  { bottom: 0; left: 16px; right: 16px; height: 5px; cursor: s-resize; }
+  .rh-e  { top: 16px; bottom: 16px; right: 0;  width: 5px;  cursor: e-resize; }
+  .rh-w  { top: 16px; bottom: 16px; left: 0;   width: 5px;  cursor: w-resize; }
 
-  /* Corners */
-  .rh-ne { top: 0;    right: 0;   width: 8px;  height: 8px; cursor: ne-resize; }
-  .rh-nw { top: 0;    left: 0;    width: 8px;  height: 8px; cursor: nw-resize; }
-  .rh-se { bottom: 0; right: 0;   width: 8px;  height: 8px; cursor: se-resize; }
-  .rh-sw { bottom: 0; left: 0;    width: 8px;  height: 8px; cursor: sw-resize; }
+  /* Corners — bigger hit target (8px was too small to grab reliably). */
+  .rh-ne { top: 0;    right: 0;   width: 16px; height: 16px; cursor: ne-resize; }
+  .rh-nw { top: 0;    left: 0;    width: 16px; height: 16px; cursor: nw-resize; }
+  .rh-se { bottom: 0; right: 0;   width: 16px; height: 16px; cursor: se-resize; }
+  .rh-sw { bottom: 0; left: 0;    width: 16px; height: 16px; cursor: sw-resize; }
 </style>
