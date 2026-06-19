@@ -71,7 +71,7 @@
     sendInputText,
     openLogsDir,
   } from '$lib/bridge/commands'
-  import { getFocusedSessionId, broadcastTargets } from '$lib/stores/sessionRuntime.svelte'
+  import { getFocusedSessionId, broadcastTargets, focusSession } from '$lib/stores/sessionRuntime.svelte'
   import {
     visibleSnippets,
     loadSnippets,
@@ -774,6 +774,9 @@
     const text = await resolveSnippet(s.content)
     if (text === null) return
     await sendInputText(focused, text).catch(console.error)
+    // Variable prompts steal focus; restore it so the user can keep typing
+    // after a snippet that carries no trailing newline.
+    focusSession(focused)
     if (broadcast.enabled) {
       for (const id of broadcastTargets(focused)) {
         await sendInputText(id, text).catch(() => {})

@@ -29,6 +29,8 @@
     broadcastTargets,
     registerSession,
     unregisterSession,
+    registerFocus,
+    unregisterFocus,
   } from '$lib/stores/sessionRuntime.svelte'
   import { matchAction } from '$lib/stores/keybindings.svelte'
   import { terminalSettings, colorSchemes, connectionSettings } from '$lib/stores/settings.svelte'
@@ -395,6 +397,7 @@
       reconnecting = false
       reconnectAttempt = 0
       if (paneId != null) registerSession(paneId, id)
+      registerFocus(id, () => term?.focus())
       onSessionOpen?.()
       showToast({ kind: 'success', title: 'Reconnected' })
       term.focus()
@@ -412,7 +415,10 @@
     const old = sessionId
     sessionId = null
     if (paneId != null) unregisterSession(paneId)
-    if (old) await invoke('close_session', { sessionId: old }).catch(() => {})
+    if (old) {
+      unregisterFocus(old)
+      await invoke('close_session', { sessionId: old }).catch(() => {})
+    }
     await reconnect()
   }
 
@@ -618,6 +624,7 @@
 
     // Make this session discoverable by the snippets / broadcast machinery.
     if (paneId != null && sessionId) registerSession(paneId, sessionId)
+    if (sessionId) registerFocus(sessionId, () => term?.focus())
 
     // Wire up the hint controller now that the session is live.
     hintController = new HintController({
@@ -697,6 +704,7 @@
       (event) => {
         if (event.payload.session_id !== sessionId) return
         if (paneId != null) unregisterSession(paneId)
+        if (sessionId) unregisterFocus(sessionId)
         sessionId = null
         disconnected = true
         onSessionError?.()
@@ -751,6 +759,7 @@
       term?.dispose()
       if (paneId != null) unregisterSession(paneId)
       if (sessionId) {
+        unregisterFocus(sessionId)
         if (isLogging) {
           await stopSessionLogging(sessionId).catch(console.error)
         }

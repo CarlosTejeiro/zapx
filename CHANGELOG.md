@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-06-19
+
+### Fixed
+- **Focus returns to the terminal after firing a snippet/button** — running a
+  command button or snippet that carries no trailing newline (e.g.
+  `ps -aux | grep `, meant to be completed by hand) left the caret on the button
+  or variable dialog, so the next keystrokes went nowhere. ZAPX now hands focus
+  back to the terminal right after sending.
+
 ## [0.10.2] - 2026-06-19
 
 ### Fixed

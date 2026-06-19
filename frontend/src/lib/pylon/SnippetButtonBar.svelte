@@ -28,6 +28,7 @@
   } from '$lib/bridge/commands'
   import {
     getFocusedSessionId,
+    focusSession,
     broadcast,
     broadcastTargets,
   } from '$lib/stores/sessionRuntime.svelte'
@@ -118,6 +119,9 @@
     }
     try {
       await sendInputText(focused, text)
+      // Hand focus back to the terminal so the user can keep typing — snippets
+      // like "ps -aux | grep " carry no newline and expect more input.
+      focusSession(focused)
       if (broadcast.enabled) {
         const others = broadcastTargets(focused)
         for (const id of others) {

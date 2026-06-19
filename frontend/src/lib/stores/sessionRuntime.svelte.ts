@@ -37,6 +37,24 @@ export function unregisterSession(paneId: number): void {
   paneToSession.delete(paneId)
 }
 
+// sessionId → focus the pane's terminal. Registered by TerminalTab so UI
+// outside the terminal (snippet buttons, master input bar) can hand focus back
+// after sending — otherwise a snippet without a trailing newline leaves the
+// caret on the button and the next keystrokes go nowhere.
+const focusCallbacks = new Map<string, () => void>()
+
+export function registerFocus(sessionId: string, focus: () => void): void {
+  focusCallbacks.set(sessionId, focus)
+}
+
+export function unregisterFocus(sessionId: string): void {
+  focusCallbacks.delete(sessionId)
+}
+
+export function focusSession(sessionId: string): void {
+  focusCallbacks.get(sessionId)?.()
+}
+
 /** Live session id for the currently focused pane, or null. */
 export function getFocusedSessionId(): string | null {
   return paneToSession.get(sessionRuntime.focusedPaneId) ?? null
