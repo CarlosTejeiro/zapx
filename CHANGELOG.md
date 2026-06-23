@@ -5,6 +5,25 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2026-06-23
+
+### Fixed
+- **Jump hosts connect now** — the strict host-key check rejected any key not
+  already in `known_hosts`, but a host reachable only through a bastion can't be
+  preflighted by the UI (no direct route), so its key (and the bastion's) was
+  never trusted and every jump-host connection was refused. Host keys are now
+  Trust-On-First-Use: an unknown key is recorded and accepted, while a *changed*
+  key is still rejected (MITM protection). Direct connections are unchanged.
+- **Login-script steps run to completion** — each step's *send* now presses
+  Enter automatically (unless you already ended the line), so a step like
+  `enable` actually executes; previously the text was typed but not submitted,
+  so the next step's *expect* never appeared and the script stalled.
+
+### Changed
+- **Wider session dialog** — the New/Edit Session form is now a two-column
+  layout (wider, less tall) instead of a long vertical stack; it collapses to
+  one column on narrow windows.
+
 ## [0.10.3] - 2026-06-19
 
 ### Fixed
