@@ -210,10 +210,26 @@ impl client::Handler for SshClientHandler {
         &mut self,
         server_public_key: &key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(
-            russh_keys::check_known_hosts(&self.host, self.port, server_public_key)
-                .unwrap_or(false),
-        )
+        match russh_keys::check_known_hosts(&self.host, self.port, server_public_key) {
+            // Recorded and matches → accept.
+            Ok(true) => Ok(true),
+            // Recorded but DIFFERENT → possible MITM; reject (fail closed).
+            Err(russh_keys::Error::KeyChanged { .. }) => Ok(false),
+            // Unknown (not recorded) or unreadable known_hosts → Trust On First
+            // Use: record the key and accept. This is the only path that lets a
+            // host reachable ONLY through a jump host be trusted, since the UI
+            // preflight can't reach it directly to prompt. Direct connections
+            // are unaffected: the UI preflight has already recorded their key
+            // (or the user declined and we never get here).
+            _ => {
+                let _ = russh_keys::known_hosts::learn_known_hosts(
+                    &self.host,
+                    self.port,
+                    server_public_key,
+                );
+                Ok(true)
+            }
+        }
     }
 
     /// Handle an incoming `forwarded-tcpip` channel — fired when something
