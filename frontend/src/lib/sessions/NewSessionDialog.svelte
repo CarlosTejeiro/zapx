@@ -540,7 +540,8 @@
       <summary>Login automation ({loginSteps.length} step{loginSteps.length === 1 ? '' : 's'})</summary>
       <p class="hint">
         On connect, wait for each <strong>expect</strong> pattern in the output and then
-        send the corresponding text. Use <code>\n</code> for a newline in the send field.
+        send the corresponding text. <strong>Enter is added automatically</strong> — use
+        <code>\n</code> only if you need extra newlines.
       </p>
       {#each loginSteps as step, idx (idx)}
         <div class="step">
@@ -692,16 +693,36 @@
     border: 1px solid var(--zx-border);
     border-radius: var(--zx-radius);
     padding: 1.5rem;
-    width: 26rem;
+    width: 42rem;
     max-width: 95vw;
     /* Cap to the viewport and scroll the form body when it's taller. */
     max-height: 100%;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    /* Two columns so the form is wider and shorter rather than a tall stack.
+       Wide items (host/port row, hints, the details panels and the action
+       buttons) span both columns. */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-content: start;
+    gap: 0.7rem 1.1rem;
     color: var(--zx-text);
     font-family: var(--zx-font-ui);
+  }
+
+  .dialog > h2,
+  .dialog > .row,
+  .dialog > .hint,
+  .dialog > .error,
+  .dialog > details,
+  .dialog > .actions {
+    grid-column: 1 / -1;
+  }
+
+  /* Collapse to a single column when the window is narrow. */
+  @media (max-width: 34rem) {
+    .dialog {
+      grid-template-columns: 1fr;
+    }
   }
 
   .dialog::-webkit-scrollbar { width: 8px; }

@@ -174,9 +174,15 @@ impl LoginRunner {
         let step = &self.steps[inner.index];
         // Literal or regex match per the step's `is_regex` (precompiled).
         if self.matchers[inner.index].is_match(&stripped) {
-            let _ = self
-                .cmd_tx
-                .send(SessionCmd::Data(step.send.as_bytes().to_vec()));
+            // Auto-press Enter unless the user already ended the line, so a step
+            // like send "enable" actually executes. Previously the text was
+            // typed but left un-submitted, so the NEXT step's expect never
+            // appeared and the script stalled.
+            let mut bytes = step.send.as_bytes().to_vec();
+            if !bytes.is_empty() && !bytes.ends_with(b"\n") && !bytes.ends_with(b"\r") {
+                bytes.push(b'\r');
+            }
+            let _ = self.cmd_tx.send(SessionCmd::Data(bytes));
             inner.index += 1;
             inner.buffer.clear();
             if inner.index < self.steps.len() {
