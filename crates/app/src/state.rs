@@ -75,7 +75,7 @@ pub struct AppState {
     /// because it lives in the Rust process, not the webview.
     pub password_cache: PasswordCache,
     /// Stable, per-installation seed used to derive the AES key for the
-    /// SQLite `session_secrets` fallback. Currently the app data
-    /// directory's path — same for every launch by the same OS user.
+    /// SQLite `session_secrets` fallback. 32 random bytes persisted to
+    /// `vault.key` (mode 0600) on first run — see [`core_vault::load_or_create_seed`].
     pub vault_seed: String,
 }

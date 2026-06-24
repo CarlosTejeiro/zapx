@@ -8,7 +8,17 @@
 
 pub mod error;
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
+
+/// Upper bound on a user-supplied pattern's source length. Anything longer is
+/// rejected at compile time — guards against pathological patterns being fed
+/// into the per-line, per-rule hot path.
+const MAX_PATTERN_LEN: usize = 1024;
+
+/// Compile-time memory ceiling for a single compiled rule (1 MiB). The `regex`
+/// crate already guarantees linear-time matching (no catastrophic backtracking),
+/// so this only bounds compilation memory for adversarial patterns.
+const REGEX_SIZE_LIMIT: usize = 1 << 20;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -50,12 +60,18 @@ impl Highlighter {
             .into_iter()
             .filter(|r| r.enabled)
             .filter_map(|r| {
+                if r.pattern.is_empty() || r.pattern.len() > MAX_PATTERN_LEN {
+                    return None;
+                }
                 let pattern = if r.is_regex {
                     r.pattern.clone()
                 } else {
                     regex::escape(&r.pattern)
                 };
-                Regex::new(&pattern)
+                RegexBuilder::new(&pattern)
+                    .size_limit(REGEX_SIZE_LIMIT)
+                    .dfa_size_limit(REGEX_SIZE_LIMIT)
+                    .build()
                     .ok()
                     .map(|regex| CompiledRule { rule: r, regex })
             })
@@ -83,8 +99,10 @@ impl Highlighter {
     }
 
     fn highlight_segment(&self, segment: &str) -> String {
-        // Strip existing ANSI sequences to get the clean text we match against.
-        let clean = strip_ansi(segment);
+        // Strip existing ANSI sequences to get the clean text we match against,
+        // keeping a byte-offset map back into the original segment so we can
+        // copy through the server's own colouring outside of our matches.
+        let (clean, map) = strip_ansi_mapped(segment);
 
         // Collect non-overlapping matches sorted by start position.
         // First rule in sort_order wins if ranges overlap.
@@ -103,20 +121,25 @@ impl Highlighter {
         }
         spans.sort_by_key(|(s, _, _)| *s);
 
-        // Reconstruct the segment with ANSI highlight codes injected.
+        // Reconstruct the segment with ANSI highlight codes injected. Text
+        // *between* matches is copied from the original `segment` (preserving
+        // the server's ANSI styling); the matched text itself is copied from
+        // `clean` so the highlight colour applies uniformly. All slices use
+        // `.get(..)` so a future change to the index sources can never panic on
+        // a char boundary.
         let mut out = String::with_capacity(segment.len() + spans.len() * 24);
         let mut cursor = 0usize;
         for (start, end, cr) in &spans {
             if cursor < *start {
-                out.push_str(&clean[cursor..*start]);
+                out.push_str(segment.get(map[cursor]..map[*start]).unwrap_or(""));
             }
             out.push_str(&build_open_code(&cr.rule));
-            out.push_str(&clean[*start..*end]);
+            out.push_str(clean.get(*start..*end).unwrap_or(""));
             out.push_str("\x1b[0m");
             cursor = *end;
         }
         if cursor < clean.len() {
-            out.push_str(&clean[cursor..]);
+            out.push_str(segment.get(map[cursor]..).unwrap_or(""));
         }
         out
     }
@@ -126,17 +149,24 @@ impl Highlighter {
 // ANSI helpers
 // ---------------------------------------------------------------------------
 
-/// Remove ANSI escape sequences from a string (CSI sequences only).
-fn strip_ansi(s: &str) -> String {
+/// Remove ANSI escape sequences from a string (CSI + 2-char sequences),
+/// returning the clean text together with a byte-offset map back into `s`.
+///
+/// `map` has `clean.len() + 1` entries: `map[i]` is the byte offset in `s`
+/// that the i-th byte of the clean string originated from, and `map[clean.len()]`
+/// is `s.len()`. Every entry is a valid char boundary in `s`, so slicing `s`
+/// at any `map[..]` value is always safe.
+fn strip_ansi_mapped(s: &str) -> (String, Vec<usize>) {
     let mut out = String::with_capacity(s.len());
-    let mut iter = s.chars().peekable();
-    while let Some(c) = iter.next() {
+    let mut map: Vec<usize> = Vec::with_capacity(s.len() + 1);
+    let mut iter = s.char_indices().peekable();
+    while let Some((off, c)) = iter.next() {
         if c == '\x1b' {
             // Consume the escape sequence.
-            if iter.peek() == Some(&'[') {
+            if matches!(iter.peek(), Some((_, '['))) {
                 iter.next(); // consume '['
                              // Consume until a final byte (0x40–0x7E).
-                for ch in iter.by_ref() {
+                for (_, ch) in iter.by_ref() {
                     if ('\x40'..='\x7e').contains(&ch) {
                         break;
                     }
@@ -146,10 +176,14 @@ fn strip_ansi(s: &str) -> String {
                 iter.next();
             }
         } else {
+            for _ in 0..c.len_utf8() {
+                map.push(off);
+            }
             out.push(c);
         }
     }
-    out
+    map.push(s.len());
+    (out, map)
 }
 
 /// Build the ANSI SGR open sequence for a rule's style.
@@ -230,5 +264,36 @@ mod tests {
         let h = Highlighter::new(vec![rule("down", "#ef4444", 1)]);
         let out = String::from_utf8(h.apply(b"interface is \x1b[32mdown\x1b[0m")).unwrap();
         assert!(out.contains("down"));
+    }
+
+    #[test]
+    fn preserves_server_ansi_outside_matches() {
+        // The server colours "OK" green; our rule highlights "error". The green
+        // run sits outside the match and must survive into the output.
+        let h = Highlighter::new(vec![rule("error", "#ef4444", 1)]);
+        let out =
+            String::from_utf8(h.apply(b"status \x1b[32mOK\x1b[0m but error seen")).unwrap();
+        assert!(out.contains("\x1b[32mOK\x1b[0m"), "server green lost: {out:?}");
+        assert!(out.contains("\x1b[38;2;239;68;68merror\x1b[0m"));
+    }
+
+    #[test]
+    fn handles_multibyte_text_without_panicking() {
+        // Accented / multibyte bytes around and inside matches must not break
+        // byte-offset slicing.
+        let h = Highlighter::new(vec![rule("café", "#ef4444", 1)]);
+        let out = String::from_utf8(h.apply("añadir café ☕ aquí".as_bytes())).unwrap();
+        assert!(out.contains("\x1b[38;2;239;68;68mcafé\x1b[0m"));
+        assert!(out.contains("añadir"));
+        assert!(out.contains("☕"));
+    }
+
+    #[test]
+    fn rejects_oversized_pattern() {
+        let mut r = rule("x", "#ffffff", 1);
+        r.pattern = "a".repeat(MAX_PATTERN_LEN + 1);
+        let h = Highlighter::new(vec![r]);
+        // Oversized pattern is dropped → input passes through untouched.
+        assert_eq!(h.apply(b"aaa"), b"aaa");
     }
 }

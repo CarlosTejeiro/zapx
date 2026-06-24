@@ -173,9 +173,20 @@ pub async fn preflight_host_key(host: String, port: u16) -> Result<HostKeyStatus
 
 /// Persist trust for a host key (writes to `~/.ssh/known_hosts`).
 ///
-/// Re-fetches the key to avoid trusting a stale fingerprint.
-pub async fn trust_host_key(host: String, port: u16) -> Result<(), Error> {
+/// `expected_fp` is the fingerprint the user actually approved during
+/// [`preflight_host_key`]. We re-fetch the key here (a separate connection) and
+/// refuse to trust it unless it still matches `expected_fp` — otherwise a MITM
+/// could present a benign key at preflight and a different one at trust time,
+/// getting their key written to `known_hosts`. Matching the full SHA-256
+/// fingerprint closes that window.
+pub async fn trust_host_key(host: String, port: u16, expected_fp: String) -> Result<(), Error> {
     let key = capture_host_key(&host, port).await?;
+    let actual_fp = fingerprint(&key);
+    if actual_fp != expected_fp {
+        return Err(Error::HostKeyChanged {
+            fingerprint: actual_fp,
+        });
+    }
     russh_keys::known_hosts::learn_known_hosts(&host, port, &key)
         .map_err(|e| Error::KeyLoad(e.to_string()))?;
     Ok(())

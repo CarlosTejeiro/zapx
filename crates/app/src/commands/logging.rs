@@ -83,27 +83,37 @@ pub async fn stop_session_logging(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<(), AppError> {
-    let active = state
-        .loggers
-        .lock()
-        .unwrap()
-        .remove(&session_id)
-        .ok_or_else(|| AppError::Internal("no active log for this session".into()))?;
-
-    let log_db_id = active.log_db_id;
-    let (_, bytes, _) = active
-        .logger
-        .close()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let ended_at = chrono::Utc::now().to_rfc3339();
-    state
-        .db
-        .end_session_log(log_db_id, &ended_at, bytes as i64)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    tracing::debug!(session_id, log_db_id, bytes, "logging stopped");
+    if !finalize_active_log(&state, &session_id) {
+        return Err(AppError::Internal("no active log for this session".into()));
+    }
     Ok(())
+}
+
+/// Remove and finalise an active logger for `session_id`: flush + close the
+/// file, then stamp the end time and byte count in the DB. Returns `true` if a
+/// logger was active, `false` if there was nothing to stop.
+///
+/// Best-effort on the DB/close side (failures are logged, not propagated) so it
+/// is safe to call from `close_session`'s teardown path — the point is to never
+/// leak the `ActiveLog` (and its open file descriptor) when a session is torn
+/// down without an explicit `stop_session_logging` first.
+pub(crate) fn finalize_active_log(state: &AppState, session_id: &str) -> bool {
+    let Some(active) = state.loggers.lock().unwrap().remove(session_id) else {
+        return false;
+    };
+    let log_db_id = active.log_db_id;
+    match active.logger.close() {
+        Ok((_, bytes, _)) => {
+            let ended_at = chrono::Utc::now().to_rfc3339();
+            if let Err(e) = state.db.end_session_log(log_db_id, &ended_at, bytes as i64) {
+                tracing::warn!(session_id, log_db_id, "end_session_log failed: {e}");
+            } else {
+                tracing::debug!(session_id, log_db_id, bytes, "logging stopped");
+            }
+        }
+        Err(e) => tracing::warn!(session_id, log_db_id, "logger close failed: {e}"),
+    }
+    true
 }
 
 #[tauri::command]

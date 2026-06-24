@@ -82,7 +82,13 @@ pub fn run() {
                     .collect(),
             )));
 
-            let vault_seed = data_dir.to_string_lossy().into_owned();
+            // Random per-install seed for the local-fallback credential cipher,
+            // persisted to `vault.key` (0600). Falls back to the data-dir path
+            // only if the keyfile can't be written — degraded but never fatal.
+            let vault_seed = core_vault::load_or_create_seed(&data_dir).unwrap_or_else(|e| {
+                tracing::warn!("vault keyfile unavailable ({e}); using path-derived seed");
+                data_dir.to_string_lossy().into_owned()
+            });
             app.manage(AppState {
                 sessions: Mutex::new(HashMap::new()),
                 db,

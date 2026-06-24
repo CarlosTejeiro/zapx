@@ -8,4 +8,7 @@ pub enum Error {
 
     #[error("malformed ciphertext")]
     BadCiphertext,
+
+    #[error("vault keyfile I/O error: {0}")]
+    Io(String),
 }

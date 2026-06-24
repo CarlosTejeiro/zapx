@@ -35,7 +35,6 @@
   import GhostText from '$lib/hints/GhostText.svelte'
   import HintPopup from '$lib/hints/HintPopup.svelte'
   import { hintsSettings } from '$lib/hints/store.svelte'
-  import { recordCommand } from '$lib/bridge/commands'
   import { showToast } from '$lib/ui/toast-store.svelte'
 
   const DEFAULT_PALETTE: ColorPalette = {
@@ -102,9 +101,11 @@
     hostKeyResolve = null
     if (!approved) return false
 
-    // Only "unknown" is approvable; persist trust before connecting.
+    // Only "unknown" is approvable; persist trust before connecting. Pass the
+    // exact fingerprint the user just approved so the backend can refuse to
+    // trust a key that changed between preflight and now (MITM guard).
     try {
-      await sshTrustHostKey(host, port)
+      await sshTrustHostKey(host, port, status.fingerprint)
     } catch (e) {
       errorMsg = fmtError(e)
       return false
@@ -176,6 +177,14 @@
   let showSearch = $state(false)
   let searchQuery = $state('')
   let searchAddon: SearchAddon | null = null
+
+  // Lifecycle resources created inside onMount, torn down in onDestroy.
+  // They MUST be component-level refs: onDestroy has to be registered during
+  // synchronous component init, so it can only reach these via closure — not
+  // via locals scoped to the async onMount callback.
+  let resizeObserver: ResizeObserver | null = null
+  let unlistenData: UnlistenFn | null = null
+  let unlistenLogin: UnlistenFn | null = null
 
   // Port-forwards + SFTP browser (only for SSH sessions)
   let showTunnels = $state(false)
@@ -433,7 +442,7 @@
     onSessionOpen?.()
 
     // Forward PTY output to xterm.
-    const unlisten: UnlistenFn = await listen<TerminalDataPayload>(
+    unlistenData = await listen<TerminalDataPayload>(
       'terminal-data',
       (event) => {
         if (!term || event.payload.session_id !== sessionId) return
@@ -445,7 +454,7 @@
 
     // Login-script progress badge (auto-clears a couple of seconds after
     // the script completes; sticks on timeout so the user notices).
-    const unlistenLogin: UnlistenFn = await listen<{
+    unlistenLogin = await listen<{
       session_id: string
       current: number
       total: number
@@ -469,13 +478,10 @@
     term.onData((data: string) => {
       if (!sessionId) return
       const u8 = new TextEncoder().encode(data)
-      // Feed the hint buffer first so it sees the bytes BEFORE the PTY
-      // round-trip. The returned non-null value is a flushed command line
-      // which we record asynchronously.
-      const submitted = hintController?.onOutgoing(u8) ?? null
-      if (submitted) {
-        recordCommand(savedSession?.id ?? null, submitted).catch(console.error)
-      }
+      // Feed the hint buffer so it sees the bytes BEFORE the PTY round-trip.
+      // onOutgoing already records the flushed command line internally — do
+      // NOT record it again here or the command-frequency stats double-count.
+      hintController?.onOutgoing(u8)
       const bytes = Array.from(u8)
       invoke('send_input', { sessionId, data: bytes }).catch(console.error)
       if (broadcast.enabled) {
@@ -486,7 +492,7 @@
     })
 
     // Resize terminal when the container size changes.
-    const observer = new ResizeObserver(() => {
+    resizeObserver = new ResizeObserver(() => {
       if (!term) return
       fitAddon.fit()
       if (sessionId) {
@@ -497,25 +503,37 @@
         }).catch(console.error)
       }
     })
-    observer.observe(container)
+    resizeObserver.observe(container)
+  })
 
-    onDestroy(async () => {
-      observer.disconnect()
-      unlisten()
-      unlistenLogin()
-      hintController?.clear()
-      hintController = null
-      term?.dispose()
-      if (paneId != null) unregisterSession(paneId)
-      if (sessionId) {
-        if (isLogging) {
-          await stopSessionLogging(sessionId).catch(console.error)
-        }
-        await invoke('close_session', { sessionId }).catch(console.error)
-        sessionId = null
-      }
-      onSessionClose?.()
-    })
+  // Registered during synchronous init so Svelte reliably associates it with
+  // this component's lifecycle. (Registering onDestroy *inside* the async
+  // onMount above would run after Svelte has left the init context, so the
+  // teardown would silently never fire — leaking the terminal, the Tauri
+  // listeners and the backend PTY session.)
+  onDestroy(() => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+    unlistenData?.()
+    unlistenData = null
+    unlistenLogin?.()
+    unlistenLogin = null
+    hintController?.clear()
+    hintController = null
+    term?.dispose()
+    term = null
+    if (paneId != null) unregisterSession(paneId)
+    const sid = sessionId
+    sessionId = null
+    if (sid) {
+      // Fire-and-forget: onDestroy must stay synchronous, and the backend
+      // tears the session down on its own once the PTY closes anyway.
+      void (async () => {
+        if (isLogging) await stopSessionLogging(sid).catch(console.error)
+        await invoke('close_session', { sessionId: sid }).catch(console.error)
+      })()
+    }
+    onSessionClose?.()
   })
 
   // Reactive search: run whenever query changes and search bar is open

@@ -314,9 +314,17 @@ pub async fn ssh_preflight_host_key(
 }
 
 /// Persist trust for a host key (writes `~/.ssh/known_hosts`).
+///
+/// `fingerprint` must be the value returned by [`ssh_preflight_host_key`] and
+/// shown to the user — the backend refuses to trust a key that no longer
+/// matches it (MITM guard).
 #[tauri::command]
-pub async fn ssh_trust_host_key(host: String, port: u16) -> Result<(), AppError> {
-    core_transport::trust_host_key(host, port)
+pub async fn ssh_trust_host_key(
+    host: String,
+    port: u16,
+    fingerprint: String,
+) -> Result<(), AppError> {
+    core_transport::trust_host_key(host, port, fingerprint)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -435,6 +443,10 @@ pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Re
     // Drop any port-forwards bound to this session — Drop on ForwardController
     // aborts each listener task.
     state.forwards.lock().unwrap().remove(&session_id);
+    // Finalise any logger still attached to this session so its file handle
+    // and DB row don't leak when the session closes without an explicit
+    // stop_session_logging first.
+    crate::commands::logging::finalize_active_log(&state, &session_id);
     if let Some(active) = removed {
         if let Some(task) = active.stats_task {
             task.abort();
@@ -582,13 +594,16 @@ pub async fn create_saved_session(
         )
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    // Seed both caches so the first reopen works even if the dev-mode
-    // Keychain denies us read access later.
+    // Seed only the in-process memory cache so the first reopen works without
+    // a keyring round-trip. We deliberately do NOT write the encrypted
+    // `session_secrets` row here: the password is already in the OS keyring,
+    // and persisting a second on-disk copy would weaken the secret to the
+    // strength of the local-fallback cipher for every session — even in signed
+    // production builds where the keyring works. The on-disk fallback is only
+    // populated by `cache_session_password`, i.e. after the keyring has
+    // actually proven unusable and the user re-entered the password.
     if let Some(pw) = password_to_cache {
-        state.password_cache.lock().unwrap().insert(id, pw.clone());
-        if let Ok(blob) = core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
-            let _ = state.db.set_session_secret(id, &blob);
-        }
+        state.password_cache.lock().unwrap().insert(id, pw);
     }
 
     Ok(id)
