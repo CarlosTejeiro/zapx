@@ -44,10 +44,7 @@ impl LocalPty {
         cmd.env("COLORTERM", "truecolor");
         // Self-identification so user prompts / scripts can detect the host.
         cmd.env("TERM_PROGRAM", "zapx");
-        cmd.env(
-            "TERM_PROGRAM_VERSION",
-            env!("CARGO_PKG_VERSION"),
-        );
+        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
 
         let child = pair
             .slave

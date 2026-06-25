@@ -83,7 +83,9 @@ struct Rule {
 
 impl Rule {
     fn matches(&self, text: &str) -> bool {
-        let re = self.prompt.get_or_init(|| Regex::new(self.prompt_src()).expect("valid regex"));
+        let re = self
+            .prompt
+            .get_or_init(|| Regex::new(self.prompt_src()).expect("valid regex"));
         // Quick reject on the buffer-wide signature check before running the
         // (potentially expensive) regex over the tail. Case-insensitive: a
         // server's MOTD might say "ubuntu" or "Ubuntu", a banner "PAN-OS" or
@@ -183,45 +185,57 @@ fn rules() -> &'static [Rule] {
         }
         vec![
             // ── Highly distinctive prompts (no signature needed) ─────────────
-            r!(Platform::F5Bigip,        &[]),
-            r!(Platform::Mikrotik,       &[]),
-            r!(Platform::BrocadeFos,     &[]),
+            r!(Platform::F5Bigip, &[]),
+            r!(Platform::Mikrotik, &[]),
+            r!(Platform::BrocadeFos, &[]),
             r!(Platform::CheckpointGaia, &["Check Point", "Gaia"]),
-            r!(Platform::HpComware,      &[]),
-            r!(Platform::Aruba,          &["ArubaOS", "ProCurve", "Aruba"]),
-
+            r!(Platform::HpComware, &[]),
+            r!(Platform::Aruba, &["ArubaOS", "ProCurve", "Aruba"]),
             // ── Cisco-style `hostname#` prompt — needs a banner clue to
             //    pick the right vendor (Cisco vs Fortigate vs PAN-OS).
-            r!(Platform::Fortimanager,   &["FortiManager"]),
-            r!(Platform::Fortigate,      &["FortiGate", "FortiOS", "FGT", "Fortinet"]),
-            r!(Platform::PaloAlto,       &["Palo Alto Networks", "PAN-OS"]),
-            r!(Platform::Juniper,        &["JUNOS", "Juniper"]),
-            r!(Platform::CiscoIos,       &["Cisco IOS Software", "IOS XE", "Cisco Internetwork", "IOS-XE"]),
-
+            r!(Platform::Fortimanager, &["FortiManager"]),
+            r!(
+                Platform::Fortigate,
+                &["FortiGate", "FortiOS", "FGT", "Fortinet"]
+            ),
+            r!(Platform::PaloAlto, &["Palo Alto Networks", "PAN-OS"]),
+            r!(Platform::Juniper, &["JUNOS", "Juniper"]),
+            r!(
+                Platform::CiscoIos,
+                &[
+                    "Cisco IOS Software",
+                    "IOS XE",
+                    "Cisco Internetwork",
+                    "IOS-XE"
+                ]
+            ),
             // ── Generic Unix shell — last resort. The prompt regex matches
             //    bare `host#` too, so we *insist* on a distro hint to avoid
             //    misfiring on a Cisco-style `router#` that lost its banner
             //    from the scrollback. Common distro markers from MOTD, SSH
             //    banner or `uname -a` output.
-            r!(Platform::Linux, &[
-                "Ubuntu",
-                "Debian",
-                "CentOS",
-                "Red Hat",
-                "Rocky Linux",
-                "AlmaLinux",
-                "Alpine",
-                "Arch Linux",
-                "Fedora",
-                "openSUSE",
-                "GNU/Linux",
-                "Linux Mint",
-                "Last login:",
-                "/etc/motd",
-                "BusyBox",
-                "kernel",
-                "uname",
-            ]),
+            r!(
+                Platform::Linux,
+                &[
+                    "Ubuntu",
+                    "Debian",
+                    "CentOS",
+                    "Red Hat",
+                    "Rocky Linux",
+                    "AlmaLinux",
+                    "Alpine",
+                    "Arch Linux",
+                    "Fedora",
+                    "openSUSE",
+                    "GNU/Linux",
+                    "Linux Mint",
+                    "Last login:",
+                    "/etc/motd",
+                    "BusyBox",
+                    "kernel",
+                    "uname",
+                ]
+            ),
         ]
     })
 }
@@ -272,7 +286,9 @@ fn prompt_src_for(p: Platform) -> &'static str {
         // (see the rule table) keeps this broad regex from misfiring on
         // any-old-`host#` line, so we can accept the messy reality:
         //   user@host:path$    BusyBox `/ #`    `(venv) $`    bare `# `
-        Platform::Linux => r"(?:^|\n)(?:[\w.-]+@[\w.-]+(?::[^\s]*)?\s*[$#]|\[[^\]]*\]\s*[$#]|[^\n$#]*[$#])\s*$",
+        Platform::Linux => {
+            r"(?:^|\n)(?:[\w.-]+@[\w.-]+(?::[^\s]*)?\s*[$#]|\[[^\]]*\]\s*[$#]|[^\n$#]*[$#])\s*$"
+        }
 
         Platform::Generic => r"\A\z", // never matches
     }
@@ -440,7 +456,10 @@ mod tests {
     fn switching_streams_does_not_re_detect() {
         let mut d = PlatformDetector::new();
         // First detection.
-        assert_eq!(d.feed(b"Ubuntu 22.04\nuser@host:~$ "), Some(Platform::Linux));
+        assert_eq!(
+            d.feed(b"Ubuntu 22.04\nuser@host:~$ "),
+            Some(Platform::Linux)
+        );
         // Now a stronger signal arrives — must NOT re-fire.
         assert_eq!(
             d.feed(b"\nCisco IOS Software, Version 15.7\nrouter1#"),
@@ -489,7 +508,10 @@ mod tests {
     #[test]
     fn prompt_per_vendor_tails() {
         assert!(ends_with_prompt(Platform::Juniper, "root@mx> "));
-        assert!(ends_with_prompt(Platform::F5Bigip, "(Active)(/Common)(tmos)# "));
+        assert!(ends_with_prompt(
+            Platform::F5Bigip,
+            "(Active)(/Common)(tmos)# "
+        ));
         assert!(ends_with_prompt(Platform::Mikrotik, "[admin@MikroTik] > "));
         assert!(ends_with_prompt(Platform::HpComware, "<HP-5130>"));
         assert!(ends_with_prompt(Platform::Linux, "carlos@bastion:~/work$ "));

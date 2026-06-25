@@ -52,8 +52,9 @@ pub async fn start_session_logging(
         .map(core_logging::LogFormat::parse)
         .unwrap_or(core_logging::LogFormat::Plain);
 
-    let logger = core_logging::SessionLogger::open_with_format(&state.log_dir, &session_name, format)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let logger =
+        core_logging::SessionLogger::open_with_format(&state.log_dir, &session_name, format)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let path_str = logger
         .path()

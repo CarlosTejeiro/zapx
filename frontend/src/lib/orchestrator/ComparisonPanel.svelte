@@ -52,7 +52,8 @@
   let open = $state<Set<number>>(new Set([0]))
   function toggle(i: number) {
     const next = new Set(open)
-    next.has(i) ? next.delete(i) : next.add(i)
+    if (next.has(i)) next.delete(i)
+    else next.add(i)
     open = next
   }
 

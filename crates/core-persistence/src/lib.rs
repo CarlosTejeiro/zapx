@@ -290,8 +290,9 @@ impl Database {
     /// per-group `sort_order` so the grid lays them out predictably.
     pub fn list_broadcast_groups(&self) -> Result<Vec<BroadcastGroup>, Error> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn
-            .prepare("SELECT id, name, sort_order FROM broadcast_groups ORDER BY sort_order, name")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, sort_order FROM broadcast_groups ORDER BY sort_order, name",
+        )?;
         let groups = stmt
             .query_map([], |row| {
                 Ok((
@@ -1091,10 +1092,7 @@ impl Database {
     /// Same as [`list_snippets`] but filtered to snippets visible from a
     /// session of `platform` — globals (NULL) plus matches. Globals first,
     /// then platform-specific.
-    pub fn list_snippets_for_platform(
-        &self,
-        platform: &str,
-    ) -> Result<Vec<Snippet>, Error> {
+    pub fn list_snippets_for_platform(&self, platform: &str) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, content, sort_order, created_at, platform, color
@@ -1198,11 +1196,7 @@ impl Database {
 
     /// Insert-or-bump: if (session_id, command) already exists, increment
     /// freq and refresh last_used. Otherwise insert a new row.
-    pub fn record_command(
-        &self,
-        session_id: Option<i64>,
-        command: &str,
-    ) -> Result<(), Error> {
+    pub fn record_command(&self, session_id: Option<i64>, command: &str) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         let updated = conn.execute(
             "UPDATE command_history
@@ -1333,10 +1327,9 @@ impl Database {
               ORDER BY freq DESC, last_used DESC
               LIMIT ?3",
         )?;
-        let rows = stmt.query_map(
-            rusqlite::params![platform, prev, limit as i64],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-        )?;
+        let rows = stmt.query_map(rusqlite::params![platform, prev, limit as i64], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -1426,10 +1419,28 @@ mod tests {
 
         // Seed two saved sessions to reference as members.
         let s1 = db
-            .create_session(None, "r1", "ssh", Some("10.0.0.1"), Some(22), Some("admin"), None, "{}")
+            .create_session(
+                None,
+                "r1",
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                Some("admin"),
+                None,
+                "{}",
+            )
             .unwrap();
         let s2 = db
-            .create_session(None, "r2", "ssh", Some("10.0.0.2"), Some(22), Some("admin"), None, "{}")
+            .create_session(
+                None,
+                "r2",
+                "ssh",
+                Some("10.0.0.2"),
+                Some(22),
+                Some("admin"),
+                None,
+                "{}",
+            )
             .unwrap();
 
         // Create + set members (note reversed order is preserved).

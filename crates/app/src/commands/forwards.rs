@@ -165,7 +165,10 @@ pub async fn list_all_forwards(
     let mut out = Vec::new();
     for (sid, vec) in map.iter() {
         for c in vec {
-            out.push(SessionForwardInfo { session_id: sid.clone(), info: c.info.clone() });
+            out.push(SessionForwardInfo {
+                session_id: sid.clone(),
+                info: c.info.clone(),
+            });
         }
     }
     Ok(out)
@@ -229,7 +232,14 @@ pub async fn autostart_saved_forwards(
         let opened = match f.kind.as_str() {
             "local" => match (f.target_host.clone(), f.target_port) {
                 (Some(th), Some(tp)) => {
-                    core_transport::open_local_forward(handle.clone(), f.bind_addr.clone(), f.bind_port, th, tp).await
+                    core_transport::open_local_forward(
+                        handle.clone(),
+                        f.bind_addr.clone(),
+                        f.bind_port,
+                        th,
+                        tp,
+                    )
+                    .await
                 }
                 _ => {
                     tracing::warn!("saved local forward missing target; skipped");
@@ -237,11 +247,24 @@ pub async fn autostart_saved_forwards(
                 }
             },
             "dynamic" => {
-                core_transport::open_dynamic_forward(handle.clone(), f.bind_addr.clone(), f.bind_port).await
+                core_transport::open_dynamic_forward(
+                    handle.clone(),
+                    f.bind_addr.clone(),
+                    f.bind_port,
+                )
+                .await
             }
             "remote" => match (f.target_host.clone(), f.target_port) {
                 (Some(th), Some(tp)) => {
-                    core_transport::open_remote_forward(handle.clone(), registry.clone(), f.bind_addr.clone(), f.bind_port, th, tp).await
+                    core_transport::open_remote_forward(
+                        handle.clone(),
+                        registry.clone(),
+                        f.bind_addr.clone(),
+                        f.bind_port,
+                        th,
+                        tp,
+                    )
+                    .await
                 }
                 _ => {
                     tracing::warn!("saved remote forward missing target; skipped");

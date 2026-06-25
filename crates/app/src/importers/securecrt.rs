@@ -34,7 +34,9 @@ pub fn parse_dir(root: &Path) -> std::io::Result<Parsed> {
     // Depth-first walk so parent folders are created before children.
     let mut stack: Vec<(std::path::PathBuf, Option<i64>)> = vec![(root.to_path_buf(), None)];
     while let Some((dir, parent_id)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         let mut subdirs = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
@@ -48,7 +50,11 @@ pub fn parse_dir(root: &Path) -> std::io::Result<Parsed> {
                 match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         if let Some(row) = decode_session(
-                            stem, &content, parent_id, &mut next_session_id, &mut warnings,
+                            stem,
+                            &content,
+                            parent_id,
+                            &mut next_session_id,
+                            &mut warnings,
                         ) {
                             sessions.push(row);
                         }
@@ -59,18 +65,31 @@ pub fn parse_dir(root: &Path) -> std::io::Result<Parsed> {
         }
         // Register subfolders and queue them.
         for sub in subdirs {
-            let Some(name) = sub.file_name().and_then(|n| n.to_str()) else { continue };
-            let key = format!("{}/{name}", parent_id.map(|p| p.to_string()).unwrap_or_default());
+            let Some(name) = sub.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let key = format!(
+                "{}/{name}",
+                parent_id.map(|p| p.to_string()).unwrap_or_default()
+            );
             let id = *folder_ids.entry(key).or_insert_with(|| {
                 next_folder_id += 1;
-                folders.push(common::folder(next_folder_id, parent_id, name, folders.len() as i32));
+                folders.push(common::folder(
+                    next_folder_id,
+                    parent_id,
+                    name,
+                    folders.len() as i32,
+                ));
                 next_folder_id
             });
             stack.push((sub, Some(id)));
         }
     }
 
-    Ok(Parsed { file: common::envelope(folders, sessions), warnings })
+    Ok(Parsed {
+        file: common::envelope(folders, sessions),
+        warnings,
+    })
 }
 
 fn decode_session(
@@ -86,8 +105,12 @@ fn decode_session(
     for raw in content.lines() {
         let line = raw.trim();
         // <type>:"<key>"=<value>
-        let Some((typ, rest)) = line.split_once(':') else { continue };
-        let Some((key_q, value)) = rest.split_once('=') else { continue };
+        let Some((typ, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let Some((key_q, value)) = rest.split_once('=') else {
+            continue;
+        };
         let key = key_q.trim().trim_matches('"').to_owned();
         match typ.trim() {
             "S" => {
@@ -114,12 +137,16 @@ fn decode_session(
         "serial"
     } else if proto_name.is_empty() {
         // No protocol line — assume SSH if there's a hostname, else skip.
-        if strings.contains_key("Hostname") { "ssh" } else {
+        if strings.contains_key("Hostname") {
+            "ssh"
+        } else {
             warnings.push(format!("«{name}»: sin protocolo ni host — omitida"));
             return None;
         }
     } else {
-        warnings.push(format!("«{name}»: protocolo «{proto_name}» no soportado — omitida"));
+        warnings.push(format!(
+            "«{name}»: protocolo «{proto_name}» no soportado — omitida"
+        ));
         return None;
     };
 
@@ -140,7 +167,17 @@ fn decode_session(
             return None;
         }
         *next_id += 1;
-        let mut row = common::session(*next_id, folder_id, name, "serial", None, None, None, Auth::Password, *next_id - 1);
+        let mut row = common::session(
+            *next_id,
+            folder_id,
+            name,
+            "serial",
+            None,
+            None,
+            None,
+            Auth::Password,
+            *next_id - 1,
+        );
         let baud = dwords.get("Baud Rate").copied().unwrap_or(9600);
         row.options_json = format!(
             r#"{{"device":{},"baud_rate":{baud}}}"#,
@@ -227,7 +264,12 @@ mod tests {
         let sw = s.iter().find(|x| x.name == "sw1").unwrap();
         assert_eq!(sw.protocol, "telnet");
         assert_eq!(sw.port, Some(23)); // 0x17
-        let lab = parsed.file.folders.iter().find(|f| f.name == "Lab").unwrap();
+        let lab = parsed
+            .file
+            .folders
+            .iter()
+            .find(|f| f.name == "Lab")
+            .unwrap();
         assert_eq!(sw.folder_id, Some(lab.id));
 
         let _ = std::fs::remove_dir_all(&root);

@@ -166,7 +166,11 @@ impl TriggerRunner {
                 (self.on_fire)(TriggerFired {
                     session_id: self.session_id.clone(),
                     kind: "bell".into(),
-                    text: if trig.text.is_empty() { line.to_owned() } else { trig.text.clone() },
+                    text: if trig.text.is_empty() {
+                        line.to_owned()
+                    } else {
+                        trig.text.clone()
+                    },
                 });
             }
             // "notify" and anything unknown → toast.
@@ -174,7 +178,11 @@ impl TriggerRunner {
                 (self.on_fire)(TriggerFired {
                     session_id: self.session_id.clone(),
                     kind: "notify".into(),
-                    text: if trig.text.is_empty() { line.to_owned() } else { trig.text.clone() },
+                    text: if trig.text.is_empty() {
+                        line.to_owned()
+                    } else {
+                        trig.text.clone()
+                    },
                 });
             }
         }

@@ -184,7 +184,9 @@ enum StripState {
 
 impl AnsiStripper {
     fn new() -> Self {
-        Self { state: StripState::Normal }
+        Self {
+            state: StripState::Normal,
+        }
     }
 
     fn strip(&mut self, data: &[u8]) -> Vec<u8> {

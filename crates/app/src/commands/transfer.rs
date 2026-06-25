@@ -100,7 +100,10 @@ pub fn build_export(db: &Database, app_version: &str) -> Result<ExportFile, AppE
         for s in sessions {
             let fwds = db.list_session_forwards(s.id).map_err(internal)?;
             if !fwds.is_empty() {
-                out.push(SessionForwards { session_id: s.id, forwards: fwds });
+                out.push(SessionForwards {
+                    session_id: s.id,
+                    forwards: fwds,
+                });
             }
         }
         out
@@ -171,9 +174,10 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         if pending.len() == before {
             // Orphans (parent missing from the file) land at root.
             for f in pending.drain(..) {
-                summary
-                    .warnings
-                    .push(format!("carpeta «{}»: padre no incluido en el export — movida a la raíz", f.name));
+                summary.warnings.push(format!(
+                    "carpeta «{}»: padre no incluido en el export — movida a la raíz",
+                    f.name
+                ));
                 if let Ok(id) = db.create_folder(&f.name, None) {
                     summary.folders_added += 1;
                     folder_map.insert(f.id, id);
@@ -185,21 +189,17 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
     // 2. Sessions — identity: (name, protocol, host, port). First pass
     //    creates rows with via_session_id = NULL; pass 3 resolves bastions.
     let existing_sessions = db.list_sessions().map_err(internal)?;
-    let identity = |s: &SavedSession| {
-        (
-            s.name.clone(),
-            s.protocol.clone(),
-            s.host.clone(),
-            s.port,
-        )
-    };
+    let identity = |s: &SavedSession| (s.name.clone(), s.protocol.clone(), s.host.clone(), s.port);
     let mut session_map: HashMap<i64, i64> = HashMap::new();
     // Old ids of sessions we actually created (not skipped) — only these get
     // their forwards applied, so re-import doesn't clobber existing sessions.
     let mut added_olds: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut needs_via: Vec<(i64, i64)> = Vec::new(); // (new_id, old_via_id)
     for s in &file.sessions {
-        if let Some(existing) = existing_sessions.iter().find(|e| identity(e) == identity(s)) {
+        if let Some(existing) = existing_sessions
+            .iter()
+            .find(|e| identity(e) == identity(s))
+        {
             session_map.insert(s.id, existing.id);
             summary.sessions_skipped += 1;
             continue;
@@ -220,7 +220,8 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
             )
             .map_err(internal)?;
         if let Some(script) = &s.login_script_json {
-            db.set_login_script(new_id, Some(script)).map_err(internal)?;
+            db.set_login_script(new_id, Some(script))
+                .map_err(internal)?;
         }
         if let Some(via) = s.via_session_id {
             needs_via.push((new_id, via));
@@ -249,17 +250,20 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
             continue;
         }
         if let Some(&new_id) = session_map.get(&sf.session_id) {
-            db.set_session_forwards(new_id, &sf.forwards).map_err(internal)?;
+            db.set_session_forwards(new_id, &sf.forwards)
+                .map_err(internal)?;
         }
     }
 
     // 3. Second pass: ProxyJump bastions, now that every id is known.
     for (new_id, old_via) in needs_via {
         match session_map.get(&old_via) {
-            Some(&via_new) => db.set_session_via(new_id, Some(via_new)).map_err(internal)?,
-            None => summary
-                .warnings
-                .push(format!("sesión id {new_id}: bastión (jump host) no incluido en el export — queda sin via")),
+            Some(&via_new) => db
+                .set_session_via(new_id, Some(via_new))
+                .map_err(internal)?,
+            None => summary.warnings.push(format!(
+                "sesión id {new_id}: bastión (jump host) no incluido en el export — queda sin via"
+            )),
         }
     }
 
@@ -282,7 +286,8 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
             ));
         }
         let gid = db.create_broadcast_group(&g.name).map_err(internal)?;
-        db.set_broadcast_group_members(gid, &members).map_err(internal)?;
+        db.set_broadcast_group_members(gid, &members)
+            .map_err(internal)?;
         summary.groups_added += 1;
     }
 
@@ -295,8 +300,13 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         {
             continue;
         }
-        db.create_snippet(&sn.name, &sn.content, sn.platform.as_deref(), sn.color.as_deref())
-            .map_err(internal)?;
+        db.create_snippet(
+            &sn.name,
+            &sn.content,
+            sn.platform.as_deref(),
+            sn.color.as_deref(),
+        )
+        .map_err(internal)?;
         summary.snippets_added += 1;
     }
 
@@ -335,8 +345,8 @@ pub async fn export_sessions(
 ) -> Result<ExportSummary, AppError> {
     let version = app.package_info().version.to_string();
     let file = build_export(&state.db, &version)?;
-    let json = serde_json::to_string_pretty(&file)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&file).map_err(|e| AppError::Internal(e.to_string()))?;
     std::fs::write(&path, json).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ExportSummary {
         path,
@@ -421,7 +431,8 @@ pub async fn import_putty(
             let sessions = crate::importers::putty::read_registry();
             if sessions.is_empty() && !cfg!(target_os = "windows") {
                 return Err(AppError::Internal(
-                    "en macOS/Linux exporta primero las sesiones de PuTTY a un .reg y elígelo".into(),
+                    "en macOS/Linux exporta primero las sesiones de PuTTY a un .reg y elígelo"
+                        .into(),
                 ));
             }
             crate::importers::putty::from_sessions(&sessions)
@@ -485,23 +496,51 @@ mod tests {
         let parent = src.create_folder("DC", None).unwrap();
         let child = src.create_folder("Spines", Some(parent)).unwrap();
         let bastion = src
-            .create_session_full(None, "jump", "ssh", Some("j.example"), Some(22), Some("ops"), None, "{}", Some("agent"), None)
+            .create_session_full(
+                None,
+                "jump",
+                "ssh",
+                Some("j.example"),
+                Some(22),
+                Some("ops"),
+                None,
+                "{}",
+                Some("agent"),
+                None,
+            )
             .unwrap();
         let spine = src
-            .create_session_full(Some(child), "spine-01", "ssh", Some("10.0.0.1"), Some(22), Some("admin"), None, "{}", Some("password"), Some(bastion))
+            .create_session_full(
+                Some(child),
+                "spine-01",
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                Some("admin"),
+                None,
+                "{}",
+                Some("password"),
+                Some(bastion),
+            )
             .unwrap();
         src.set_login_script(spine, Some(r#"[{"expect":"login:","send":"admin"}]"#))
             .unwrap();
-        src.set_session_forwards(spine, &[core_persistence::SavedForward {
-            kind: "local".into(),
-            bind_addr: "127.0.0.1".into(),
-            bind_port: 8080,
-            target_host: Some("10.0.0.9".into()),
-            target_port: Some(80),
-        }]).unwrap();
+        src.set_session_forwards(
+            spine,
+            &[core_persistence::SavedForward {
+                kind: "local".into(),
+                bind_addr: "127.0.0.1".into(),
+                bind_port: 8080,
+                target_host: Some("10.0.0.9".into()),
+                target_port: Some(80),
+            }],
+        )
+        .unwrap();
         let gid = src.create_broadcast_group("grid").unwrap();
-        src.set_broadcast_group_members(gid, &[bastion, spine]).unwrap();
-        src.create_snippet("brief", "show ip int brief", Some("cisco_ios"), None).unwrap();
+        src.set_broadcast_group_members(gid, &[bastion, spine])
+            .unwrap();
+        src.create_snippet("brief", "show ip int brief", Some("cisco_ios"), None)
+            .unwrap();
         src.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
             .unwrap();
 

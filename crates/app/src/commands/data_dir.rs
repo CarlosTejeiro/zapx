@@ -67,7 +67,9 @@ pub async fn set_data_dir(
         return Err(AppError::Internal("la ruta debe ser absoluta".into()));
     }
     if new_dir == state.data_dir.dir {
-        return Err(AppError::Internal("esa ya es la carpeta de datos actual".into()));
+        return Err(AppError::Internal(
+            "esa ya es la carpeta de datos actual".into(),
+        ));
     }
     if new_dir.starts_with(&state.data_dir.dir) {
         return Err(AppError::Internal(
@@ -95,7 +97,9 @@ pub async fn set_data_dir(
             .map_err(|e| AppError::Internal(format!("DB migrada no abre: {e}")))?;
         let mut reencrypted = 0usize;
         for session in state.db.list_sessions().unwrap_or_default() {
-            let Ok(Some(blob)) = state.db.get_session_secret(session.id) else { continue };
+            let Ok(Some(blob)) = state.db.get_session_secret(session.id) else {
+                continue;
+            };
             match core_vault::decrypt_with_seed(&state.vault_seed, &blob) {
                 Ok(secret) => {
                     if let Ok(new_blob) = core_vault::encrypt_with_seed(&new_seed, &secret) {
@@ -110,8 +114,14 @@ pub async fn set_data_dir(
         }
 
         // 3. Logs + catalogs travel too (best-effort; sizes can be large).
-        let logs = copy_dir_recursive(&state.data_dir.dir.join("session_logs"), &new_dir.join("session_logs"));
-        let cats = copy_dir_recursive(&state.data_dir.dir.join("catalogs"), &new_dir.join("catalogs"));
+        let logs = copy_dir_recursive(
+            &state.data_dir.dir.join("session_logs"),
+            &new_dir.join("session_logs"),
+        );
+        let cats = copy_dir_recursive(
+            &state.data_dir.dir.join("catalogs"),
+            &new_dir.join("catalogs"),
+        );
 
         format!(
             "Datos migrados: DB copiada, {reencrypted} credenciales re-cifradas, {logs} logs y {cats} catálogos copiados."
@@ -157,7 +167,9 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> usize {
     if std::fs::create_dir_all(dest).is_err() {
         return 0;
     }
-    let Ok(entries) = std::fs::read_dir(src) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(src) else {
+        return 0;
+    };
     for entry in entries.flatten() {
         let from = entry.path();
         let to = dest.join(entry.file_name());

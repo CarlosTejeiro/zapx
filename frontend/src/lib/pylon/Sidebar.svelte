@@ -173,13 +173,15 @@
 
   function toggleSection(key: string) {
     const next = new Set(expandedSections)
-    next.has(key) ? next.delete(key) : next.add(key)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
     expandedSections = next
   }
 
   function toggleFolder(id: number) {
     const next = new Set(expandedFolders)
-    next.has(id) ? next.delete(id) : next.add(id)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
     expandedFolders = next
   }
 

@@ -114,7 +114,9 @@ impl FromStr for Platform {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HintSource {
     History,
-    Catalog { platform: Platform },
+    Catalog {
+        platform: Platform,
+    },
     Snippet,
     /// A command the user usually runs right after the previous one (learned
     /// per platform). Surfaced/boosted by the sequence learner.
@@ -298,7 +300,11 @@ impl<'a> HintEngine<'a> {
         }
 
         // --- Dedupe by text, keeping the highest-scoring source ---
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let mut seen = std::collections::HashSet::new();
         candidates.retain(|h| seen.insert(h.text.clone()));
         candidates.truncate(limit);
@@ -333,7 +339,8 @@ fn age_days(last_used: &str, now_secs: i64) -> f32 {
     ) else {
         return 0.0;
     };
-    let last_secs = days_from_civil(y, mo, d) * 86_400 + (h as i64) * 3600 + (mi as i64) * 60 + s as i64;
+    let last_secs =
+        days_from_civil(y, mo, d) * 86_400 + (h as i64) * 3600 + (mi as i64) * 60 + s as i64;
     let elapsed = (now_secs - last_secs).max(0) as f32;
     elapsed / 86_400.0
 }

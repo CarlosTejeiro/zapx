@@ -40,31 +40,33 @@ pub fn parse(content: &str) -> Parsed {
 
     // Resolve a `\`-separated SubRep path to a leaf folder id, creating each
     // component (and its parents) once. Empty path → root (None).
-    let mut ensure_folder =
-        |path: &str, folders: &mut Vec<Folder>, folder_ids: &mut HashMap<String, i64>| -> Option<i64> {
-            let path = path.trim().trim_matches('\\');
-            if path.is_empty() {
-                return None;
+    let mut ensure_folder = |path: &str,
+                             folders: &mut Vec<Folder>,
+                             folder_ids: &mut HashMap<String, i64>|
+     -> Option<i64> {
+        let path = path.trim().trim_matches('\\');
+        if path.is_empty() {
+            return None;
+        }
+        let mut parent: Option<i64> = None;
+        let mut acc = String::new();
+        for part in path.split('\\').filter(|p| !p.is_empty()) {
+            if !acc.is_empty() {
+                acc.push('\\');
             }
-            let mut parent: Option<i64> = None;
-            let mut acc = String::new();
-            for part in path.split('\\').filter(|p| !p.is_empty()) {
-                if !acc.is_empty() {
-                    acc.push('\\');
-                }
-                acc.push_str(part);
-                if let Some(&id) = folder_ids.get(&acc) {
-                    parent = Some(id);
-                    continue;
-                }
-                next_folder_id += 1;
-                let id = next_folder_id;
-                folders.push(common::folder(id, parent, part, (folders.len()) as i32));
-                folder_ids.insert(acc.clone(), id);
+            acc.push_str(part);
+            if let Some(&id) = folder_ids.get(&acc) {
                 parent = Some(id);
+                continue;
             }
-            parent
-        };
+            next_folder_id += 1;
+            let id = next_folder_id;
+            folders.push(common::folder(id, parent, part, (folders.len()) as i32));
+            folder_ids.insert(acc.clone(), id);
+            parent = Some(id);
+        }
+        parent
+    };
 
     for raw in content.lines() {
         let line = raw.trim_end_matches(['\r', '\n']).trim();
@@ -84,7 +86,9 @@ pub fn parse(content: &str) -> Parsed {
         if !in_bookmarks {
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else { continue };
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         let key = key.trim();
         if key.eq_ignore_ascii_case("SubRep") {
             section_subrep = value.trim().to_owned();
@@ -95,15 +99,21 @@ pub fn parse(content: &str) -> Parsed {
         }
         // A session line. Decode its protocol + fields.
         let folder_id = ensure_folder(&section_subrep, &mut folders, &mut folder_ids);
-        if let Some(row) = decode_session(key, value, folder_id, &mut next_session_id, &mut warnings) {
+        if let Some(row) =
+            decode_session(key, value, folder_id, &mut next_session_id, &mut warnings)
+        {
             sessions.push(row); // None = skipped, already warned
         }
     }
 
     // Resolve [PortForwarding] tunnels against the imported gateway sessions
     // (creating a session for the gateway when none matches).
-    let session_forwards =
-        attach_forwards(&mut sessions, &forward_lines, &mut next_session_id, &mut warnings);
+    let session_forwards = attach_forwards(
+        &mut sessions,
+        &forward_lines,
+        &mut next_session_id,
+        &mut warnings,
+    );
 
     let mut file = common::envelope(folders, sessions);
     file.session_forwards = session_forwards;
@@ -124,7 +134,9 @@ fn attach_forwards(
         std::collections::HashMap::new();
 
     for line in lines {
-        let Some((_key, rhs)) = line.split_once('=') else { continue };
+        let Some((_key, rhs)) = line.split_once('=') else {
+            continue;
+        };
         let f: Vec<&str> = rhs.split(';').collect();
         if f.len() < 4 {
             warnings.push(format!("túnel «{line}» con formato inesperado — omitido"));
@@ -135,7 +147,10 @@ fn attach_forwards(
             "remote" => "remote",
             "dynamic" => "dynamic",
             other => {
-                warnings.push(format!("túnel «{}»: tipo «{other}» no soportado — omitido", f[0].trim()));
+                warnings.push(format!(
+                    "túnel «{}»: tipo «{other}» no soportado — omitido",
+                    f[0].trim()
+                ));
                 continue;
             }
         };
@@ -187,13 +202,18 @@ fn attach_forwards(
             }
         };
 
-        let fwd = SavedForward { kind: kind.into(), bind_addr, bind_port, target_host, target_port };
+        let fwd = SavedForward {
+            kind: kind.into(),
+            bind_addr,
+            bind_port,
+            target_host,
+            target_port,
+        };
 
         // Attach to the matching gateway session, or create one for it.
-        let sid = match sessions
-            .iter()
-            .find(|s| s.protocol == "ssh" && s.host.as_deref() == Some(gw_host) && s.port == Some(gw_port))
-        {
+        let sid = match sessions.iter().find(|s| {
+            s.protocol == "ssh" && s.host.as_deref() == Some(gw_host) && s.port == Some(gw_port)
+        }) {
             Some(s) => s.id,
             None => {
                 *next_id += 1;
@@ -212,7 +232,9 @@ fn attach_forwards(
                     Auth::Agent,
                     *next_id - 1,
                 ));
-                warnings.push(format!("túnel: creada sesión «{name}» para el gateway del túnel"));
+                warnings.push(format!(
+                    "túnel: creada sesión «{name}» para el gateway del túnel"
+                ));
                 *next_id
             }
         };
@@ -221,7 +243,10 @@ fn attach_forwards(
 
     by_session
         .into_iter()
-        .map(|(session_id, forwards)| SessionForwards { session_id, forwards })
+        .map(|(session_id, forwards)| SessionForwards {
+            session_id,
+            forwards,
+        })
         .collect()
 }
 
@@ -262,9 +287,21 @@ fn decode_session(
             warnings.push(format!("«{name}»: serial sin línea — omitida"));
             return None;
         }
-        warnings.push(format!("«{name}»: serial importada en modo best-effort, revisa device/baudios"));
+        warnings.push(format!(
+            "«{name}»: serial importada en modo best-effort, revisa device/baudios"
+        ));
         *next_id += 1;
-        let mut row = common::session(*next_id, folder_id, name, "serial", None, None, None, Auth::Password, *next_id - 1);
+        let mut row = common::session(
+            *next_id,
+            folder_id,
+            name,
+            "serial",
+            None,
+            None,
+            None,
+            Auth::Password,
+            *next_id - 1,
+        );
         let baud: u32 = field(2).and_then(|s| s.parse().ok()).unwrap_or(9600);
         row.options_json = format!(
             r#"{{"device":{},"baud_rate":{baud}}}"#,
@@ -279,7 +316,11 @@ fn decode_session(
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or_else(|| common::default_port(protocol));
     let username = field(3).map(|s| s.to_owned());
-    let auth = if protocol == "ssh" { Auth::Agent } else { Auth::Password };
+    let auth = if protocol == "ssh" {
+        Auth::Agent
+    } else {
+        Auth::Password
+    };
     *next_id += 1;
     Some(common::session(
         *next_id,
@@ -382,7 +423,10 @@ jump=#109#0%bastion.example%22%ops%%-1%-1
         assert_eq!(lf.target_port, Some(80));
 
         // Dynamic forward's gateway isn't a bookmark → a session is created.
-        let gw = sessions.iter().find(|s| s.name == "deploy@10.9.9.9").unwrap();
+        let gw = sessions
+            .iter()
+            .find(|s| s.name == "deploy@10.9.9.9")
+            .unwrap();
         assert_eq!(gw.port, Some(2200));
         let dyn_fwd = parsed
             .file

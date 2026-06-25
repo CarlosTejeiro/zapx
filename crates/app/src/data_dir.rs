@@ -65,18 +65,33 @@ impl DataDir {
 /// Resolve the data dir per the priority order in the module docs.
 pub fn resolve(app: &tauri::AppHandle) -> tauri::Result<DataDir> {
     if let Some(dir) = from_cli_flag() {
-        return Ok(DataDir { dir, source: Source::CliFlag });
+        return Ok(DataDir {
+            dir,
+            source: Source::CliFlag,
+        });
     }
     if let Some(dir) = from_env() {
-        return Ok(DataDir { dir, source: Source::EnvVar });
+        return Ok(DataDir {
+            dir,
+            source: Source::EnvVar,
+        });
     }
     if let Some(dir) = from_portable_marker() {
-        return Ok(DataDir { dir, source: Source::Portable });
+        return Ok(DataDir {
+            dir,
+            source: Source::Portable,
+        });
     }
     if let Some(dir) = from_pointer_file(app) {
-        return Ok(DataDir { dir, source: Source::Pointer });
+        return Ok(DataDir {
+            dir,
+            source: Source::Pointer,
+        });
     }
-    Ok(DataDir { dir: app.path().app_data_dir()?, source: Source::Default })
+    Ok(DataDir {
+        dir: app.path().app_data_dir()?,
+        source: Source::Default,
+    })
 }
 
 fn from_cli_flag() -> Option<PathBuf> {
@@ -127,5 +142,8 @@ fn from_pointer_file(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 /// Absolute path of the pointer file in the OS config dir.
 pub fn pointer_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join(POINTER_FILE))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join(POINTER_FILE))
 }

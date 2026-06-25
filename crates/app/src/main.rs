@@ -23,7 +23,9 @@ fn main() {
                 .exec();
             // Re-exec failed (rare): set it in-process as a best-effort fallback
             // and carry on rather than abort startup.
-            eprintln!("zapx: could not re-exec to set WEBKIT_DISABLE_DMABUF_RENDERER ({err}); continuing");
+            eprintln!(
+                "zapx: could not re-exec to set WEBKIT_DISABLE_DMABUF_RENDERER ({err}); continuing"
+            );
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }

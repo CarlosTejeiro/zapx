@@ -25,6 +25,17 @@ export default [
     rules: {
       // Enforce the style guide: unknown over any
       '@typescript-eslint/no-explicit-any': 'error',
+      // A leading underscore marks an intentionally-unused binding — the
+      // convention already used across the Rust and TS code (`_e`, `_id`,
+      // `_bastions`). Don't flag those.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
   },
 
