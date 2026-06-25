@@ -39,7 +39,9 @@ pub async fn list_snippets_for_platform(
             .map_err(|e| AppError::Internal(e.to_string()))?;
         if !already {
             for (name, content) in default_snippets_for(&platform) {
-                let _ = state.db.create_snippet(name, content, Some(&platform), None);
+                let _ = state
+                    .db
+                    .create_snippet(name, content, Some(&platform), None);
             }
         }
     }
@@ -91,7 +93,13 @@ pub async fn update_snippet(
     }
     state
         .db
-        .update_snippet(id, name.trim(), &content, platform.as_deref(), color.as_deref())
+        .update_snippet(
+            id,
+            name.trim(),
+            &content,
+            platform.as_deref(),
+            color.as_deref(),
+        )
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -148,81 +156,102 @@ fn default_snippets_for(platform: &str) -> Vec<(&'static str, &'static str)> {
     }
     match platform {
         "linux" => nl(&[
-            ("ls -la",            "ls -la\n"),
-            ("df -h",             "df -h\n"),
-            ("free -h",           "free -h\n"),
-            ("ps aux | grep ",    "ps aux | grep "),
+            ("ls -la", "ls -la\n"),
+            ("df -h", "df -h\n"),
+            ("free -h", "free -h\n"),
+            ("ps aux | grep ", "ps aux | grep "),
             ("systemctl status ", "systemctl status "),
-            ("journalctl -xe",    "journalctl -xe\n"),
+            ("journalctl -xe", "journalctl -xe\n"),
         ]),
         "cisco_ios" => nl(&[
-            ("show ip int brief",         "show ip int brief\n"),
-            ("show ip route",             "show ip route\n"),
-            ("show interfaces status",    "show interfaces status\n"),
-            ("show running-config",       "show running-config\n"),
-            ("clear counters",            "clear counters\n"),
-            ("wr mem",                    "wr mem\n"),
+            ("show ip int brief", "show ip int brief\n"),
+            ("show ip route", "show ip route\n"),
+            ("show interfaces status", "show interfaces status\n"),
+            ("show running-config", "show running-config\n"),
+            ("clear counters", "clear counters\n"),
+            ("wr mem", "wr mem\n"),
         ]),
         "juniper" => nl(&[
-            ("show interfaces terse",     "show interfaces terse\n"),
-            ("show route",                "show route\n"),
-            ("show bgp summary",          "show bgp summary\n"),
-            ("show chassis hardware",     "show chassis hardware\n"),
-            ("commit confirmed",          "commit confirmed\n"),
+            ("show interfaces terse", "show interfaces terse\n"),
+            ("show route", "show route\n"),
+            ("show bgp summary", "show bgp summary\n"),
+            ("show chassis hardware", "show chassis hardware\n"),
+            ("commit confirmed", "commit confirmed\n"),
         ]),
         "mikrotik" => nl(&[
-            ("/interface print",          "/interface print\n"),
-            ("/ip address print",         "/ip address print\n"),
-            ("/ip route print",           "/ip route print\n"),
-            ("/log print",                "/log print\n"),
+            ("/interface print", "/interface print\n"),
+            ("/ip address print", "/ip address print\n"),
+            ("/ip route print", "/ip route print\n"),
+            ("/log print", "/log print\n"),
         ]),
         "aruba" => nl(&[
-            ("show vlan",                 "show vlan\n"),
-            ("show ip route",             "show ip route\n"),
-            ("show interfaces brief",     "show interfaces brief\n"),
+            ("show vlan", "show vlan\n"),
+            ("show ip route", "show ip route\n"),
+            ("show interfaces brief", "show interfaces brief\n"),
         ]),
         "fortigate" => nl(&[
-            ("get system status",                       "get system status\n"),
-            ("get router info routing-table all",       "get router info routing-table all\n"),
-            ("get vpn ipsec tunnel summary",            "get vpn ipsec tunnel summary\n"),
-            ("diagnose sniffer packet any 'icmp' 4",    "diagnose sniffer packet any 'icmp' 4\n"),
-            ("execute backup config flash",             "execute backup config flash\n"),
+            ("get system status", "get system status\n"),
+            (
+                "get router info routing-table all",
+                "get router info routing-table all\n",
+            ),
+            (
+                "get vpn ipsec tunnel summary",
+                "get vpn ipsec tunnel summary\n",
+            ),
+            (
+                "diagnose sniffer packet any 'icmp' 4",
+                "diagnose sniffer packet any 'icmp' 4\n",
+            ),
+            (
+                "execute backup config flash",
+                "execute backup config flash\n",
+            ),
         ]),
         "fortimanager" => nl(&[
-            ("get system status",                       "get system status\n"),
-            ("diagnose dvm device list",                "diagnose dvm device list\n"),
-            ("execute backup all-settings ftp",         "execute backup all-settings ftp "),
+            ("get system status", "get system status\n"),
+            ("diagnose dvm device list", "diagnose dvm device list\n"),
+            (
+                "execute backup all-settings ftp",
+                "execute backup all-settings ftp ",
+            ),
         ]),
         "paloalto" => nl(&[
-            ("show system info",                        "show system info\n"),
-            ("show session info",                       "show session info\n"),
-            ("show running resource-monitor minute",    "show running resource-monitor minute\n"),
-            ("show routing route",                      "show routing route\n"),
-            ("commit",                                  "commit\n"),
+            ("show system info", "show system info\n"),
+            ("show session info", "show session info\n"),
+            (
+                "show running resource-monitor minute",
+                "show running resource-monitor minute\n",
+            ),
+            ("show routing route", "show routing route\n"),
+            ("commit", "commit\n"),
         ]),
         "f5_bigip" => nl(&[
-            ("tmsh show sys version",     "tmsh show sys version\n"),
-            ("tmsh show ltm virtual",     "tmsh show ltm virtual\n"),
-            ("tmsh show net interface",   "tmsh show net interface\n"),
-            ("tmsh save sys config",      "tmsh save sys config\n"),
+            ("tmsh show sys version", "tmsh show sys version\n"),
+            ("tmsh show ltm virtual", "tmsh show ltm virtual\n"),
+            ("tmsh show net interface", "tmsh show net interface\n"),
+            ("tmsh save sys config", "tmsh save sys config\n"),
         ]),
         "checkpoint_gaia" => nl(&[
-            ("show configuration",        "show configuration\n"),
-            ("cphaprob state",            "cphaprob state\n"),
-            ("fw stat",                   "fw stat\n"),
-            ("save config",               "save config\n"),
+            ("show configuration", "show configuration\n"),
+            ("cphaprob state", "cphaprob state\n"),
+            ("fw stat", "fw stat\n"),
+            ("save config", "save config\n"),
         ]),
         "hp_comware" => nl(&[
-            ("display current-configuration", "display current-configuration\n"),
-            ("display interface brief",       "display interface brief\n"),
-            ("display ip routing-table",      "display ip routing-table\n"),
-            ("save force",                    "save force\n"),
+            (
+                "display current-configuration",
+                "display current-configuration\n",
+            ),
+            ("display interface brief", "display interface brief\n"),
+            ("display ip routing-table", "display ip routing-table\n"),
+            ("save force", "save force\n"),
         ]),
         "brocade_fos" => nl(&[
-            ("switchshow",   "switchshow\n"),
-            ("cfgshow",      "cfgshow\n"),
-            ("nsshow",       "nsshow\n"),
-            ("portshow",     "portshow\n"),
+            ("switchshow", "switchshow\n"),
+            ("cfgshow", "cfgshow\n"),
+            ("nsshow", "nsshow\n"),
+            ("portshow", "portshow\n"),
         ]),
         _ => Vec::new(),
     }

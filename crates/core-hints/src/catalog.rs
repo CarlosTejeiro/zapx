@@ -51,7 +51,10 @@ fn default_registry(user_dir: Option<PathBuf>) -> Registry {
     catalogs.insert(Platform::Fortimanager, parse_bundled(FORTIMANAGER_JSON));
     catalogs.insert(Platform::PaloAlto, parse_bundled(PALOALTO_JSON));
     catalogs.insert(Platform::F5Bigip, parse_bundled(F5_BIGIP_JSON));
-    catalogs.insert(Platform::CheckpointGaia, parse_bundled(CHECKPOINT_GAIA_JSON));
+    catalogs.insert(
+        Platform::CheckpointGaia,
+        parse_bundled(CHECKPOINT_GAIA_JSON),
+    );
     catalogs.insert(Platform::HpComware, parse_bundled(HP_COMWARE_JSON));
     catalogs.insert(Platform::BrocadeFos, parse_bundled(BROCADE_FOS_JSON));
     Registry { user_dir, catalogs }

@@ -123,8 +123,12 @@ pub struct MssWatcher;
 
 #[cfg(not(any(unix, windows)))]
 impl MssWatcher {
-    pub fn new(_stream: &tokio::net::TcpStream) -> Option<Self> { None }
-    pub fn query(&self) -> TcpMss { TcpMss::default() }
+    pub fn new(_stream: &tokio::net::TcpStream) -> Option<Self> {
+        None
+    }
+    pub fn query(&self) -> TcpMss {
+        TcpMss::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +172,10 @@ fn query_by_fd_unix(fd: libc::c_int) -> TcpMss {
         )
     };
     if ret == 0 && mss > 0 {
-        TcpMss { send: Some(mss as u32), recv: None }
+        TcpMss {
+            send: Some(mss as u32),
+            recv: None,
+        }
     } else {
         TcpMss::default()
     }
@@ -201,7 +208,10 @@ fn query_by_socket_win(socket: windows_sys::Win32::Networking::WinSock::SOCKET) 
     };
     if ret == 0 && info.Mss > 0 {
         // Windows only fills the send side; receive isn't surfaced.
-        TcpMss { send: Some(info.Mss), recv: None }
+        TcpMss {
+            send: Some(info.Mss),
+            recv: None,
+        }
     } else {
         TcpMss::default()
     }

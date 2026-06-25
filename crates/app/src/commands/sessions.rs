@@ -52,13 +52,13 @@ fn make_detection_callback(
         if let Some(id) = saved_session_id {
             let state = app.state::<AppState>();
             let current = state.db.get_session_platform(id).ok().flatten();
-            let should_write = matches!(
-                current.as_deref(),
-                None | Some("") | Some("generic")
-            );
+            let should_write = matches!(current.as_deref(), None | Some("") | Some("generic"));
             if should_write {
                 if let Err(e) = state.db.set_session_platform(id, platform.as_str()) {
-                    tracing::warn!(saved_session_id = id, "persist detected platform failed: {e}");
+                    tracing::warn!(
+                        saved_session_id = id,
+                        "persist detected platform failed: {e}"
+                    );
                 }
             }
         }
@@ -164,9 +164,7 @@ fn make_on_data<F>(
     trigger_slot: TriggerRunnerSlot,
     rx_total: Arc<std::sync::atomic::AtomicU64>,
     detector: Option<crate::state::SharedPlatformDetector>,
-    on_platform_detected: Option<
-        Arc<dyn Fn(core_hints::Platform) + Send + Sync + 'static>,
-    >,
+    on_platform_detected: Option<Arc<dyn Fn(core_hints::Platform) + Send + Sync + 'static>>,
     inner: F,
 ) -> impl Fn(Vec<u8>) + Send + 'static
 where
@@ -512,8 +510,11 @@ pub async fn open_ssh_session(
         ),
         make_on_close(app.clone(), session_id.clone()),
     );
-    let stats_task =
-        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
+    let stats_task = Some(spawn_stats_emitter(
+        app.clone(),
+        session_id.clone(),
+        Arc::clone(&rx_total),
+    ));
     // Live MSS polling for the same session. Dropped automatically when the
     // session is closed (the task observes the watcher's empty streak and
     // exits within a few INTERVAL ticks).
@@ -951,7 +952,14 @@ fn resolve_ssh_auth_for_session(
                 .ok()
                 .and_then(|key| core_vault::Vault::retrieve(&key).ok());
             from_keyring
-                .or_else(|| state.password_cache.lock().unwrap().get(&session.id).cloned())
+                .or_else(|| {
+                    state
+                        .password_cache
+                        .lock()
+                        .unwrap()
+                        .get(&session.id)
+                        .cloned()
+                })
                 .or_else(|| {
                     state
                         .db
@@ -1164,7 +1172,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
-    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
@@ -1172,11 +1180,8 @@ pub async fn open_saved_session(
             let detector = new_detector();
             // Saved SSH — also persists the detected platform if the row
             // doesn't already have a user-chosen one.
-            let on_detected = make_detection_callback(
-                app.clone(),
-                session_id.clone(),
-                Some(saved_session_id),
-            );
+            let on_detected =
+                make_detection_callback(app.clone(), session_id.clone(), Some(saved_session_id));
             let tcp_mss = transport.tcp_mss();
             let mss_watcher = transport.take_mss_watcher();
             let (cmd_tx, ssh_handle, remote_forwards) = transport.start_io_loop(
@@ -1248,7 +1253,10 @@ pub async fn open_saved_session(
 
             // Auto-start saved port-forwards (best-effort; failures are logged,
             // never fatal to the session open).
-            let saved_forwards = state.db.list_session_forwards(saved_session_id).unwrap_or_default();
+            let saved_forwards = state
+                .db
+                .list_session_forwards(saved_session_id)
+                .unwrap_or_default();
             if !saved_forwards.is_empty() {
                 crate::commands::forwards::autostart_saved_forwards(
                     &state,
@@ -1279,7 +1287,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
-    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
@@ -1373,7 +1381,7 @@ pub async fn open_saved_session(
             let app_handle = app.clone();
             let hl = Arc::clone(&state.highlighter);
             let lg = Arc::clone(&state.loggers);
-    let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
@@ -1490,8 +1498,11 @@ pub async fn open_telnet_session(
             },
         ),
     );
-    let stats_task =
-        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
+    let stats_task = Some(spawn_stats_emitter(
+        app.clone(),
+        session_id.clone(),
+        Arc::clone(&rx_total),
+    ));
 
     state.sessions.lock().unwrap().insert(
         session_id.clone(),
@@ -1554,8 +1565,11 @@ pub async fn open_serial_session(
             );
         },
     ));
-    let stats_task =
-        Some(spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total)));
+    let stats_task = Some(spawn_stats_emitter(
+        app.clone(),
+        session_id.clone(),
+        Arc::clone(&rx_total),
+    ));
 
     // Serial sessions get a default size; resize is ignored by the transport.
     state.sessions.lock().unwrap().insert(

@@ -39,10 +39,7 @@ pub async fn rename_broadcast_group(
 }
 
 #[tauri::command]
-pub async fn delete_broadcast_group(
-    state: State<'_, AppState>,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn delete_broadcast_group(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
     state
         .db
         .delete_broadcast_group(id)

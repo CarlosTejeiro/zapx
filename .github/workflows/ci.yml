@@ -84,11 +84,9 @@ jobs:
             libxdo-dev \
             libudev-dev
 
-      # NOTE: `cargo fmt --all --check` is intentionally NOT gated yet. The
-      # tree currently has ~130 formatting diffs (rustfmt-version drift, not
-      # logic), so enabling it would paint CI red until a one-time
-      # `cargo fmt --all` pass lands. Add the step back once the tree is
-      # formatted on the pinned toolchain.
+      - name: Format check
+        run: cargo fmt --all --check
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

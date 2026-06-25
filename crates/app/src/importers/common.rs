@@ -33,7 +33,12 @@ pub fn envelope(folders: Vec<Folder>, sessions: Vec<SavedSession>) -> ExportFile
 
 /// A folder row with a file-local id (remapped by `apply_import`).
 pub fn folder(id: i64, parent_id: Option<i64>, name: &str, sort_order: i32) -> Folder {
-    Folder { id, parent_id, name: name.to_owned(), sort_order }
+    Folder {
+        id,
+        parent_id,
+        name: name.to_owned(),
+        sort_order,
+    }
 }
 
 /// Auth flavour for [`session`]. `Key` stores the path in `options_json`.

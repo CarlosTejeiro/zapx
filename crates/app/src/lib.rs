@@ -19,7 +19,9 @@ pub use state::AppState;
 
 #[cfg(target_os = "macos")]
 fn apply_vibrancy(window: &tauri::WebviewWindow) {
-    use window_vibrancy::{apply_vibrancy as ns_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+    use window_vibrancy::{
+        apply_vibrancy as ns_vibrancy, NSVisualEffectMaterial, NSVisualEffectState,
+    };
     if let Err(e) = ns_vibrancy(
         window,
         NSVisualEffectMaterial::HudWindow,
@@ -56,8 +58,12 @@ fn size_window_on_first_run(app: &tauri::App) {
     if has_saved_state {
         return;
     }
-    let Some(win) = app.get_webview_window("main") else { return };
-    let Ok(Some(monitor)) = win.current_monitor() else { return };
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(Some(monitor)) = win.current_monitor() else {
+        return;
+    };
     let scale = monitor.scale_factor();
     let logical_w = monitor.size().width as f64 / scale;
     let logical_h = monitor.size().height as f64 / scale;
@@ -98,7 +104,8 @@ pub fn run() {
             // can't unwind and would abort the whole app. Contain it so a
             // failed effect just means opaque chrome, never a crash.
             if let Some(win) = app.get_webview_window("main") {
-                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| apply_vibrancy(&win)));
+                let r =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| apply_vibrancy(&win)));
                 if r.is_err() {
                     tracing::warn!("window vibrancy panicked; continuing without it");
                 }

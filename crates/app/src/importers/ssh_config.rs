@@ -65,7 +65,10 @@ pub fn parse(path: &Path, home: &Path) -> std::io::Result<ParsedSshConfig> {
                     .find(|a| !a.contains(['*', '?']) && !a.starts_with('!'));
                 match alias {
                     Some(a) => {
-                        current = Some(HostEntry { alias: a.to_owned(), ..Default::default() })
+                        current = Some(HostEntry {
+                            alias: a.to_owned(),
+                            ..Default::default()
+                        })
                     }
                     None => {
                         skipped_patterns += 1;
@@ -87,8 +90,10 @@ pub fn parse(path: &Path, home: &Path) -> std::io::Result<ParsedSshConfig> {
                     "user" => h.user = Some(value),
                     "port" => match value.parse::<u16>() {
                         Ok(p) => h.port = Some(p),
-                        Err(_) => warnings
-                            .push(format!("host «{}»: Port «{value}» inválido, usando 22", h.alias)),
+                        Err(_) => warnings.push(format!(
+                            "host «{}»: Port «{value}» inválido, usando 22",
+                            h.alias
+                        )),
                     },
                     // ssh tries identities in order; the first is ours.
                     "identityfile" if h.identity_file.is_none() => {
@@ -115,7 +120,13 @@ pub fn parse(path: &Path, home: &Path) -> std::io::Result<ParsedSshConfig> {
     let mut sessions: Vec<SavedSession> = Vec::with_capacity(hosts.len());
     for (i, h) in hosts.iter().enumerate() {
         let (auth_method, options_json) = match &h.identity_file {
-            Some(key) => ("key", format!(r#"{{"key_path":{}}}"#, serde_json::to_string(key).unwrap_or_default())),
+            Some(key) => (
+                "key",
+                format!(
+                    r#"{{"key_path":{}}}"#,
+                    serde_json::to_string(key).unwrap_or_default()
+                ),
+            ),
             None => ("agent", "{}".to_owned()),
         };
         sessions.push(SavedSession {
@@ -186,7 +197,10 @@ fn collect_lines(
     depth: u8,
 ) -> std::io::Result<()> {
     if depth > 4 {
-        warnings.push(format!("Include demasiado anidado, ignorado: {}", path.display()));
+        warnings.push(format!(
+            "Include demasiado anidado, ignorado: {}",
+            path.display()
+        ));
         return Ok(());
     }
     let content = std::fs::read_to_string(path)?;
@@ -251,7 +265,11 @@ fn glob_simple(path: &Path) -> Vec<PathBuf> {
         .filter(|e| {
             e.file_name()
                 .to_str()
-                .map(|n| n.starts_with(prefix) && n.ends_with(suffix) && n.len() >= prefix.len() + suffix.len())
+                .map(|n| {
+                    n.starts_with(prefix)
+                        && n.ends_with(suffix)
+                        && n.len() >= prefix.len() + suffix.len()
+                })
                 .unwrap_or(false)
         })
         .map(|e| e.path())
@@ -323,10 +341,21 @@ Host web !web-prod
     fn follows_includes_with_glob() {
         let dir = std::env::temp_dir().join(format!("zapx-sshinc-{}", std::process::id()));
         std::fs::create_dir_all(dir.join(".ssh/config.d")).unwrap();
-        write(&dir.join(".ssh/config"), "Include config.d/*.conf\nHost main\n  HostName m.example\n");
-        write(&dir.join(".ssh/config.d/lab.conf"), "Host lab\n  HostName lab.example\n");
+        write(
+            &dir.join(".ssh/config"),
+            "Include config.d/*.conf\nHost main\n  HostName m.example\n",
+        );
+        write(
+            &dir.join(".ssh/config.d/lab.conf"),
+            "Host lab\n  HostName lab.example\n",
+        );
         let parsed = parse(&dir.join(".ssh/config"), &dir).unwrap();
-        let names: Vec<_> = parsed.file.sessions.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<_> = parsed
+            .file
+            .sessions
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
         assert!(names.contains(&"lab"));
         assert!(names.contains(&"main"));
         let _ = std::fs::remove_dir_all(dir);

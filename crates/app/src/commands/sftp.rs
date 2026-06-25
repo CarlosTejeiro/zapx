@@ -217,7 +217,11 @@ pub async fn sftp_download_file(
         .await;
 
     // Always remove the token, success or failure, so the map doesn't leak.
-    state.sftp_cancellations.lock().unwrap().remove(&transfer_id);
+    state
+        .sftp_cancellations
+        .lock()
+        .unwrap()
+        .remove(&transfer_id);
     result.map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -244,7 +248,11 @@ pub async fn sftp_upload_file(
         .upload_streaming(&PathBuf::from(local_path), &remote_path, cancel, progress)
         .await;
 
-    state.sftp_cancellations.lock().unwrap().remove(&transfer_id);
+    state
+        .sftp_cancellations
+        .lock()
+        .unwrap()
+        .remove(&transfer_id);
     result.map_err(|e| AppError::Internal(e.to_string()))
 }
 
@@ -282,7 +290,9 @@ pub async fn sftp_edit_file(
     // Watch the temp file's mtime and re-upload on change. Runs until the
     // session goes away (then cleans up the temp file). Polling avoids the
     // editor-rename pitfalls of a single-file fs watcher.
-    let start_mtime = std::fs::metadata(&local).ok().and_then(|m| m.modified().ok());
+    let start_mtime = std::fs::metadata(&local)
+        .ok()
+        .and_then(|m| m.modified().ok());
     let app2 = app.clone();
     let local2 = local.clone();
     tauri::async_runtime::spawn(async move {
@@ -292,8 +302,12 @@ pub async fn sftp_edit_file(
             tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
             let state = app2.state::<AppState>();
             // Session closed → stop watching and clean up.
-            let Ok(sftp) = sftp_for(&state, &session_id).await else { break };
-            let m = std::fs::metadata(&local2).ok().and_then(|x| x.modified().ok());
+            let Ok(sftp) = sftp_for(&state, &session_id).await else {
+                break;
+            };
+            let m = std::fs::metadata(&local2)
+                .ok()
+                .and_then(|x| x.modified().ok());
             if m.is_some() && m != last {
                 last = m;
                 let noop: core_transport::ProgressFn = Arc::new(|_, _| {});
@@ -301,8 +315,12 @@ pub async fn sftp_edit_file(
                     .upload_streaming(&local2, &remote_path, new_sftp_cancel_token(), noop)
                     .await
                 {
-                    Ok(_) => { let _ = app2.emit("sftp-edit-saved", remote_path.clone()); }
-                    Err(e) => { let _ = app2.emit("sftp-edit-error", format!("{remote_path}: {e}")); }
+                    Ok(_) => {
+                        let _ = app2.emit("sftp-edit-saved", remote_path.clone());
+                    }
+                    Err(e) => {
+                        let _ = app2.emit("sftp-edit-error", format!("{remote_path}: {e}"));
+                    }
                 }
             }
         }
@@ -328,7 +346,15 @@ fn open_in_editor(path: &std::path::Path) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     return spawn("open", &[p]);
     #[cfg(target_os = "windows")]
-    return spawn("cmd", &[std::ffi::OsStr::new("/C"), std::ffi::OsStr::new("start"), std::ffi::OsStr::new(""), p]);
+    return spawn(
+        "cmd",
+        &[
+            std::ffi::OsStr::new("/C"),
+            std::ffi::OsStr::new("start"),
+            std::ffi::OsStr::new(""),
+            p,
+        ],
+    );
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     return spawn("xdg-open", &[p]);
 }

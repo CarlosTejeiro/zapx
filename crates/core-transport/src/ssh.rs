@@ -263,9 +263,7 @@ impl client::Handler for SshClientHandler {
             let mut remote = channel.into_stream();
             match tokio::net::TcpStream::connect((target.host.as_str(), target.port)).await {
                 Ok(mut local) => {
-                    if let Err(e) =
-                        tokio::io::copy_bidirectional(&mut remote, &mut local).await
-                    {
+                    if let Err(e) = tokio::io::copy_bidirectional(&mut remote, &mut local).await {
                         tracing::debug!("remote forward bridge ended: {e}");
                     }
                 }
@@ -536,8 +534,7 @@ async fn open_shell_async(
     cols: u16,
     rows: u16,
 ) -> Result<SshTransport, Error> {
-    let (mut session, forwards, tcp_mss, mss_watcher) =
-        connect_only(host.clone(), port).await?;
+    let (mut session, forwards, tcp_mss, mss_watcher) = connect_only(host.clone(), port).await?;
     let authenticated = perform_auth(&mut session, user, auth).await?;
     if !authenticated {
         return Err(Error::AuthFailed);
@@ -825,10 +822,10 @@ async fn agent_auth(
     // ("I told you to use Pageant only") fails loudly rather than silently
     // succeeding against the wrong agent.
     let backends: &[AgentBackend] = match priority {
-        AgentPriority::Auto         => &[AgentBackend::OpenSsh, AgentBackend::Pageant],
+        AgentPriority::Auto => &[AgentBackend::OpenSsh, AgentBackend::Pageant],
         AgentPriority::PageantFirst => &[AgentBackend::Pageant, AgentBackend::OpenSsh],
-        AgentPriority::OpenSshOnly  => &[AgentBackend::OpenSsh],
-        AgentPriority::PageantOnly  => &[AgentBackend::Pageant],
+        AgentPriority::OpenSshOnly => &[AgentBackend::OpenSsh],
+        AgentPriority::PageantOnly => &[AgentBackend::Pageant],
     };
 
     let mut errors: Vec<String> = Vec::new();
@@ -839,7 +836,10 @@ async fn agent_auth(
             // final verdict for this backend; try the next one in priority
             // because the OTHER agent may hold a key the server accepts.
             Ok(false) => {
-                errors.push(format!("{}: no identity accepted by server", backend.label()));
+                errors.push(format!(
+                    "{}: no identity accepted by server",
+                    backend.label()
+                ));
             }
             Err(e) => errors.push(format!("{}: {e}", backend.label())),
         }
@@ -939,7 +939,11 @@ trait AgentIdentities {
     fn request_identities_dyn(
         &mut self,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>> + Send + '_>,
+        Box<
+            dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>>
+                + Send
+                + '_,
+        >,
     >;
 }
 
@@ -950,12 +954,15 @@ where
     fn request_identities_dyn(
         &mut self,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>> + Send + '_>,
+        Box<
+            dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>>
+                + Send
+                + '_,
+        >,
     > {
         Box::pin(async move { self.request_identities().await.map_err(|e| e.to_string()) })
     }
 }
-
 
 #[cfg(test)]
 mod tests {

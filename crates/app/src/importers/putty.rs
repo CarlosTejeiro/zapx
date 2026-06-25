@@ -62,7 +62,9 @@ pub fn parse_reg(content: &str) -> Vec<PuttySession> {
             continue;
         }
         let Some(s) = current.as_mut() else { continue };
-        let Some((key, value)) = line.split_once('=') else { continue };
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         let key = key.trim().trim_matches('"');
         let value = value.trim();
         match key {
@@ -97,8 +99,13 @@ pub fn read_registry() -> Vec<PuttySession> {
     };
     let mut out = Vec::new();
     for name_enc in sessions.enum_keys().flatten() {
-        let Ok(key) = sessions.open_subkey(&name_enc) else { continue };
-        let mut s = PuttySession { name: percent_decode(&name_enc), ..Default::default() };
+        let Ok(key) = sessions.open_subkey(&name_enc) else {
+            continue;
+        };
+        let mut s = PuttySession {
+            name: percent_decode(&name_enc),
+            ..Default::default()
+        };
         s.host = key.get_value("HostName").ok();
         s.protocol = key
             .get_value::<String, _>("Protocol")
@@ -129,7 +136,11 @@ pub fn read_registry() -> Vec<PuttySession> {
 /// `D[bind:]port` (dynamic SOCKS). An optional `4`/`6` after the type letter
 /// forces the IP version and is ignored. Unparseable specs are warned, not
 /// fatal.
-pub fn parse_port_forwardings(spec: &str, session: &str, warnings: &mut Vec<String>) -> Vec<SavedForward> {
+pub fn parse_port_forwardings(
+    spec: &str,
+    session: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<SavedForward> {
     let mut out = Vec::new();
     for raw in spec.split(',') {
         let item = raw.trim();
@@ -142,7 +153,9 @@ pub fn parse_port_forwardings(spec: &str, session: &str, warnings: &mut Vec<Stri
             Some('R') => "remote",
             Some('D') => "dynamic",
             _ => {
-                warnings.push(format!("«{session}»: forward «{item}» no reconocido — omitido"));
+                warnings.push(format!(
+                    "«{session}»: forward «{item}» no reconocido — omitido"
+                ));
                 continue;
             }
         };
@@ -161,24 +174,38 @@ pub fn parse_port_forwardings(spec: &str, session: &str, warnings: &mut Vec<Stri
             None => ("127.0.0.1".to_owned(), source),
         };
         let Ok(bind_port) = bind_port_s.trim().parse::<u16>() else {
-            warnings.push(format!("«{session}»: forward «{item}»: puerto inválido — omitido"));
+            warnings.push(format!(
+                "«{session}»: forward «{item}»: puerto inválido — omitido"
+            ));
             continue;
         };
         if kind == "dynamic" {
-            out.push(SavedForward { kind: kind.into(), bind_addr, bind_port, target_host: None, target_port: None });
+            out.push(SavedForward {
+                kind: kind.into(),
+                bind_addr,
+                bind_port,
+                target_host: None,
+                target_port: None,
+            });
             continue;
         }
         // local/remote need host:port
         let Some(dest) = dest else {
-            warnings.push(format!("«{session}»: forward «{item}» sin destino — omitido"));
+            warnings.push(format!(
+                "«{session}»: forward «{item}» sin destino — omitido"
+            ));
             continue;
         };
         let Some((th, tp_s)) = dest.rsplit_once(':') else {
-            warnings.push(format!("«{session}»: forward «{item}»: destino inválido — omitido"));
+            warnings.push(format!(
+                "«{session}»: forward «{item}»: destino inválido — omitido"
+            ));
             continue;
         };
         let Ok(tp) = tp_s.trim().parse::<u16>() else {
-            warnings.push(format!("«{session}»: forward «{item}»: puerto destino inválido — omitido"));
+            warnings.push(format!(
+                "«{session}»: forward «{item}»: puerto destino inválido — omitido"
+            ));
             continue;
         };
         out.push(SavedForward {
@@ -230,7 +257,11 @@ pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
                     &s.name,
                     proto,
                     Some(host),
-                    Some(s.port.and_then(|p| u16::try_from(p).ok()).unwrap_or_else(|| common::default_port(proto))),
+                    Some(
+                        s.port
+                            .and_then(|p| u16::try_from(p).ok())
+                            .unwrap_or_else(|| common::default_port(proto)),
+                    ),
                     s.username.clone().filter(|u| !u.is_empty()),
                     auth,
                     idx - 1,
@@ -240,7 +271,10 @@ pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
                     if let Some(pf) = &s.port_forwardings {
                         let fwds = parse_port_forwardings(pf, &s.name, &mut warnings);
                         if !fwds.is_empty() {
-                            forwards.push(SessionForwards { session_id: idx, forwards: fwds });
+                            forwards.push(SessionForwards {
+                                session_id: idx,
+                                forwards: fwds,
+                            });
                         }
                     }
                 }
@@ -252,11 +286,21 @@ pub fn from_sessions(sessions: &[PuttySession]) -> Parsed {
                 };
                 idx += 1;
                 let mut row = common::session(
-                    idx, None, &s.name, "serial", None, None, None, Auth::Password, idx - 1,
+                    idx,
+                    None,
+                    &s.name,
+                    "serial",
+                    None,
+                    None,
+                    None,
+                    Auth::Password,
+                    idx - 1,
                 );
                 let baud = s.serial_speed.unwrap_or(9600);
-                row.options_json = format!(r#"{{"device":{},"baud_rate":{baud}}}"#,
-                    serde_json::to_string(&device).unwrap_or_else(|_| "\"\"".into()));
+                row.options_json = format!(
+                    r#"{{"device":{},"baud_rate":{baud}}}"#,
+                    serde_json::to_string(&device).unwrap_or_else(|_| "\"\"".into())
+                );
                 rows.push(row);
             }
             other => warnings.push(format!(
@@ -360,7 +404,12 @@ mod tests {
     fn parses_port_forwardings() {
         let parsed = from_sessions(&parse_reg(SAMPLE));
         // The edge router is the first SSH session (file-local id 1).
-        let sf = parsed.file.session_forwards.iter().find(|f| f.session_id == 1).unwrap();
+        let sf = parsed
+            .file
+            .session_forwards
+            .iter()
+            .find(|f| f.session_id == 1)
+            .unwrap();
         assert_eq!(sf.forwards.len(), 3);
         let local = sf.forwards.iter().find(|f| f.kind == "local").unwrap();
         assert_eq!(local.bind_port, 8080);
