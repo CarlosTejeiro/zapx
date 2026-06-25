@@ -320,6 +320,19 @@
     activeTab?.statuses.get(focusedPaneId) ?? 'connecting',
   )
 
+  /** Saved-session ids with at least one currently-connected pane open across
+   *  every tab — drives the green "connected" dot on the sidebar avatars. */
+  const connectedSessionIds = $derived.by<Set<number>>(() => {
+    const ids = new Set<number>()
+    for (const t of tabs) {
+      for (const p of tabPanes(t)) {
+        const sid = p.savedSession?.id
+        if (sid != null && t.statuses.get(p.id) === 'connected') ids.add(sid)
+      }
+    }
+    return ids
+  })
+
   const splitOn = $derived(
     !!activeTab && activeTab.layout.kind === 'split' && leafCount(activeTab.layout.root) > 1,
   )
@@ -1010,6 +1023,7 @@
       {sessions}
       {folders}
       activeSessionId={focusedPaneData?.savedSession?.id}
+      {connectedSessionIds}
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
       onDelete={async (s) => {

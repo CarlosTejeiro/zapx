@@ -14,12 +14,26 @@
     ink: string
     /// Accent ring colour when `active` (theme.accent).
     accent?: string
-    /// The session is the one currently open → add an accent ring.
+    /// The session is the one currently focused → add an accent ring.
     active?: boolean
+    /// The session has a live connection open → show a status dot.
+    connected?: boolean
+    /// Status-dot colour when `connected` (theme.ok).
+    ok?: string
     size?: number
   }
 
-  const { name, color, paper, ink, accent, active = false, size = 22 }: Props = $props()
+  const {
+    name,
+    color,
+    paper,
+    ink,
+    accent,
+    active = false,
+    connected = false,
+    ok = '#3ddc84',
+    size = 22,
+  }: Props = $props()
 
   const initials = $derived(deriveInitials(name))
 
@@ -34,34 +48,59 @@
   }
 </script>
 
-<span
-  class="avatar"
-  class:active
-  style:width="{size}px"
-  style:height="{size}px"
-  style:border-radius="{Math.round(size * 0.3)}px"
-  style:font-size="{Math.round(size * 0.4)}px"
-  style:background="color-mix(in srgb, {color} 24%, {paper})"
-  style:color="color-mix(in srgb, {color} 70%, {ink})"
-  style:border="1px solid color-mix(in srgb, {color} 40%, transparent)"
-  style:box-shadow={active && accent
-    ? `0 0 0 2px color-mix(in srgb, ${accent} 55%, transparent)`
-    : 'none'}
->
-  {initials}
+<span class="avatar-wrap" style:width="{size}px" style:height="{size}px">
+  <span
+    class="avatar"
+    class:active
+    style:border-radius="{Math.round(size * 0.3)}px"
+    style:font-size="{Math.round(size * 0.4)}px"
+    style:background="color-mix(in srgb, {color} 24%, {paper})"
+    style:color="color-mix(in srgb, {color} 70%, {ink})"
+    style:border="1px solid color-mix(in srgb, {color} 40%, transparent)"
+    style:box-shadow={active && accent
+      ? `0 0 0 2px color-mix(in srgb, ${accent} 55%, transparent)`
+      : 'none'}
+  >
+    {initials}
+  </span>
+  {#if connected}
+    <span
+      class="status-dot"
+      style:width="{Math.max(7, Math.round(size * 0.34))}px"
+      style:height="{Math.max(7, Math.round(size * 0.34))}px"
+      style:background={ok}
+      style:box-shadow="0 0 0 2px {paper}"
+      title="Connected"
+    ></span>
+  {/if}
 </span>
 
 <style>
+  .avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
   .avatar {
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     font-weight: 700;
     letter-spacing: 0.3px;
     font-family: var(--zx-font-mono);
     line-height: 1;
     user-select: none;
     transition: box-shadow 0.12s;
+  }
+
+  .status-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 50%;
+    pointer-events: none;
   }
 </style>

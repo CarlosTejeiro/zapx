@@ -9,6 +9,9 @@
     sessions: SavedSession[]
     folders: Folder[]
     activeSessionId?: number
+    /** Saved-session ids with a live connection open — shows a green dot on the
+     *  avatar. The focused one additionally gets the accent ring. */
+    connectedSessionIds?: Set<number>
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
     onDelete?: (session: SavedSession) => void
@@ -31,6 +34,7 @@
     sessions,
     folders,
     activeSessionId,
+    connectedSessionIds,
     onSelect,
     onEdit,
     onDelete,
@@ -305,6 +309,8 @@
                 ink={theme.textPrimary}
                 accent={theme.accent}
                 active={isActive}
+                connected={connectedSessionIds?.has(s.id) ?? false}
+                ok={theme.ok}
                 size={22}
               />
               <span
@@ -437,6 +443,8 @@
                     ink={theme.textPrimary}
                     accent={theme.accent}
                     active={isActive}
+                    connected={connectedSessionIds?.has(s.id) ?? false}
+                    ok={theme.ok}
                     size={19}
                   />
                   <span
