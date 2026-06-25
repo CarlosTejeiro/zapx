@@ -8,7 +8,6 @@
   import Sidebar from '$lib/pylon/Sidebar.svelte'
   import TabBar from '$lib/pylon/TabBar.svelte'
   import type { TabEntry } from '$lib/pylon/TabBar.svelte'
-  import Pane from '$lib/pylon/Pane.svelte'
   import type { PaneData } from '$lib/pylon/Pane.svelte'
   import SplitTree from '$lib/pylon/SplitTree.svelte'
   import GridView from '$lib/pylon/GridView.svelte'
@@ -992,7 +991,6 @@
     onSettings={() => showSettings = true}
     onSnippets={() => showSnippets = true}
     onCheckUpdates={handleCheckUpdates}
-    onToggleTheme={toggleTheme}
     onSetTheme={(k) => setTheme(k)}
     onAbout={() => showAbout = true}
     onExport={handleExport}
@@ -1251,7 +1249,6 @@
 <VariablesDialog />
 
 {#if showAbout}
-  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
   <div
     class="about-backdrop"
     onclick={() => showAbout = false}

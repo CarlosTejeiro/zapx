@@ -22,7 +22,6 @@
     onSettings?: () => void
     onSnippets?: () => void
     onCheckUpdates?: () => void
-    onToggleTheme?: () => void
     onSetTheme?: (key: string) => void
     onAbout?: () => void
     onExport?: () => void
@@ -44,7 +43,6 @@
     onSettings,
     onSnippets,
     onCheckUpdates,
-    onToggleTheme,
     onSetTheme,
     onAbout,
     onExport,
