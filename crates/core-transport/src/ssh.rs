@@ -189,13 +189,27 @@ fn expand_tilde(path: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(path)
 }
 
-/// Strict handler used for real connections: accepts only host keys that are
-/// already recorded in `known_hosts` and match. Unknown or changed keys are
-/// rejected (fail closed). Trust is established out-of-band via
-/// [`trust_host_key`] after the user approves the preflight result.
+/// Host-key handler for real connections.
+///
+/// * **Changed** keys are always rejected (possible MITM — fail closed).
+/// * **Unknown** keys depend on [`Self::allow_tofu`]:
+///   - `false` (direct connections): rejected. Trust must be established
+///     out-of-band first — the UI runs [`preflight_host_key`], shows the
+///     fingerprint, and on approval calls [`trust_host_key`] to record it,
+///     so by connect time the key is already `Known`. An unknown key here
+///     means preflight was bypassed or the key changed in the gap, so we
+///     fail closed rather than silently trusting.
+///   - `true` (bastion hops and jump-host targets): Trust On First Use —
+///     record and accept, logging the learned fingerprint for an audit
+///     trail. This is unavoidable for hosts reachable *only* through a jump
+///     host, since the UI preflight can't open a direct socket to prompt.
 pub struct SshClientHandler {
     host: String,
     port: u16,
+    /// Whether to Trust On First Use an unknown key (see the type docs).
+    /// Only `true` for sessions that ride inside an SSH tunnel (bastion hops
+    /// and jump-host targets), where a direct preflight is impossible.
+    allow_tofu: bool,
     /// Shared with [`crate::forwards::open_remote_forward`]; the
     /// `server_channel_open_forwarded_tcpip` callback below uses it to find
     /// where to bridge each incoming forwarded channel.
@@ -215,13 +229,28 @@ impl client::Handler for SshClientHandler {
             Ok(true) => Ok(true),
             // Recorded but DIFFERENT → possible MITM; reject (fail closed).
             Err(russh_keys::Error::KeyChanged { .. }) => Ok(false),
-            // Unknown (not recorded) or unreadable known_hosts → Trust On First
-            // Use: record the key and accept. This is the only path that lets a
-            // host reachable ONLY through a jump host be trusted, since the UI
-            // preflight can't reach it directly to prompt. Direct connections
-            // are unaffected: the UI preflight has already recorded their key
-            // (or the user declined and we never get here).
+            // Unknown (not recorded) or unreadable known_hosts.
             _ => {
+                if !self.allow_tofu {
+                    // Direct connection: the UI preflight should already have
+                    // recorded this key. Reaching here means it didn't —
+                    // fail closed instead of trusting blindly.
+                    tracing::warn!(
+                        host = %self.host,
+                        port = self.port,
+                        fingerprint = %fingerprint(server_public_key),
+                        "rejecting unknown host key on a direct connection (preflight bypassed?)"
+                    );
+                    return Ok(false);
+                }
+                // Tunneled host (bastion / jump target): TOFU is the only
+                // option, but leave an audit trail of what we trusted.
+                tracing::warn!(
+                    host = %self.host,
+                    port = self.port,
+                    fingerprint = %fingerprint(server_public_key),
+                    "trusting unknown host key on first use (reachable only via jump host)"
+                );
                 let _ = russh_keys::known_hosts::learn_known_hosts(
                     &self.host,
                     self.port,
@@ -534,7 +563,10 @@ async fn open_shell_async(
     cols: u16,
     rows: u16,
 ) -> Result<SshTransport, Error> {
-    let (mut session, forwards, tcp_mss, mss_watcher) = connect_only(host.clone(), port).await?;
+    // Direct connection: the UI preflight handles trust, so fail closed on
+    // an unknown key here rather than silently trusting it.
+    let (mut session, forwards, tcp_mss, mss_watcher) =
+        connect_only(host.clone(), port, false).await?;
     let authenticated = perform_auth(&mut session, user, auth).await?;
     if !authenticated {
         return Err(Error::AuthFailed);
@@ -562,6 +594,7 @@ async fn open_shell_async(
 async fn connect_only(
     host: String,
     port: u16,
+    allow_tofu: bool,
 ) -> Result<
     (
         client::Handle<SshClientHandler>,
@@ -582,6 +615,7 @@ async fn connect_only(
     let handler = SshClientHandler {
         host: host.clone(),
         port,
+        allow_tofu,
         forwards: Arc::clone(&forwards),
     };
     let handle = client::connect_stream(config, stream, handler)
@@ -684,9 +718,10 @@ pub async fn connect_authenticated(
 ) -> Result<client::Handle<SshClientHandler>, Error> {
     // Bastion-only path: -R against a bastion is not supported, so we drop
     // the registry returned by `connect_only`. MSS is dropped too — we only
-    // care about the FINAL session's MSS, not each bastion hop.
+    // care about the FINAL session's MSS, not each bastion hop. Bastions are
+    // not preflighted by the UI, so TOFU their host key on first use.
     let (mut session, _bastion_forwards, _bastion_mss, _bastion_watcher) =
-        connect_only(host, port).await?;
+        connect_only(host, port, true).await?;
     let authenticated = perform_auth(&mut session, user, auth).await?;
     if !authenticated {
         return Err(Error::AuthFailed);
@@ -710,10 +745,12 @@ pub async fn connect_authenticated_via(
     let stream = channel.into_stream();
     let config = build_client_config();
     // Bastion: discard the registry — the resulting handle is only used as
-    // a hop for direct-tcpip channels, never the final SSH session.
+    // a hop for direct-tcpip channels, never the final SSH session. Reached
+    // through a tunnel, so it can't be preflighted: TOFU on first use.
     let handler = SshClientHandler {
         host: host.clone(),
         port,
+        allow_tofu: true,
         forwards: new_remote_forward_registry(),
     };
     let mut session = client::connect_stream(config, stream, handler)
@@ -749,13 +786,16 @@ async fn open_shell_via_async(
         .map_err(Error::Ssh)?;
     let stream = channel.into_stream();
 
-    // Run a fresh SSH client over that tunneled stream. The strict
-    // known_hosts handler is keyed to the TARGET, not the bastion.
+    // Run a fresh SSH client over that tunneled stream. The known_hosts
+    // handler is keyed to the TARGET, not the bastion. The target is only
+    // reachable through the tunnel, so the UI can't preflight it: TOFU on
+    // first use (the learned fingerprint is logged).
     let config = build_client_config();
     let forwards = new_remote_forward_registry();
     let handler = SshClientHandler {
         host: target_host.clone(),
         port: target_port,
+        allow_tofu: true,
         forwards: Arc::clone(&forwards),
     };
     let mut session = client::connect_stream(config, stream, handler)

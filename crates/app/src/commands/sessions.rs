@@ -110,6 +110,19 @@ fn maybe_install_login_runner(
             let _ = app_for_progress.emit("login-script-progress", p);
         }),
     ));
+    // Watchdog: `feed` only advances the deadline when bytes arrive, so a
+    // server that stays completely silent would never trip the per-step
+    // timeout. Poll the runner on a timer until the script finishes
+    // (completes or times out), then let the task end.
+    let watch = Arc::clone(&runner);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            if watch.check_timeout() {
+                break;
+            }
+        }
+    });
     *slot.lock().unwrap() = Some(runner);
 }
 

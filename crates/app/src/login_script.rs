@@ -136,15 +136,26 @@ impl LoginRunner {
         runner
     }
 
-    /// Feed a chunk of session output to the runner. Cheap when the script
-    /// is already complete (early return).
-    pub fn feed(&self, data: &[u8]) {
+    /// Expire the current step if its deadline has passed, returning `true`
+    /// when the script is finished afterwards.
+    ///
+    /// [`feed`](Self::feed) only runs when bytes arrive, so a server that
+    /// goes completely silent would never trip the per-step timeout. A
+    /// timer-driven watchdog calls this so the step still expires (and the
+    /// frontend gets a `timeout` progress event) even with zero output.
+    pub fn check_timeout(&self) -> bool {
         let mut inner = self.inner.lock().unwrap();
-        if inner.index >= self.steps.len() {
-            return;
-        }
+        self.expire_if_due(&mut inner);
+        inner.index >= self.steps.len()
+    }
 
-        // Deadline check: a silent server still expires the current step.
+    /// If the current step's deadline has passed, mark the script timed out
+    /// and emit the `timeout` progress event. Returns `true` if the script
+    /// is finished (already done, or just expired).
+    fn expire_if_due(&self, inner: &mut RunnerInner) -> bool {
+        if inner.index >= self.steps.len() {
+            return true;
+        }
         if Instant::now() > inner.deadline {
             tracing::warn!(
                 session_id = %self.session_id,
@@ -159,6 +170,17 @@ impl LoginRunner {
                 total: self.steps.len(),
                 status: "timeout",
             });
+            return true;
+        }
+        false
+    }
+
+    /// Feed a chunk of session output to the runner. Cheap when the script
+    /// is already complete (early return).
+    pub fn feed(&self, data: &[u8]) {
+        let mut inner = self.inner.lock().unwrap();
+        // Done, or the current step just timed out → nothing more to do.
+        if self.expire_if_due(&mut inner) {
             return;
         }
 
@@ -280,5 +302,35 @@ mod tests {
         // Invalid regex falls back to literal (matches the raw pattern text).
         let bad = Matcher::build("(unclosed", true, "s");
         assert!(bad.is_match("see (unclosed here"));
+    }
+
+    #[test]
+    fn silent_server_times_out_via_check_timeout() {
+        use std::sync::{Arc, Mutex as StdMutex};
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let statuses: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let sink = Arc::clone(&statuses);
+        let steps = vec![LoginStep {
+            expect: "prompt-that-never-comes".into(),
+            is_regex: false,
+            send: "x".into(),
+            timeout_ms: 1,
+        }];
+        let runner = LoginRunner::new(
+            "s".into(),
+            steps,
+            tx,
+            Box::new(move |p| sink.lock().unwrap().push(p.status.to_string())),
+        );
+        // No data is ever fed. Past the 1 ms deadline, the watchdog's
+        // check_timeout must still expire the step.
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(
+            runner.check_timeout(),
+            "script should be finished after timeout"
+        );
+        let s = statuses.lock().unwrap();
+        assert_eq!(s.first().map(String::as_str), Some("running"));
+        assert!(s.iter().any(|x| x == "timeout"), "expected a timeout event");
     }
 }
