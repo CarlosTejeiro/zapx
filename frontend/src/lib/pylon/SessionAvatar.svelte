@@ -16,10 +16,12 @@
     accent?: string
     /// The session is the one currently focused → add an accent ring.
     active?: boolean
-    /// The session has a live connection open → show a status dot.
-    connected?: boolean
-    /// Status-dot colour when `connected` (theme.ok).
+    /// Live connection status → status dot. `undefined` = idle (no dot).
+    status?: 'connecting' | 'connected' | 'error'
+    /// Status-dot colours (theme.ok / theme.warn / theme.err).
     ok?: string
+    warn?: string
+    err?: string
     size?: number
   }
 
@@ -30,12 +32,18 @@
     ink,
     accent,
     active = false,
-    connected = false,
+    status,
     ok = '#3ddc84',
+    warn = '#d8b16a',
+    err = '#e07474',
     size = 22,
   }: Props = $props()
 
   const initials = $derived(deriveInitials(name))
+
+  const dotColor = $derived(
+    status === 'connected' ? ok : status === 'connecting' ? warn : status === 'error' ? err : null,
+  )
 
   /// First letters of the first two name parts (split on - _ . space), else the
   /// first two characters. Always 1–2 uppercase chars; never empty.
@@ -63,14 +71,15 @@
   >
     {initials}
   </span>
-  {#if connected}
+  {#if dotColor}
     <span
       class="status-dot"
+      class:pulse={status === 'connecting'}
       style:width="{Math.max(7, Math.round(size * 0.34))}px"
       style:height="{Math.max(7, Math.round(size * 0.34))}px"
-      style:background={ok}
+      style:background={dotColor}
       style:box-shadow="0 0 0 2px {paper}"
-      title="Connected"
+      title={status}
     ></span>
   {/if}
 </span>
@@ -102,5 +111,26 @@
     bottom: -2px;
     border-radius: 50%;
     pointer-events: none;
+  }
+
+  /* Connecting: gentle opacity pulse so the amber dot reads as "in progress". */
+  .status-dot.pulse {
+    animation: dot-pulse 1.3s ease-in-out infinite;
+  }
+
+  @keyframes dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status-dot.pulse {
+      animation: none;
+    }
   }
 </style>

@@ -320,17 +320,25 @@
     activeTab?.statuses.get(focusedPaneId) ?? 'connecting',
   )
 
-  /** Saved-session ids with at least one currently-connected pane open across
-   *  every tab — drives the green "connected" dot on the sidebar avatars. */
-  const connectedSessionIds = $derived.by<Set<number>>(() => {
-    const ids = new Set<number>()
+  /** Aggregated live status per saved-session id, across every open pane in
+   *  every tab — drives the status dot on the sidebar avatars. A session with
+   *  no open pane (or only `closed` ones) is absent from the map and shows no
+   *  dot (idle / not opened). When a session has several panes open, the most
+   *  reassuring status wins: connected > connecting > error. */
+  const sessionStatuses = $derived.by<Map<number, 'connecting' | 'connected' | 'error'>>(() => {
+    const m = new Map<number, 'connecting' | 'connected' | 'error'>()
+    const rank = { error: 1, connecting: 2, connected: 3 } as const
     for (const t of tabs) {
       for (const p of tabPanes(t)) {
         const sid = p.savedSession?.id
-        if (sid != null && t.statuses.get(p.id) === 'connected') ids.add(sid)
+        if (sid == null) continue
+        const st = t.statuses.get(p.id)
+        if (st !== 'connecting' && st !== 'connected' && st !== 'error') continue
+        const cur = m.get(sid)
+        if (!cur || rank[st] > rank[cur]) m.set(sid, st)
       }
     }
-    return ids
+    return m
   })
 
   const splitOn = $derived(
@@ -1023,7 +1031,7 @@
       {sessions}
       {folders}
       activeSessionId={focusedPaneData?.savedSession?.id}
-      {connectedSessionIds}
+      {sessionStatuses}
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
       onDelete={async (s) => {
