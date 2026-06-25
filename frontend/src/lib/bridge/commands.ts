@@ -108,9 +108,15 @@ export async function sshPreflightHostKey(host: string, port: number): Promise<H
   return invoke<HostKeyStatus>('ssh_preflight_host_key', { host, port })
 }
 
-/** Persist trust for a host key (writes ~/.ssh/known_hosts). */
-export async function sshTrustHostKey(host: string, port: number): Promise<void> {
-  return invoke<void>('ssh_trust_host_key', { host, port })
+/** Persist trust for a host key (writes ~/.ssh/known_hosts). `fingerprint` is
+ * the value approved at preflight; the backend refuses to learn a key that no
+ * longer matches it (TOCTOU guard). */
+export async function sshTrustHostKey(
+  host: string,
+  port: number,
+  fingerprint: string,
+): Promise<void> {
+  return invoke<void>('ssh_trust_host_key', { host, port, fingerprint })
 }
 
 /** Respond to a keyboard-interactive `InfoRequest` (one entry per prompt). */

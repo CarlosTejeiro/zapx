@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "bundle": {
@@ -48,7 +48,7 @@
       "endpoints": [
         "https://example.com/zapx/updates/{{target}}/{{arch}}/{{current_version}}"
       ],
-      "dialog": false,
+      "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFQzJGNTU2QUMwNEQ1QkEKUldTNjFRU3NWdlhDTGk1eDBUL3dWYTB5WVl5ZS9HWStxWUF0bVZJRjQwcGVHelRmWW5nY0sxeWwK"
     }
   }

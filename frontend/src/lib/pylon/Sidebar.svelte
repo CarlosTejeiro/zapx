@@ -2,12 +2,17 @@
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, Folder } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
+  import SessionAvatar from '$lib/pylon/SessionAvatar.svelte'
 
   interface Props {
     theme: PylonTheme
     sessions: SavedSession[]
     folders: Folder[]
     activeSessionId?: number
+    /** Live status per saved-session id → status dot on the avatar
+     *  (connecting = amber, connected = green, error = red; absent = no dot).
+     *  The focused session additionally gets the accent ring. */
+    sessionStatuses?: Map<number, 'connecting' | 'connected' | 'error'>
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
     onDelete?: (session: SavedSession) => void
@@ -30,6 +35,7 @@
     sessions,
     folders,
     activeSessionId,
+    sessionStatuses,
     onSelect,
     onEdit,
     onDelete,
@@ -297,13 +303,25 @@
               style:background={isActive ? theme.itemActiveBg : ''}
               onclick={() => onSelect(s)}
             >
-              <span class="sb-dot" style:background={color}></span>
+              <SessionAvatar
+                name={s.name}
+                {color}
+                paper={theme.sidebarBg}
+                ink={theme.textPrimary}
+                accent={theme.accent}
+                active={isActive}
+                status={sessionStatuses?.get(s.id)}
+                ok={theme.ok}
+                warn={theme.warn}
+                err={theme.err}
+                size={22}
+              />
               <span
                 class="sb-name"
                 class:active={isActive}
                 style:color={isActive ? theme.textPrimary : theme.textMuted}
               >{s.name}</span>
-              {#if s.protocol !== 'local'}
+              {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                 <span
                   class="sb-tag"
                   style:color={theme.textDim}
@@ -421,13 +439,25 @@
                   style:background={isActive ? theme.itemActiveBg : ''}
                   onclick={() => onSelect(s)}
                 >
-                  <span class="sb-dot sb-dot-sm" style:background={color}></span>
+                  <SessionAvatar
+                    name={s.name}
+                    {color}
+                    paper={theme.sidebarBg}
+                    ink={theme.textPrimary}
+                    accent={theme.accent}
+                    active={isActive}
+                    status={sessionStatuses?.get(s.id)}
+                    ok={theme.ok}
+                    warn={theme.warn}
+                    err={theme.err}
+                    size={19}
+                  />
                   <span
                     class="sb-name sb-name-sm"
                     class:active={isActive}
                     style:color={isActive ? theme.textPrimary : theme.textMuted}
                   >{s.name}</span>
-                  {#if s.protocol !== 'local'}
+                  {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                     <span
                       class="sb-tag"
                       style:color={theme.textDim}
@@ -641,9 +671,9 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     padding: 0 8px;
-    height: 32px;
+    height: 34px;
     background: none;
     border: none;
     border-radius: var(--radius, 7px);
@@ -659,8 +689,8 @@
   }
 
   .sb-row-indented {
-    padding-left: 26px;
-    height: 30px;
+    padding-left: 22px;
+    height: 32px;
   }
 
   /* Drop indicators — a thin accent rule above (before) or below (after)
@@ -678,18 +708,6 @@
   }
   .sb-row.drop-before::before { top: -1px; }
   .sb-row.drop-after::after { bottom: -1px; }
-
-  .sb-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .sb-dot-sm {
-    width: 6px;
-    height: 6px;
-  }
 
   .sb-name {
     flex: 1;

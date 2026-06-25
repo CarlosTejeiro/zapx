@@ -168,7 +168,23 @@ pub fn run() {
                     .collect(),
             )));
 
-            let vault_seed = resolved.vault_seed();
+            // Local-fallback vault seed: a random per-install key in
+            // `vault.key` (mode 0600), not the predictable data-dir path the
+            // older builds used. If the keyfile didn't exist yet, this is the
+            // first launch on the new scheme — migrate any secrets written
+            // under the legacy seed so the user isn't re-prompted. If the
+            // keyfile can't be created (read-only dir), degrade to the legacy
+            // seed so credentials still resolve.
+            let legacy_seed = resolved.legacy_vault_seed();
+            let vault_key_existed = data_dir.join("vault.key").exists();
+            let vault_seed = core_vault::load_or_create_seed(&data_dir).unwrap_or_else(|e| {
+                tracing::warn!("vault keyfile unavailable ({e}); falling back to legacy seed");
+                legacy_seed.clone()
+            });
+            if !vault_key_existed && vault_seed != legacy_seed {
+                data_dir::migrate_session_secrets(&db, &legacy_seed, &vault_seed);
+            }
+
             app.manage(AppState {
                 data_dir: resolved,
                 sessions: Mutex::new(HashMap::new()),

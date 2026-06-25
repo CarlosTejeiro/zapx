@@ -77,8 +77,10 @@ To make it fully self-contained — sessions, settings, snippet catalogs and
 logs travelling with the exe — create an empty file named `portable` next to
 it; everything is then kept in a `data/` folder beside the executable. In
 portable mode credentials are stored AES-256-GCM-encrypted in the database
-instead of the OS keyring: anyone with access to the folder can use them, so
-treat the folder like a physical key.
+instead of the OS keyring, under a random key kept in `vault.key` (mode 0600)
+beside the database. Because both files live in the same `data/` folder,
+anyone with access to that folder can use the credentials — treat the folder
+like a physical key.
 
 ### Custom data folder
 
