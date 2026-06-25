@@ -679,6 +679,12 @@ pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Re
     // Drop any port-forwards bound to this session — Drop on ForwardController
     // aborts each listener task.
     state.forwards.lock().unwrap().remove(&session_id);
+    // Finalise a still-attached logger so closing a tab mid-capture doesn't
+    // leak the file handle or leave an open `session_logs` row. Best-effort:
+    // a failure here must not block the close.
+    if let Err(e) = crate::commands::logging::finalize_active_log(&state, &session_id) {
+        tracing::warn!(session_id, "finalize log on close failed: {e}");
+    }
     if let Some(active) = removed {
         if let Some(task) = active.stats_task {
             task.abort();

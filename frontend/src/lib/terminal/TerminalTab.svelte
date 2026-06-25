@@ -39,7 +39,6 @@
   import GhostText from '$lib/hints/GhostText.svelte'
   import HintPopup from '$lib/hints/HintPopup.svelte'
   import { hintsSettings } from '$lib/hints/store.svelte'
-  import { recordCommand } from '$lib/bridge/commands'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import { save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 
@@ -173,6 +172,13 @@
   // Held for $effect theme/font reactivity — set inside onMount.
   let term: InstanceType<typeof Terminal> | null = null
   let hintController = $state<HintController | null>(null)
+  // Teardown resources populated during the async onMount. They're released by
+  // a synchronously-registered onDestroy (see the note there): registering the
+  // teardown inside the async onMount — after its awaits — meant Svelte never
+  // tied it to the component lifecycle, so it silently never ran and every tab
+  // close leaked the xterm instance, the event listeners and the backend PTY.
+  let resizeObserver: ResizeObserver | null = null
+  let unlisteners: UnlistenFn[] = []
 
   // Logging state
   let isLogging = $state(false)
@@ -651,24 +657,24 @@
     term.focus()
 
     // Forward PTY output to xterm.
-    const unlisten: UnlistenFn = await listen<TerminalDataPayload>(
-      'terminal-data',
-      (event) => {
+    unlisteners.push(
+      await listen<TerminalDataPayload>('terminal-data', (event) => {
         if (!term || event.payload.session_id !== sessionId) return
         term.write(new Uint8Array(event.payload.data), () => {
           hintController?.onIncomingFlushed()
         })
-      },
+      }),
     )
 
     // Login-script progress badge (auto-clears a couple of seconds after
     // the script completes; sticks on timeout so the user notices).
-    const unlistenLogin: UnlistenFn = await listen<{
-      session_id: string
-      current: number
-      total: number
-      status: string
-    }>('login-script-progress', (event) => {
+    unlisteners.push(
+      await listen<{
+        session_id: string
+        current: number
+        total: number
+        status: string
+      }>('login-script-progress', (event) => {
       if (event.payload.session_id !== sessionId) return
       loginProgress = {
         current: event.payload.current,
@@ -680,30 +686,32 @@
           if (loginProgress?.status === 'complete') loginProgress = null
         }, 2500)
       }
-    })
+      }),
+    )
 
     // Output triggers that fired a notify/bell action.
-    const unlistenTrigger: UnlistenFn = await listen<{
-      session_id: string
-      kind: string
-      text: string
-    }>('trigger-fired', (event) => {
-      if (event.payload.session_id !== sessionId) return
-      const isBell = event.payload.kind === 'bell'
-      if (isBell) term?.write('\x07') // ring the terminal bell
-      showToast({
-        kind: isBell ? 'warning' : 'info',
-        title: isBell ? '🔔 Trigger' : 'Trigger',
-        detail: event.payload.text,
-      })
-    })
+    unlisteners.push(
+      await listen<{
+        session_id: string
+        kind: string
+        text: string
+      }>('trigger-fired', (event) => {
+        if (event.payload.session_id !== sessionId) return
+        const isBell = event.payload.kind === 'bell'
+        if (isBell) term?.write('\x07') // ring the terminal bell
+        showToast({
+          kind: isBell ? 'warning' : 'info',
+          title: isBell ? '🔔 Trigger' : 'Trigger',
+          detail: event.payload.text,
+        })
+      }),
+    )
 
     // Remote dropped the link (server closed, or keepalives went unanswered).
     // Mark the pane disconnected and kick off auto-reconnect if enabled; the
     // banner offers a manual retry either way.
-    const unlistenDisc: UnlistenFn = await listen<{ session_id: string }>(
-      'session-disconnected',
-      (event) => {
+    unlisteners.push(
+      await listen<{ session_id: string }>('session-disconnected', (event) => {
         if (event.payload.session_id !== sessionId) return
         if (paneId != null) unregisterSession(paneId)
         if (sessionId) unregisterFocus(sessionId)
@@ -711,7 +719,7 @@
         disconnected = true
         onSessionError?.()
         scheduleReconnect()
-      },
+      }),
     )
 
     // Forward keyboard input to the PTY (and to every other registered
@@ -719,13 +727,11 @@
     term.onData((data: string) => {
       if (!sessionId) return
       const u8 = new TextEncoder().encode(data)
-      // Feed the hint buffer first so it sees the bytes BEFORE the PTY
-      // round-trip. The returned non-null value is a flushed command line
-      // which we record asynchronously.
-      const submitted = hintController?.onOutgoing(u8) ?? null
-      if (submitted) {
-        recordCommand(savedSession?.id ?? null, submitted).catch(console.error)
-      }
+      // Feed the hint buffer so it sees the bytes BEFORE the PTY round-trip.
+      // onOutgoing already persists a flushed command line (with the prev→next
+      // transition), so we must NOT record it again here or the frequency
+      // stats double-count.
+      hintController?.onOutgoing(u8)
       const bytes = Array.from(u8)
       invoke('send_input', { sessionId, data: bytes }).catch(console.error)
       if (broadcast.enabled) {
@@ -736,7 +742,7 @@
     })
 
     // Resize terminal when the container size changes.
-    const observer = new ResizeObserver(() => {
+    resizeObserver = new ResizeObserver(() => {
       if (!term) return
       fitAddon.fit()
       if (sessionId) {
@@ -747,29 +753,34 @@
         }).catch(console.error)
       }
     })
-    observer.observe(container)
+    resizeObserver.observe(container)
+  })
 
-    onDestroy(async () => {
-      observer.disconnect()
-      clearReconnectTimer()
-      unlisten()
-      unlistenLogin()
-      unlistenTrigger()
-      unlistenDisc()
-      hintController?.clear()
-      hintController = null
-      term?.dispose()
-      if (paneId != null) unregisterSession(paneId)
-      if (sessionId) {
-        unregisterFocus(sessionId)
-        if (isLogging) {
-          await stopSessionLogging(sessionId).catch(console.error)
-        }
-        await invoke('close_session', { sessionId }).catch(console.error)
-        sessionId = null
-      }
-      onSessionClose?.()
-    })
+  // Teardown. Registered synchronously at component init — NOT inside the async
+  // onMount, where it would run after an `await` and never bind to the
+  // lifecycle. Reads the refs onMount populated; everything is null-guarded so
+  // it's safe even if the component is destroyed before onMount finishes.
+  onDestroy(() => {
+    clearReconnectTimer()
+    resizeObserver?.disconnect()
+    for (const off of unlisteners) off()
+    unlisteners = []
+    hintController?.clear()
+    hintController = null
+    term?.dispose()
+    if (paneId != null) unregisterSession(paneId)
+    if (sessionId) {
+      const id = sessionId
+      sessionId = null
+      unregisterFocus(id)
+      // onDestroy can't await; do the async teardown fire-and-forget but keep
+      // the order (stop logging before closing the backend session/PTY).
+      void (async () => {
+        if (isLogging) await stopSessionLogging(id).catch(console.error)
+        await invoke('close_session', { sessionId: id }).catch(console.error)
+      })()
+    }
+    onSessionClose?.()
   })
 
   // Reactive search: recount + jump to first match whenever the query or any

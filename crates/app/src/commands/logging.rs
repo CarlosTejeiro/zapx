@@ -79,18 +79,17 @@ pub async fn start_session_logging(
     Ok(path_str)
 }
 
-#[tauri::command]
-pub async fn stop_session_logging(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<(), AppError> {
-    let active = state
-        .loggers
-        .lock()
-        .unwrap()
-        .remove(&session_id)
-        .ok_or_else(|| AppError::Internal("no active log for this session".into()))?;
-
+/// Finalise an active log for `session_id` if one is attached: close the file
+/// and write its end time + byte count to the DB row. Returns `Ok(true)` when a
+/// log was finalised, `Ok(false)` when none was active.
+///
+/// Shared by [`stop_session_logging`] (explicit) and `close_session`
+/// (implicit), so a tab that closes mid-capture without an explicit stop
+/// doesn't leak the file handle and leave an open `session_logs` row.
+pub(crate) fn finalize_active_log(state: &AppState, session_id: &str) -> Result<bool, AppError> {
+    let Some(active) = state.loggers.lock().unwrap().remove(session_id) else {
+        return Ok(false);
+    };
     let log_db_id = active.log_db_id;
     let (_, bytes, _) = active
         .logger
@@ -103,7 +102,18 @@ pub async fn stop_session_logging(
         .end_session_log(log_db_id, &ended_at, bytes as i64)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    tracing::debug!(session_id, log_db_id, bytes, "logging stopped");
+    tracing::debug!(session_id, log_db_id, bytes, "logging finalised");
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn stop_session_logging(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), AppError> {
+    if !finalize_active_log(&state, &session_id)? {
+        return Err(AppError::Internal("no active log for this session".into()));
+    }
     Ok(())
 }
 
