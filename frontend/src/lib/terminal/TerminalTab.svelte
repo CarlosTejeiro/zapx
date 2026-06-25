@@ -107,9 +107,11 @@
     hostKeyResolve = null
     if (!approved) return false
 
-    // Only "unknown" is approvable; persist trust before connecting.
+    // Only "unknown" is approvable; persist trust before connecting. Pass the
+    // fingerprint the user just approved so the backend can refuse to learn a
+    // key that changed between preflight and now (TOCTOU guard).
     try {
-      await sshTrustHostKey(host, port)
+      await sshTrustHostKey(host, port, status.fingerprint)
     } catch (e) {
       errorMsg = fmtError(e)
       return false

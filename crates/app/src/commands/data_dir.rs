@@ -91,8 +91,10 @@ pub async fn set_data_dir(
         // 2. Re-encrypt the SQLite fallback secrets for the new seed. The
         //    OS keyring (primary store) is untouched. Blobs that fail to
         //    decrypt (foreign DB, older seed) are dropped — the keyring or
-        //    a fresh prompt covers those sessions.
-        let new_seed = new_dir.to_string_lossy().into_owned();
+        //    a fresh prompt covers those sessions. The seed is the new dir's
+        //    own random `vault.key` (created here), not the dir path.
+        let new_seed = core_vault::load_or_create_seed(&new_dir)
+            .map_err(|e| AppError::Internal(format!("vault keyfile en destino: {e}")))?;
         let migrated_db = core_persistence::Database::open(&new_db)
             .map_err(|e| AppError::Internal(format!("DB migrada no abre: {e}")))?;
         let mut reencrypted = 0usize;

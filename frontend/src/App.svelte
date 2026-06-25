@@ -1289,7 +1289,7 @@
           </tbody>
         </table>
         <p class="about-hint" style:color={theme.textDim} style:font-family={theme.fontMono}>
-          Credentials stored securely via system keyring
+          Credentials stored in the OS keyring; portable mode encrypts them with a local key file
         </p>
       </div>
     </div>
