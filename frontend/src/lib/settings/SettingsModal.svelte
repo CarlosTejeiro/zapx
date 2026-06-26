@@ -178,7 +178,9 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -263,6 +265,7 @@
   .tab-btn.active {
     color: var(--zx-text);
     background: var(--zx-active-bg);
+    box-shadow: inset 2px 0 0 var(--zx-accent);
   }
 
   .tab-content {
