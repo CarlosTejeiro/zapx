@@ -12,6 +12,8 @@
   import SplitTree from '$lib/pylon/SplitTree.svelte'
   import GridView from '$lib/pylon/GridView.svelte'
   import MasterInputBar from '$lib/pylon/MasterInputBar.svelte'
+  import ComparisonPanel from '$lib/orchestrator/ComparisonPanel.svelte'
+  import { CommandRunner, type RunnerHost } from '$lib/orchestrator/commandRunner.svelte'
   import CommandListDialog from '$lib/orchestrator/CommandListDialog.svelte'
   import TunnelsManagerDialog from '$lib/terminal/TunnelsManagerDialog.svelte'
   import {
@@ -64,6 +66,7 @@
     moveSavedSession,
     reorderSavedSession,
     deleteSavedSession,
+    cloneSavedSession,
     createFolder,
     renameFolder,
     deleteFolder,
@@ -355,6 +358,26 @@
           .filter((id): id is string => typeof id === 'string')
       : [],
   )
+
+  // ── Run & compare on a regular (split) tab ──────────────────────────────────
+  // Mirrors GridView's runner so "Compare" works outside broadcast-group grids:
+  // send one command to every live pane of the active tab and diff the outputs.
+  const compareRunner = new CommandRunner()
+  let showComparePanel = $state(false)
+
+  async function runCompareActiveTab(command: string) {
+    if (!activeTab) return
+    const hosts: RunnerHost[] = []
+    for (const pane of tabPanes(activeTab)) {
+      const sid = paneToSession.get(pane.id)
+      if (!sid) continue
+      const savedId = pane.savedSession?.id
+      const platform = savedId != null ? await getSessionPlatform(savedId).catch(() => null) : null
+      hosts.push({ sessionId: sid, label: pane.label, platform })
+    }
+    showComparePanel = true
+    await compareRunner.run(hosts, command)
+  }
 
   /// Every live session across all tabs, labelled — target list for the
   /// command-list dialog.
@@ -1034,6 +1057,15 @@
       {sessionStatuses}
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
+      onDuplicate={async (s) => {
+        try {
+          await cloneSavedSession(s.id)
+          await load()
+          showToast({ kind: 'success', title: 'Session duplicated', detail: `${s.name} (copy)` })
+        } catch (e) {
+          showToast({ kind: 'error', title: 'Duplicate failed', detail: e instanceof Error ? e.message : String(e) })
+        }
+      }}
       onDelete={async (s) => {
         const ok = await ask(`Delete "${s.name}"? This can't be undone.`, {
           title: 'Delete session',
@@ -1171,8 +1203,13 @@
 
       {#if multiOn && activeTab?.layout.kind === 'split'}
         <!-- Multi-exec on a regular tab: same master bar as grid mode,
-             broadcasting to every live pane of the active tab. -->
-        <MasterInputBar {theme} sessionIds={activeTabSessionIds} />
+             broadcasting to every live pane of the active tab, with the same
+             run-and-compare audit. -->
+        <MasterInputBar
+          {theme}
+          sessionIds={activeTabSessionIds}
+          onRunCompare={runCompareActiveTab}
+        />
       {/if}
 
       <SnippetButtonBar {theme} />
@@ -1235,6 +1272,16 @@
   <CommandListDialog
     targets={liveTargets}
     onClose={() => (showCommandList = false)}
+  />
+{/if}
+
+{#if showComparePanel}
+  <ComparisonPanel
+    {theme}
+    command={compareRunner.command}
+    hosts={compareRunner.hosts}
+    running={compareRunner.running}
+    onClose={() => { showComparePanel = false; compareRunner.reset() }}
   />
 {/if}
 

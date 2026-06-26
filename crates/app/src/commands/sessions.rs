@@ -961,6 +961,68 @@ pub async fn delete_saved_session(state: State<'_, AppState>, id: i64) -> Result
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Duplicate a saved session into an independent copy: its credential is
+/// re-stored under a fresh keyring entry, and the login script, triggers and
+/// port-forwards are copied too. Because nothing is shared with the original,
+/// deleting either session never affects the other. Returns the new id.
+#[tauri::command]
+pub async fn clone_saved_session(state: State<'_, AppState>, id: i64) -> Result<i64, AppError> {
+    let src = state
+        .db
+        .get_session(id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Give the copy its own credential when the secret is readable; otherwise
+    // it starts credential-less and prompts on first connect (keyring
+    // unavailable, or key/agent auth with no stored secret).
+    let credential_id = src
+        .credential_id
+        .and_then(|cid| clone_credential(&state.db, cid));
+
+    let new_id = state
+        .db
+        .create_session_full(
+            src.folder_id,
+            &format!("{} (copy)", src.name),
+            &src.protocol,
+            src.host.as_deref(),
+            src.port,
+            src.username.as_deref(),
+            credential_id,
+            &src.options_json,
+            src.auth_method.as_deref(),
+            src.via_session_id,
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Per-session automation + forwards live in separate columns/tables.
+    if let Some(ls) = src.login_script_json.as_deref() {
+        let _ = state.db.set_login_script(new_id, Some(ls));
+    }
+    if let Ok(Some(tr)) = state.db.get_session_triggers(id) {
+        let _ = state.db.set_session_triggers(new_id, Some(&tr));
+    }
+    if let Ok(forwards) = state.db.list_session_forwards(id) {
+        if !forwards.is_empty() {
+            let _ = state.db.set_session_forwards(new_id, &forwards);
+        }
+    }
+
+    Ok(new_id)
+}
+
+/// Best-effort credential duplication: copy the secret into a fresh keyring
+/// entry and record a new credential row. Returns `None` if the secret can't
+/// be read, so the clone simply connects credential-less.
+fn clone_credential(db: &core_persistence::Database, src_cred_id: i64) -> Option<i64> {
+    let cred = db.get_credential(src_cred_id).ok()?;
+    let secret = core_vault::Vault::retrieve(&cred.keyring_key).ok()?;
+    let new_key = format!("ssh:{}", Uuid::new_v4());
+    core_vault::Vault::store(&new_key, &secret).ok()?;
+    db.create_credential(&cred.name, &cred.kind, cred.username.as_deref(), &new_key)
+        .ok()
+}
+
 /// Build the [`core_transport::SshAuth`] for a saved SSH session, pulling its
 /// secret from the vault if applicable. Shared by direct connects and every
 /// hop of a ProxyJump chain.

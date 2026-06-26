@@ -82,6 +82,8 @@
         if (typeof opts.color_scheme === 'string' && opts.color_scheme) {
           colorScheme = opts.color_scheme
         }
+        if (typeof opts.notes === 'string') notes = opts.notes
+        if (Array.isArray(opts.tags)) tagsInput = opts.tags.join(', ')
       } catch {
         // ignore malformed options_json
       }
@@ -129,6 +131,9 @@
   /// Per-session command-hint platform (null = use global default from Settings).
   let platform = $state<string | null>(null)
   let platforms = $state<PlatformInfo[]>([])
+  /// Freeform notes + comma-separated tags, persisted inside options_json.
+  let notes = $state('')
+  let tagsInput = $state('')
   let error = $state('')
 
   // Optional login automation: list of expect/send pairs run after connect.
@@ -236,6 +241,12 @@
           opts.baud_rate = baudRate
         }
         if (colorScheme) opts.color_scheme = colorScheme
+        if (notes.trim()) opts.notes = notes.trim()
+        const tagList = tagsInput
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+        if (tagList.length) opts.tags = tagList
         return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
       }
       if (existing) {
@@ -284,10 +295,10 @@
       } else {
         id = await createSerialSession(name.trim(), folderId, device.trim(), baudRate)
       }
-      // Post-create touch-up: if a color-scheme override was selected, persist
-      // it into options_json. We rebuild the same blob the backend would have
-      // written so nothing protocol-specific is lost.
-      if (!existing && colorScheme) {
+      // Post-create touch-up: if a color-scheme override, notes or tags were
+      // set, persist them into options_json. We rebuild the same blob the
+      // backend would have written so nothing protocol-specific is lost.
+      if (!existing && (colorScheme || notes.trim() || tagsInput.trim())) {
         await updateSavedSession(
           id,
           name.trim(),
@@ -511,6 +522,20 @@
         </select>
       </label>
     {/if}
+
+    <label>
+      Tags <span class="hint-pill">comma-separated</span>
+      <input bind:value={tagsInput} placeholder="core, prod, datacenter-mad" />
+    </label>
+
+    <label>
+      Notes
+      <textarea
+        bind:value={notes}
+        rows="2"
+        placeholder="Context for this host — console access, owner, caveats…"
+      ></textarea>
+    </label>
 
     {#if platforms.length > 0}
       <label>
@@ -749,7 +774,8 @@
   }
 
   input,
-  select {
+  select,
+  textarea {
     background: color-mix(in srgb, var(--zx-text) 6%, transparent);
     border: 1px solid var(--zx-border);
     border-radius: 0.25rem;
@@ -760,8 +786,15 @@
     font-family: inherit;
   }
 
+  textarea {
+    resize: vertical;
+    min-height: 2.2rem;
+    line-height: 1.4;
+  }
+
   input:focus-visible,
-  select:focus-visible {
+  select:focus-visible,
+  textarea:focus-visible {
     border-color: var(--zx-accent);
     box-shadow: var(--zx-ring);
   }

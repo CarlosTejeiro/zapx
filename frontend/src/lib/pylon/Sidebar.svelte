@@ -15,6 +15,7 @@
     sessionStatuses?: Map<number, 'connecting' | 'connected' | 'error'>
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
+    onDuplicate?: (session: SavedSession) => void
     onDelete?: (session: SavedSession) => void
     onCreateFolder?: () => void
     onRenameFolder?: (folder: Folder) => void
@@ -38,6 +39,7 @@
     sessionStatuses,
     onSelect,
     onEdit,
+    onDuplicate,
     onDelete,
     onCreateFolder,
     onRenameFolder,
@@ -151,7 +153,7 @@
   }
 
   let search = $state('')
-  let expandedSections = $state<Set<string>>(new Set(['pinned', 'sessions']))
+  let expandedSections = $state<Set<string>>(new Set(['pinned', 'recent', 'sessions']))
   let expandedFolders = $state<Set<number>>(new Set())
 
   const SESSION_COLORS = [
@@ -163,18 +165,52 @@
     return SESSION_COLORS[s.id % SESSION_COLORS.length] as string
   }
 
+  /// Tags + notes live inside the per-session `options_json` blob (no schema
+  /// change). Parse defensively — a malformed blob just yields no metadata.
+  function sessionMeta(s: SavedSession): { tags: string[]; notes: string } {
+    try {
+      const o = JSON.parse(s.options_json || '{}')
+      const tags = Array.isArray(o.tags)
+        ? o.tags.filter((t: unknown): t is string => typeof t === 'string')
+        : []
+      return { tags, notes: typeof o.notes === 'string' ? o.notes : '' }
+    } catch {
+      return { tags: [], notes: '' }
+    }
+  }
+
   const query = $derived(search.toLowerCase())
 
+  /// Match a session by name, tags or notes so a search like "prod" surfaces
+  /// every tagged host even when the word isn't in the name.
+  function matchesQuery(s: SavedSession): boolean {
+    if (!query) return true
+    if (s.name.toLowerCase().includes(query)) return true
+    const { tags, notes } = sessionMeta(s)
+    return (
+      tags.some((t) => t.toLowerCase().includes(query)) ||
+      notes.toLowerCase().includes(query)
+    )
+  }
+
   const rootSessions = $derived(
-    sessions.filter((s) => s.folder_id === null && (
-      !query || s.name.toLowerCase().includes(query)
-    ))
+    sessions.filter((s) => s.folder_id === null && matchesQuery(s))
+  )
+
+  /// Most-recently-opened sessions (by `last_used_at`, bumped on every open),
+  /// surfaced as a quick-access section. Hidden while searching — the main
+  /// list already covers search. ISO-ish timestamps sort lexicographically.
+  const recentSessions = $derived(
+    query
+      ? []
+      : [...sessions]
+          .filter((s) => s.last_used_at)
+          .sort((a, b) => (b.last_used_at ?? '').localeCompare(a.last_used_at ?? ''))
+          .slice(0, 5)
   )
 
   function sessionsInFolder(id: number): SavedSession[] {
-    return sessions.filter((s) => s.folder_id === id && (
-      !query || s.name.toLowerCase().includes(query)
-    ))
+    return sessions.filter((s) => s.folder_id === id && matchesQuery(s))
   }
 
   function toggleSection(key: string) {
@@ -236,6 +272,61 @@
 
   <!-- Tree -->
   <div class="sb-tree">
+
+    <!-- Recent: quick access to the last-opened sessions. Simplified rows
+         (avatar + name + status), no drag/actions — those live in the main
+         list. Hidden while searching. -->
+    {#if recentSessions.length > 0}
+      <div class="sb-section">
+        <div class="sb-section-row" style:color={theme.textDim}>
+          <button
+            class="sb-section-header"
+            style:color={theme.textDim}
+            onclick={() => toggleSection('recent')}
+          >
+            <Icon name="chevron" size={11} open={expandedSections.has('recent')} />
+            RECENT
+            <span class="sb-count" style:color={theme.textDim}>{recentSessions.length}</span>
+          </button>
+        </div>
+        {#if expandedSections.has('recent')}
+          <div class="sb-droparea">
+            {#each recentSessions as s (s.id)}
+              {@const isActive = s.id === activeSessionId}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div
+                class="sb-row"
+                class:active={isActive}
+                role="button"
+                tabindex="0"
+                style:background={isActive ? theme.itemActiveBg : ''}
+                title={sessionMeta(s).notes || undefined}
+                onclick={() => onSelect(s)}
+              >
+                <SessionAvatar
+                  name={s.name}
+                  color={sessionColor(s)}
+                  paper={theme.sidebarBg}
+                  ink={theme.textPrimary}
+                  accent={theme.accent}
+                  active={isActive}
+                  status={sessionStatuses?.get(s.id)}
+                  ok={theme.ok}
+                  warn={theme.warn}
+                  err={theme.err}
+                  size={22}
+                />
+                <span
+                  class="sb-name"
+                  class:active={isActive}
+                  style:color={isActive ? theme.textPrimary : theme.textMuted}
+                >{s.name}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Root sessions. Drop handlers live on the outer .sb-section so
          dropping at root works even when the section is collapsed. -->
@@ -320,7 +411,16 @@
                 class="sb-name"
                 class:active={isActive}
                 style:color={isActive ? theme.textPrimary : theme.textMuted}
+                title={sessionMeta(s).notes || undefined}
               >{s.name}</span>
+              {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
+                <span
+                  class="sb-tag sb-tagchip"
+                  style:color={theme.accent}
+                  style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
+                  style:font-family={theme.fontUi}
+                >{tag}</span>
+              {/each}
               {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                 <span
                   class="sb-tag"
@@ -340,6 +440,16 @@
                   style:color={theme.textDim}
                   onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                 ><Icon name="pencil" size={12} /></span>
+              {/if}
+              {#if onDuplicate}
+                <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                <span
+                  class="sb-edit"
+                  role="button"
+                  title="Duplicate session"
+                  style:color={theme.textDim}
+                  onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
+                ><Icon name="copy" size={12} /></span>
               {/if}
               {#if onDelete}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -456,7 +566,16 @@
                     class="sb-name sb-name-sm"
                     class:active={isActive}
                     style:color={isActive ? theme.textPrimary : theme.textMuted}
+                    title={sessionMeta(s).notes || undefined}
                   >{s.name}</span>
+                  {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
+                    <span
+                      class="sb-tag sb-tagchip"
+                      style:color={theme.accent}
+                      style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
+                      style:font-family={theme.fontUi}
+                    >{tag}</span>
+                  {/each}
                   {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                     <span
                       class="sb-tag"
@@ -476,6 +595,16 @@
                       style:color={theme.textDim}
                       onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                     ><Icon name="pencil" size={12} /></span>
+                  {/if}
+                  {#if onDuplicate}
+                    <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                    <span
+                      class="sb-edit"
+                      role="button"
+                      title="Duplicate session"
+                      style:color={theme.textDim}
+                      onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
+                    ><Icon name="copy" size={12} /></span>
                   {/if}
                   {#if onDelete}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -791,6 +920,19 @@
     border-radius: 4px;
     flex-shrink: 0;
     line-height: 1.4;
+  }
+
+  /* User tags: lower-case words, accent-tinted, capped width. Inherit the
+     hide-on-hover from `.sb-tag` so the action icons get room. */
+  .sb-tagchip {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10px;
+    border-radius: 5px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sb-empty {
