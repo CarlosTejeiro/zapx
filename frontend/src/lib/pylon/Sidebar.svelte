@@ -165,18 +165,40 @@
     return SESSION_COLORS[s.id % SESSION_COLORS.length] as string
   }
 
+  /// Tags + notes live inside the per-session `options_json` blob (no schema
+  /// change). Parse defensively — a malformed blob just yields no metadata.
+  function sessionMeta(s: SavedSession): { tags: string[]; notes: string } {
+    try {
+      const o = JSON.parse(s.options_json || '{}')
+      const tags = Array.isArray(o.tags)
+        ? o.tags.filter((t: unknown): t is string => typeof t === 'string')
+        : []
+      return { tags, notes: typeof o.notes === 'string' ? o.notes : '' }
+    } catch {
+      return { tags: [], notes: '' }
+    }
+  }
+
   const query = $derived(search.toLowerCase())
 
+  /// Match a session by name, tags or notes so a search like "prod" surfaces
+  /// every tagged host even when the word isn't in the name.
+  function matchesQuery(s: SavedSession): boolean {
+    if (!query) return true
+    if (s.name.toLowerCase().includes(query)) return true
+    const { tags, notes } = sessionMeta(s)
+    return (
+      tags.some((t) => t.toLowerCase().includes(query)) ||
+      notes.toLowerCase().includes(query)
+    )
+  }
+
   const rootSessions = $derived(
-    sessions.filter((s) => s.folder_id === null && (
-      !query || s.name.toLowerCase().includes(query)
-    ))
+    sessions.filter((s) => s.folder_id === null && matchesQuery(s))
   )
 
   function sessionsInFolder(id: number): SavedSession[] {
-    return sessions.filter((s) => s.folder_id === id && (
-      !query || s.name.toLowerCase().includes(query)
-    ))
+    return sessions.filter((s) => s.folder_id === id && matchesQuery(s))
   }
 
   function toggleSection(key: string) {
@@ -322,7 +344,16 @@
                 class="sb-name"
                 class:active={isActive}
                 style:color={isActive ? theme.textPrimary : theme.textMuted}
+                title={sessionMeta(s).notes || undefined}
               >{s.name}</span>
+              {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
+                <span
+                  class="sb-tag sb-tagchip"
+                  style:color={theme.accent}
+                  style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
+                  style:font-family={theme.fontUi}
+                >{tag}</span>
+              {/each}
               {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                 <span
                   class="sb-tag"
@@ -468,7 +499,16 @@
                     class="sb-name sb-name-sm"
                     class:active={isActive}
                     style:color={isActive ? theme.textPrimary : theme.textMuted}
+                    title={sessionMeta(s).notes || undefined}
                   >{s.name}</span>
+                  {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
+                    <span
+                      class="sb-tag sb-tagchip"
+                      style:color={theme.accent}
+                      style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
+                      style:font-family={theme.fontUi}
+                    >{tag}</span>
+                  {/each}
                   {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                     <span
                       class="sb-tag"
@@ -813,6 +853,19 @@
     border-radius: 4px;
     flex-shrink: 0;
     line-height: 1.4;
+  }
+
+  /* User tags: lower-case words, accent-tinted, capped width. Inherit the
+     hide-on-hover from `.sb-tag` so the action icons get room. */
+  .sb-tagchip {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10px;
+    border-radius: 5px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sb-empty {
