@@ -354,6 +354,11 @@ export async function deleteSavedSession(id: number): Promise<void> {
   return invoke<void>('delete_saved_session', { id })
 }
 
+/** Duplicate a saved session (independent copy). Returns the new session id. */
+export async function cloneSavedSession(id: number): Promise<number> {
+  return invoke<number>('clone_saved_session', { id })
+}
+
 /** Move a session to another folder (`null` = root). */
 export async function moveSavedSession(id: number, folderId: number | null): Promise<void> {
   return invoke<void>('move_saved_session', { id, folderId })

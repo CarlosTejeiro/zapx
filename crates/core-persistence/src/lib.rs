@@ -67,6 +67,17 @@ pub struct SavedForward {
     pub target_port: Option<u16>,
 }
 
+/// A stored credential row. The secret itself never lives here — only the
+/// opaque `keyring_key` that locates it in the OS vault.
+#[derive(Debug, Clone)]
+pub struct Credential {
+    pub id: i64,
+    pub name: String,
+    pub kind: String,
+    pub username: Option<String>,
+    pub keyring_key: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Snippet {
     pub id: i64,
@@ -767,6 +778,29 @@ impl Database {
             rusqlite::params![name, kind, username, keyring_key],
         )?;
         Ok(conn.last_insert_rowid())
+    }
+
+    /// Fetch a full credential row (metadata + keyring key, never the secret).
+    /// Used when duplicating a credential for a cloned session.
+    pub fn get_credential(&self, id: i64) -> Result<Credential, Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, name, kind, username, keyring_key FROM credentials WHERE id=?1",
+            rusqlite::params![id],
+            |row| {
+                Ok(Credential {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    kind: row.get(2)?,
+                    username: row.get(3)?,
+                    keyring_key: row.get(4)?,
+                })
+            },
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
+            e => Error::Rusqlite(e),
+        })
     }
 
     pub fn get_credential_keyring_key(&self, id: i64) -> Result<String, Error> {

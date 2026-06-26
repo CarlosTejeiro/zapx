@@ -15,6 +15,7 @@
     sessionStatuses?: Map<number, 'connecting' | 'connected' | 'error'>
     onSelect: (session: SavedSession) => void
     onEdit?: (session: SavedSession) => void
+    onDuplicate?: (session: SavedSession) => void
     onDelete?: (session: SavedSession) => void
     onCreateFolder?: () => void
     onRenameFolder?: (folder: Folder) => void
@@ -38,6 +39,7 @@
     sessionStatuses,
     onSelect,
     onEdit,
+    onDuplicate,
     onDelete,
     onCreateFolder,
     onRenameFolder,
@@ -341,6 +343,16 @@
                   onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                 ><Icon name="pencil" size={12} /></span>
               {/if}
+              {#if onDuplicate}
+                <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                <span
+                  class="sb-edit"
+                  role="button"
+                  title="Duplicate session"
+                  style:color={theme.textDim}
+                  onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
+                ><Icon name="copy" size={12} /></span>
+              {/if}
               {#if onDelete}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
                 <span
@@ -476,6 +488,16 @@
                       style:color={theme.textDim}
                       onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
                     ><Icon name="pencil" size={12} /></span>
+                  {/if}
+                  {#if onDuplicate}
+                    <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+                    <span
+                      class="sb-edit"
+                      role="button"
+                      title="Duplicate session"
+                      style:color={theme.textDim}
+                      onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
+                    ><Icon name="copy" size={12} /></span>
                   {/if}
                   {#if onDelete}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->

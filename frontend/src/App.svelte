@@ -64,6 +64,7 @@
     moveSavedSession,
     reorderSavedSession,
     deleteSavedSession,
+    cloneSavedSession,
     createFolder,
     renameFolder,
     deleteFolder,
@@ -1034,6 +1035,15 @@
       {sessionStatuses}
       onSelect={openSavedSessionTab}
       onEdit={(s) => (editingSession = s)}
+      onDuplicate={async (s) => {
+        try {
+          await cloneSavedSession(s.id)
+          await load()
+          showToast({ kind: 'success', title: 'Session duplicated', detail: `${s.name} (copy)` })
+        } catch (e) {
+          showToast({ kind: 'error', title: 'Duplicate failed', detail: e instanceof Error ? e.message : String(e) })
+        }
+      }}
       onDelete={async (s) => {
         const ok = await ask(`Delete "${s.name}"? This can't be undone.`, {
           title: 'Delete session',

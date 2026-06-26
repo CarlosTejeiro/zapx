@@ -246,6 +246,7 @@ pub fn run() {
             commands::sessions::reorder_saved_session,
             commands::sessions::list_sessions,
             commands::sessions::delete_saved_session,
+            commands::sessions::clone_saved_session,
             commands::sessions::open_saved_session,
             commands::sessions::open_telnet_session,
             commands::sessions::open_serial_session,
