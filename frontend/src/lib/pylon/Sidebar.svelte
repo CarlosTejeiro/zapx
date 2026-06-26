@@ -153,7 +153,7 @@
   }
 
   let search = $state('')
-  let expandedSections = $state<Set<string>>(new Set(['pinned', 'sessions']))
+  let expandedSections = $state<Set<string>>(new Set(['pinned', 'recent', 'sessions']))
   let expandedFolders = $state<Set<number>>(new Set())
 
   const SESSION_COLORS = [
@@ -195,6 +195,18 @@
 
   const rootSessions = $derived(
     sessions.filter((s) => s.folder_id === null && matchesQuery(s))
+  )
+
+  /// Most-recently-opened sessions (by `last_used_at`, bumped on every open),
+  /// surfaced as a quick-access section. Hidden while searching — the main
+  /// list already covers search. ISO-ish timestamps sort lexicographically.
+  const recentSessions = $derived(
+    query
+      ? []
+      : [...sessions]
+          .filter((s) => s.last_used_at)
+          .sort((a, b) => (b.last_used_at ?? '').localeCompare(a.last_used_at ?? ''))
+          .slice(0, 5)
   )
 
   function sessionsInFolder(id: number): SavedSession[] {
@@ -260,6 +272,61 @@
 
   <!-- Tree -->
   <div class="sb-tree">
+
+    <!-- Recent: quick access to the last-opened sessions. Simplified rows
+         (avatar + name + status), no drag/actions — those live in the main
+         list. Hidden while searching. -->
+    {#if recentSessions.length > 0}
+      <div class="sb-section">
+        <div class="sb-section-row" style:color={theme.textDim}>
+          <button
+            class="sb-section-header"
+            style:color={theme.textDim}
+            onclick={() => toggleSection('recent')}
+          >
+            <Icon name="chevron" size={11} open={expandedSections.has('recent')} />
+            RECENT
+            <span class="sb-count" style:color={theme.textDim}>{recentSessions.length}</span>
+          </button>
+        </div>
+        {#if expandedSections.has('recent')}
+          <div class="sb-droparea">
+            {#each recentSessions as s (s.id)}
+              {@const isActive = s.id === activeSessionId}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div
+                class="sb-row"
+                class:active={isActive}
+                role="button"
+                tabindex="0"
+                style:background={isActive ? theme.itemActiveBg : ''}
+                title={sessionMeta(s).notes || undefined}
+                onclick={() => onSelect(s)}
+              >
+                <SessionAvatar
+                  name={s.name}
+                  color={sessionColor(s)}
+                  paper={theme.sidebarBg}
+                  ink={theme.textPrimary}
+                  accent={theme.accent}
+                  active={isActive}
+                  status={sessionStatuses?.get(s.id)}
+                  ok={theme.ok}
+                  warn={theme.warn}
+                  err={theme.err}
+                  size={22}
+                />
+                <span
+                  class="sb-name"
+                  class:active={isActive}
+                  style:color={isActive ? theme.textPrimary : theme.textMuted}
+                >{s.name}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Root sessions. Drop handlers live on the outer .sb-section so
          dropping at root works even when the section is collapsed. -->
