@@ -1,11 +1,13 @@
 <script lang="ts">
   import { fuzzyMatch } from './fuzzy'
+  import Icon from '$lib/icons/Icon.svelte'
+  import type { IconName } from '$lib/icons/icons'
 
   export interface PaletteItem {
     id: string
     label: string
     subtitle?: string
-    icon: string
+    icon: IconName
     shortcut?: string
     section: 'Sessions' | 'Themes' | 'Actions' | 'Snippets' | 'Groups'
     run: () => void
@@ -128,7 +130,7 @@
 >
   <div class="palette">
     <div class="search">
-      <span class="icon" aria-hidden="true">⌘</span>
+      <span class="icon" aria-hidden="true"><Icon name="search" size={16} /></span>
       <input
         bind:this={inputEl}
         bind:value={query}
@@ -154,7 +156,7 @@
             role="option"
             aria-selected={i === selected}
           >
-            <span class="row-icon">{it.icon}</span>
+            <span class="row-icon"><Icon name={it.icon} size={15} /></span>
             <span class="row-main">
               <!-- eslint-disable-next-line svelte/no-at-html-tags -->
               <span class="row-label">{@html highlight(it.label, it.indices)}</span>
@@ -231,8 +233,9 @@
 
   .icon {
     color: var(--zx-accent);
-    font-size: 1.1rem;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
   }
 
   .search input {
@@ -296,9 +299,15 @@
 
   .row-icon {
     width: 1.3rem;
-    text-align: center;
     flex-shrink: 0;
-    opacity: 0.85;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--zx-text-muted);
+  }
+
+  .row.selected .row-icon {
+    color: var(--zx-accent);
   }
 
   .row-main {

@@ -7,6 +7,8 @@
 
   interface MenuItem {
     label: string
+    /** Right-aligned keyboard-shortcut chip, e.g. `Ctrl+N`. */
+    shortcut?: string
     action?: () => void
     divider?: boolean
     disabled?: boolean
@@ -78,14 +80,14 @@
       action: () => { onSetTheme?.(key); openMenu = null },
     })),
     Session: [
-      { label: 'New Session  Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
-      { label: 'Quick Connect  Ctrl+Shift+N', action: () => { onQuickConnect?.(); openMenu = null } },
+      { label: 'New Session', shortcut: 'Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
+      { label: 'Quick Connect', shortcut: 'Ctrl+Shift+N', action: () => { onQuickConnect?.(); openMenu = null } },
     ],
     Tools: [
       { label: 'Snippets…', action: () => { onSnippets?.(); openMenu = null } },
       { label: 'Send command list…', action: () => { onCommandList?.(); openMenu = null } },
       { label: 'Active tunnels…', action: () => { onTunnelsManager?.(); openMenu = null } },
-      { label: 'Settings  Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
+      { label: 'Settings', shortcut: 'Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
     ],
     Help: [
       { label: 'Check for updates…', action: () => { onCheckUpdates?.(); openMenu = null } },
@@ -169,7 +171,15 @@
                     <span class="dd-check" style:color={theme.accent}>
                       {#if item.checked}<span class="dd-check-dot"></span>{/if}
                     </span>
-                    {item.label}
+                    <span class="dd-label">{item.label}</span>
+                    {#if item.shortcut}
+                      <kbd
+                        class="dd-kbd"
+                        style:border="1px solid {theme.border}"
+                        style:color={theme.textDim}
+                        style:font-family={theme.fontMono}
+                      >{item.shortcut}</kbd>
+                    {/if}
                   </button>
                 {/if}
               {/each}
@@ -299,6 +309,19 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+
+  .dd-label {
+    flex: 1;
+  }
+
+  .dd-kbd {
+    flex-shrink: 0;
+    margin-left: 18px;
+    font-size: 10px;
+    line-height: 1.4;
+    padding: 1px 5px;
+    border-radius: 4px;
   }
 
   .dd-check-dot {

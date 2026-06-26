@@ -108,9 +108,10 @@
         in:fly={{ y: -8, duration: 180, easing: cubicOut }}
         style:background={active ? theme.tabActiveBg : theme.tabIdleBg}
         style:border={active ? `1px solid ${theme.border}` : '1px solid transparent'}
-        style:border-left={`3px solid ${tab.color}`}
         style:border-radius={theme.radius}
-        style:box-shadow={active ? `inset 0 -2px 0 ${theme.accent}` : 'none'}
+        style:box-shadow={active
+          ? `inset 3px 0 0 ${tab.color}, inset 0 -2px 0 ${theme.accent}`
+          : `inset 2px 0 0 color-mix(in srgb, ${tab.color} 55%, transparent)`}
         onclick={() => onActivate(tab.id)}
         ondblclick={() => startRename(tab)}
         oncontextmenu={(e) => openMenu(e, tab)}
@@ -120,7 +121,11 @@
         tabindex="0"
         onkeydown={(e) => e.key === 'Enter' && onActivate(tab.id)}
       >
-        <span class="tab-dot" style:background={statusColor(tab.status)}></span>
+        <span
+          class="tab-dot"
+          class:pulse={tab.status === 'connecting'}
+          style:background={statusColor(tab.status)}
+        ></span>
         {#if editingTab === tab.id}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -278,6 +283,28 @@
     height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
+  }
+
+  /* Connecting: gentle pulse, mirroring the sidebar avatar's status dot so
+     tabs and the session list speak the same visual language. */
+  .tab-dot.pulse {
+    animation: tab-dot-pulse 1.3s ease-in-out infinite;
+  }
+
+  @keyframes tab-dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab-dot.pulse {
+      animation: none;
+    }
   }
 
   .tab-label {

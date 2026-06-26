@@ -63,6 +63,16 @@
     : theme.warn
   )
 
+  /// Colour the latency reading by health so link quality reads at a glance:
+  /// snappy (<80 ms) green, workable (<200 ms) neutral, sluggish (≥200 ms)
+  /// amber. The handoff leaves latency uncoloured; this is a pure add.
+  const latencyColor = $derived(
+    latencyMs === undefined ? theme.textMuted
+    : latencyMs < 80  ? theme.ok
+    : latencyMs < 200 ? theme.textMuted
+    : theme.warn
+  )
+
   let uptimeStr = $state('')
 
   $effect(() => {
@@ -135,7 +145,7 @@
 
     {#if latencyMs !== undefined && status === 'connected'}
       <span class="sb-divider">│</span>
-      <span class="sb-seg sb-mono" style:color={theme.textMuted}>{latencyMs}ms</span>
+      <span class="sb-seg sb-mono" style:color={latencyColor} title="Round-trip latency">{latencyMs}ms</span>
     {/if}
 
     {#if bytesPerSec !== undefined && status === 'connected'}
