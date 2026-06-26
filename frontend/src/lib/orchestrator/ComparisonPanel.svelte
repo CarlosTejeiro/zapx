@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { writeText as clipboardWriteText } from '@tauri-apps/plugin-clipboard-manager'
   import type { PylonTheme } from '$lib/themes/index'
   import type { HostCapture } from './commandRunner.svelte'
   import Icon from '$lib/icons/Icon.svelte'
+  import { showToast } from '$lib/ui/toast-store.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -115,6 +117,36 @@
     else { diffA = i; diffB = null }
   }
 
+  // ── export ─────────────────────────────────────────────────────────────────
+  /// Assemble a plain-text audit report: the command, a one-line summary, each
+  /// output variant with the hosts that produced it, and any non-responders.
+  /// Suitable for pasting straight into a ticket or change record.
+  function buildReport(): string {
+    const out: string[] = []
+    out.push(`$ ${command || '—'}`)
+    out.push(`# ${new Date().toISOString().replace('T', ' ').slice(0, 19)} · ${hosts.length} hosts · ${groups.length} variant${groups.length === 1 ? '' : 's'}${timedOut.length ? ` · ${timedOut.length} no reply` : ''}`)
+    for (const g of groups) {
+      out.push('')
+      out.push(`── ${g.hosts.length} host${g.hosts.length === 1 ? '' : 's'}: ${g.hosts.map((h) => h.label).join(', ')} ──`)
+      out.push(g.text || '(no output)')
+    }
+    if (timedOut.length) {
+      out.push('')
+      out.push(`── No reply (${timedOut.length}): ${timedOut.map((h) => h.label).join(', ')} ──`)
+    }
+    return out.join('\n') + '\n'
+  }
+
+  async function copyReport() {
+    const report = buildReport()
+    try {
+      await clipboardWriteText(report)
+    } catch {
+      await navigator.clipboard.writeText(report).catch(() => {})
+    }
+    showToast({ kind: 'success', title: 'Comparison copied', detail: `${hosts.length} hosts` })
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose()
   }
@@ -133,7 +165,15 @@
           <span class="badge warn">{groups.length} variants{timedOut.length ? ` · ${timedOut.length} no reply` : ''}</span>
         {/if}
       </div>
-      <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
+      <div class="header-actions">
+        <button
+          class="btn small"
+          onclick={copyReport}
+          disabled={running || groups.length === 0}
+          title="Copy the comparison as text"
+        ><Icon name="copy" size={12} /> Copy</button>
+        <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
+      </div>
     </div>
 
     <p class="hint">
@@ -216,6 +256,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
   }
 
   .title {
@@ -360,6 +407,9 @@
   .dl.b { color: #4ade80; background: rgba(34, 197, 94, 0.08); }
 
   .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     background: #27272a;
     border: 1px solid #3f3f46;
     border-radius: 0.25rem;
@@ -369,6 +419,11 @@
     cursor: pointer;
     font-family: inherit;
     flex-shrink: 0;
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
   .btn:hover { background: #3f3f46; }
   .btn.small { font-size: 0.7rem; padding: 0.15rem 0.45rem; }
