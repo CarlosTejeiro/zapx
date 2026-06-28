@@ -51,7 +51,11 @@ export interface SftpEntry {
 }
 
 // One step of an automated login script, mirroring app::login_script::LoginStep.
+export type StepKind = 'expect' | 'send' | 'wait'
+
 export interface LoginStep {
+  /** 'expect' = wait for output then send; 'send' = send now; 'wait' = pause. */
+  kind: StepKind
   expect: string
   is_regex: boolean
   send: string
