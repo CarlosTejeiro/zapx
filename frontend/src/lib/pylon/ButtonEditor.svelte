@@ -2,7 +2,8 @@
   /// Inline editor popover for a button-bar button (a snippet). Used by
   /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
   import type { PylonTheme } from '$lib/themes/index'
-  import type { Snippet } from '$lib/bridge/types'
+  import type { Snippet, LoginStep } from '$lib/bridge/types'
+  import Icon from '$lib/icons/Icon.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -11,7 +12,14 @@
     /** Focused session's platform (null/'' = no recognised platform). When
      *  absent, the button can only be global. */
     platform: string | null
-    onSave: (v: { name: string; content: string; color: string | null; platformScoped: boolean }) => void
+    onSave: (v: {
+      name: string
+      content: string
+      color: string | null
+      platformScoped: boolean
+      /** Non-null when this button is a macro (expect/send/wait steps). */
+      steps: LoginStep[] | null
+    }) => void
     onDelete?: () => void
     onClose: () => void
   }
@@ -37,16 +45,43 @@
     snippet ? snippet.platform !== null : hasPlatform,
   )
 
+  // Macro mode: an expect/send/wait step list instead of plain text.
+  // svelte-ignore state_referenced_locally
+  let isMacro = $state(!!snippet?.steps_json)
+  // svelte-ignore state_referenced_locally
+  let steps = $state<LoginStep[]>(parseSteps(snippet?.steps_json ?? null))
+
+  function parseSteps(json: string | null): LoginStep[] {
+    if (!json) return []
+    try {
+      const v = JSON.parse(json)
+      return Array.isArray(v) ? v : []
+    } catch {
+      return []
+    }
+  }
+  function addStep() {
+    steps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
+  }
+  function removeStep(i: number) {
+    steps.splice(i, 1)
+  }
+
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
+  const canSave = $derived(
+    !!name.trim() && (isMacro ? steps.length > 0 : !!content.trim()),
+  )
+
   function save() {
-    if (!name.trim() || !content.trim()) return
+    if (!canSave) return
     onSave({
       name: name.trim(),
       content,
       color,
       platformScoped: hasPlatform && platformScoped,
+      steps: isMacro ? steps : null,
     })
   }
 
@@ -100,16 +135,69 @@
     </div>
   </div>
 
-  <textarea
-    class="content"
-    placeholder="Command(s) to send"
-    bind:value={content}
-    spellcheck="false"
-    style:background={theme.bodyBg}
-    style:color={theme.textPrimary}
-    style:border="1px solid {theme.border}"
-    style:font-family={theme.fontMono}
-  ></textarea>
+  <div class="mode" style:color={theme.textMuted}>
+    <button
+      type="button"
+      class="mode-btn"
+      class:active={!isMacro}
+      style:color={!isMacro ? theme.accent : theme.textDim}
+      style:border-color={!isMacro ? theme.accent : theme.border}
+      onclick={() => (isMacro = false)}
+    >Text</button>
+    <button
+      type="button"
+      class="mode-btn"
+      class:active={isMacro}
+      style:color={isMacro ? theme.accent : theme.textDim}
+      style:border-color={isMacro ? theme.accent : theme.border}
+      onclick={() => { isMacro = true; if (steps.length === 0) addStep() }}
+    >Macro</button>
+  </div>
+
+  {#if !isMacro}
+    <textarea
+      class="content"
+      placeholder="Command(s) to send"
+      bind:value={content}
+      spellcheck="false"
+      style:background={theme.bodyBg}
+      style:color={theme.textPrimary}
+      style:border="1px solid {theme.border}"
+      style:font-family={theme.fontMono}
+    ></textarea>
+  {:else}
+    <div class="steps">
+      {#each steps as step, i (i)}
+        <div class="mstep">
+          <select class="m-kind" bind:value={step.kind} title="Step type"
+            style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}">
+            <option value="expect">expect</option>
+            <option value="send">send</option>
+            <option value="wait">wait</option>
+          </select>
+          {#if step.kind === 'expect'}
+            <input class="m-in" placeholder="expect" bind:value={step.expect} spellcheck="false"
+              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <input class="m-in" placeholder="send" bind:value={step.send} spellcheck="false"
+              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <input class="m-ms" type="number" min={500} step={500} bind:value={step.timeout_ms} title="timeout (ms)"
+              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+          {:else if step.kind === 'send'}
+            <input class="m-in m-wide" placeholder={'send (\\r for bare Enter)'} bind:value={step.send} spellcheck="false"
+              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+          {:else}
+            <input class="m-ms m-waitms" type="number" min={100} step={100} bind:value={step.timeout_ms} title="pause (ms)"
+              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <span class="m-hint" style:color={theme.textDim}>ms pause</span>
+          {/if}
+          <button type="button" class="m-rm" style:color={theme.textDim} title="Remove step" onclick={() => removeStep(i)}>
+            <Icon name="x" size={11} />
+          </button>
+        </div>
+      {/each}
+      <button type="button" class="m-add" style:color={theme.textDim} style:border="1px solid {theme.border}" onclick={addStep}>+ Add step</button>
+    </div>
+  {/if}
 
   <div class="footer">
     {#if hasPlatform}
@@ -127,7 +215,7 @@
     <button class="btn" style:color={theme.textMuted} style:border="1px solid {theme.border}" onclick={onClose}>Cancel</button>
     <button
       class="btn primary"
-      disabled={!name.trim() || !content.trim()}
+      disabled={!canSave}
       style:background={theme.accent}
       style:color={theme.onAccent}
       onclick={save}
@@ -140,7 +228,7 @@
     position: absolute;
     bottom: calc(100% + 6px);
     left: 8px;
-    width: 360px;
+    width: 460px;
     max-width: calc(100vw - 24px);
     border-radius: 7px;
     padding: 10px;
@@ -204,6 +292,78 @@
     font-size: 12px;
     line-height: 1.5;
     outline: none;
+  }
+
+  .mode {
+    display: flex;
+    gap: 4px;
+  }
+  .mode-btn {
+    background: transparent;
+    border: 1px solid;
+    border-radius: 5px;
+    padding: 2px 10px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .mstep {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .m-kind {
+    width: 4.6rem;
+    flex-shrink: 0;
+    border-radius: 5px;
+    padding: 4px 4px;
+    font-size: 11px;
+    font-family: var(--zx-font-mono);
+    outline: none;
+  }
+  .m-in {
+    flex: 1;
+    min-width: 0;
+    border-radius: 5px;
+    padding: 4px 6px;
+    font-size: 11.5px;
+    font-family: var(--zx-font-mono);
+    outline: none;
+  }
+  .m-ms {
+    width: 4.2rem;
+    flex-shrink: 0;
+    border-radius: 5px;
+    padding: 4px 4px;
+    font-size: 11.5px;
+    outline: none;
+  }
+  .m-hint {
+    font-size: 10.5px;
+    flex-shrink: 0;
+  }
+  .m-rm {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .m-add {
+    align-self: flex-start;
+    background: transparent;
+    border-radius: 5px;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
   }
 
   .footer {

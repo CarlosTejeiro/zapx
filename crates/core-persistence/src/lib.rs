@@ -91,6 +91,10 @@ pub struct Snippet {
     /// Optional accent color (hex) for the button-bar tile. `None` = default
     /// theme tint.
     pub color: Option<String>,
+    /// `None` = a plain-text snippet (sends `content`). `Some(json)` = a macro:
+    /// an expect/send/wait step array (same shape as `login_script_json`) run
+    /// on the focused session.
+    pub steps_json: Option<String>,
 }
 
 /// One row from `command_history`, used by the hint engine for
@@ -236,6 +240,9 @@ impl Database {
         }
         if version < 17 {
             conn.execute_batch(include_str!("migrations/017_session_triggers.sql"))?;
+        }
+        if version < 18 {
+            conn.execute_batch(include_str!("migrations/018_snippet_steps.sql"))?;
         }
         Ok(())
     }
@@ -1106,7 +1113,7 @@ impl Database {
     pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json
              FROM snippets ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1118,6 +1125,7 @@ impl Database {
                 created_at: row.get(4)?,
                 platform: row.get(5)?,
                 color: row.get(6)?,
+                steps_json: row.get(7)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1129,7 +1137,7 @@ impl Database {
     pub fn list_snippets_for_platform(&self, platform: &str) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json
              FROM snippets
              WHERE platform IS NULL OR platform = ?1
              ORDER BY (platform IS NULL) DESC, sort_order, name",
@@ -1143,6 +1151,7 @@ impl Database {
                 created_at: row.get(4)?,
                 platform: row.get(5)?,
                 color: row.get(6)?,
+                steps_json: row.get(7)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1196,6 +1205,21 @@ impl Database {
         let n = conn.execute(
             "UPDATE snippets SET name = ?1, content = ?2, platform = ?3, color = ?4 WHERE id = ?5",
             rusqlite::params![name, content, platform, color, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Set (or clear with `None`) a snippet's macro steps. Kept separate from
+    /// [`update_snippet`] so the existing create/update call sites are unchanged
+    /// (mirrors how login scripts are stored).
+    pub fn set_snippet_steps(&self, id: i64, steps_json: Option<&str>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE snippets SET steps_json = ?1 WHERE id = ?2",
+            rusqlite::params![steps_json, id],
         )?;
         if n == 0 {
             return Err(Error::NotFound);

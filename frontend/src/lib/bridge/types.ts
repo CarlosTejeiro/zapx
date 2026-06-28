@@ -101,6 +101,9 @@ export interface Snippet {
   platform: string | null
   /** Optional accent color (hex) for the button-bar tile; null = theme tint. */
   color: string | null
+  /** When set, this snippet is a macro: a JSON expect/send/wait step array run
+   *  on the focused session instead of sending `content`. null = plain text. */
+  steps_json: string | null
 }
 
 /** Item in the "Recents" zone of the snippet bar — a frequently-typed command
