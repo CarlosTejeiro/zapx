@@ -10,6 +10,8 @@
   } from '$lib/bridge/commands'
   import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
+  import { invoke } from '@tauri-apps/api/core'
+  import { decodeEscapes } from '$lib/orchestrator/macroRunner'
   import Icon from '$lib/icons/Icon.svelte'
   import SftpDialog from '$lib/terminal/SftpDialog.svelte'
   import TunnelsDialog from '$lib/terminal/TunnelsDialog.svelte'
@@ -188,6 +190,41 @@
   const runtimeSid = $derived(paneToSession.get(pane.id) ?? null)
   let showSftp = $state(false)
   let showTunnels = $state(false)
+
+  // Anti-idle / keepalive: send a configured string on a timer while connected,
+  // for servers whose idle timeout fires despite SSH keepalives. Configured per
+  // saved session in options_json: { anti_idle: { interval_sec, send } }.
+  const antiIdle = $derived.by<{ intervalSec: number; send: string } | null>(() => {
+    const raw = pane.savedSession?.options_json
+    if (!raw) return null
+    try {
+      const ai = (JSON.parse(raw) as { anti_idle?: { interval_sec?: unknown; send?: unknown } })
+        .anti_idle
+      if (
+        ai &&
+        typeof ai.interval_sec === 'number' &&
+        ai.interval_sec > 0 &&
+        typeof ai.send === 'string' &&
+        ai.send.length > 0
+      ) {
+        return { intervalSec: ai.interval_sec, send: ai.send }
+      }
+    } catch {
+      /* malformed options_json — no keepalive */
+    }
+    return null
+  })
+
+  $effect(() => {
+    if (status !== 'connected' || !antiIdle || !runtimeSid) return
+    const sid = runtimeSid
+    const bytes = Array.from(new TextEncoder().encode(decodeEscapes(antiIdle.send)))
+    if (bytes.length === 0) return
+    const timer = setInterval(() => {
+      invoke('send_input', { sessionId: sid, data: bytes }).catch(() => {})
+    }, antiIdle.intervalSec * 1000)
+    return () => clearInterval(timer)
+  })
 
   // Map PylonTheme terminal tokens → xterm ColorPalette
   const terminalPalette = $derived<ColorPalette>({

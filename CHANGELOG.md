@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.5] - 2026-06-29
+
+### Added
+- **Anti-idle / keepalive per session** — the New/Edit Session dialog can send a
+  string on a timer while connected (e.g. `\x00` for an invisible keepalive, or
+  `!`), to beat server idle timeouts that fire despite SSH keepalives.
+
+### Changed
+- **Tab strip shows all sessions in a split** — a split tab now labels itself
+  with its sessions ("A · B", or "A +2" for more) instead of keeping only the
+  first session's name.
+- **Releases publish directly** — the Release workflow no longer creates a
+  draft, so re-pushing a tag stops producing duplicate empty draft releases.
+
 ## [0.11.4] - 2026-06-29
 
 ### Added

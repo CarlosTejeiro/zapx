@@ -414,10 +414,22 @@
     return tab.statuses.get(id) ?? 'connecting'
   }
 
+  /// Tab-strip label. A single-pane tab keeps its creation name; once split
+  /// into multiple sessions it reflects them ("A · B", or "A +2" for more), so
+  /// the strip stops showing only the first session's name.
+  function tabDisplayLabel(t: AppTab): string {
+    const names = tabPanes(t)
+      .filter((p) => !p.empty)
+      .map((p) => p.label)
+    if (names.length <= 1) return names[0] ?? t.label
+    if (names.length === 2) return `${names[0]} · ${names[1]}`
+    return `${names[0]} +${names.length - 1}`
+  }
+
   const tabEntries = $derived<TabEntry[]>(
     tabs.map((t) => ({
       id: t.id,
-      label: t.label,
+      label: tabDisplayLabel(t),
       color: t.color,
       status: summaryStatus(t),
     })),
