@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-06-29
+
+### Fixed
+- **Multi-host Compare no longer drops output as a timeout** — the runner only
+  considered a host "done" when it recognised the device prompt (and not at all
+  for unknown platforms), so when detection missed, the host waited out the full
+  timeout and the comparison panel discarded its captured output ("No host
+  returned output"). The runner now also settles a host once its output has
+  echoed the command and gone quiet, regardless of prompt recognition, and the
+  panel shows captured output even if a host ends as timed-out — only a host
+  that returned nothing at all is reported as "no reply".
+
 ## [0.11.1] - 2026-06-29
 
 ### Added
