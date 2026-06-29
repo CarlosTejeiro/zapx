@@ -73,9 +73,21 @@
     color: var(--zx-text);
     font-family: var(--zx-font-ui);
   }
-  h2 { margin: 0 0 0.75rem; font-size: 0.95rem; font-weight: 600; }
-  .fields { display: flex; flex-direction: column; gap: 0.6rem; }
-  label { display: flex; flex-direction: column; gap: 0.2rem; }
+  h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
   .vname {
     font-size: 0.72rem;
     color: var(--zx-text-muted);
@@ -91,7 +103,9 @@
     font-family: var(--zx-font-mono);
     outline: none;
   }
-  input:focus { border-color: var(--zx-accent); }
+  input:focus {
+    border-color: var(--zx-accent);
+  }
   .actions {
     display: flex;
     justify-content: flex-end;
@@ -106,13 +120,21 @@
     cursor: pointer;
     border: 1px solid var(--zx-border);
   }
-  .cancel { background: transparent; color: var(--zx-text-muted); }
-  .cancel:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
+  .cancel {
+    background: transparent;
+    color: var(--zx-text-muted);
+  }
+  .cancel:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
   .ok {
     background: var(--zx-accent);
     border-color: var(--zx-accent);
     color: var(--zx-on-accent);
     font-weight: 600;
   }
-  .ok:hover { filter: brightness(1.1); }
+  .ok:hover {
+    filter: brightness(1.1);
+  }
 </style>

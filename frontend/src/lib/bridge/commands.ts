@@ -335,7 +335,10 @@ export async function getSessionTriggers(savedSessionId: number): Promise<Trigge
   return invoke<Trigger[]>('get_session_triggers', { savedSessionId })
 }
 
-export async function setSessionTriggers(savedSessionId: number, triggers: Trigger[]): Promise<void> {
+export async function setSessionTriggers(
+  savedSessionId: number,
+  triggers: Trigger[],
+): Promise<void> {
   return invoke<void>('set_session_triggers', { savedSessionId, triggers })
 }
 
@@ -345,7 +348,10 @@ export async function getSessionForwards(savedSessionId: number): Promise<SavedF
   return invoke<SavedForward[]>('get_session_forwards', { savedSessionId })
 }
 
-export async function setSessionForwards(savedSessionId: number, forwards: SavedForward[]): Promise<void> {
+export async function setSessionForwards(
+  savedSessionId: number,
+  forwards: SavedForward[],
+): Promise<void> {
   return invoke<void>('set_session_forwards', { savedSessionId, forwards })
 }
 
@@ -544,10 +550,7 @@ export async function recordCommand(
   return invoke<void>('record_command', { savedSessionId, command, prevCommand })
 }
 
-export async function setSessionPlatform(
-  savedSessionId: number,
-  platform: string,
-): Promise<void> {
+export async function setSessionPlatform(savedSessionId: number, platform: string): Promise<void> {
   return invoke<void>('set_session_platform', { savedSessionId, platform })
 }
 

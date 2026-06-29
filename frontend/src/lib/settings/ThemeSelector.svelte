@@ -1,13 +1,13 @@
 <script lang="ts">
-  import {
-    terminalSettings,
-    colorSchemes,
-    applyColorScheme,
-  } from '$lib/stores/settings.svelte'
+  import { terminalSettings, colorSchemes, applyColorScheme } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
 
   function palette(json: string): ColorPalette {
-    try { return JSON.parse(json) } catch { return {} as ColorPalette }
+    try {
+      return JSON.parse(json)
+    } catch {
+      return {} as ColorPalette
+    }
   }
 </script>
 

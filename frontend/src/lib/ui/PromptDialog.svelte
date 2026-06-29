@@ -51,12 +51,17 @@
   aria-label={title}
   tabindex="-1"
   onkeydown={onKey}
-  onclick={(e) => { if (e.target === e.currentTarget) onCancel() }}
+  onclick={(e) => {
+    if (e.target === e.currentTarget) onCancel()
+  }}
   transition:fade={{ duration: 120 }}
 >
   <form
     class="dialog"
-    onsubmit={(e) => { e.preventDefault(); submit() }}
+    onsubmit={(e) => {
+      e.preventDefault()
+      submit()
+    }}
     transition:scale={{ start: 0.96, duration: 160, easing: cubicOut }}
   >
     <h3>{title}</h3>
@@ -134,9 +139,23 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .cancel { background: var(--zx-hover-bg); color: var(--zx-text); }
-  .cancel:hover { background: color-mix(in srgb, var(--zx-text) 12%, transparent); }
-  .ok { background: var(--zx-accent); color: var(--zx-on-accent); font-weight: 600; }
-  .ok:hover:not(:disabled) { filter: brightness(1.1); }
-  .ok:disabled { opacity: 0.45; cursor: not-allowed; }
+  .cancel {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
+  .cancel:hover {
+    background: color-mix(in srgb, var(--zx-text) 12%, transparent);
+  }
+  .ok {
+    background: var(--zx-accent);
+    color: var(--zx-on-accent);
+    font-weight: 600;
+  }
+  .ok:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+  .ok:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 </style>

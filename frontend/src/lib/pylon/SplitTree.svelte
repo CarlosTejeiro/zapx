@@ -75,11 +75,7 @@
     {onGlobalShortcut}
   />
 {:else}
-  <div
-    class="split-container"
-    class:vertical={node.direction === 'v'}
-    bind:this={containerEl}
-  >
+  <div class="split-container" class:vertical={node.direction === 'v'} bind:this={containerEl}>
     <div class="split-side" style:flex={node.ratio}>
       <Self
         node={node.a}

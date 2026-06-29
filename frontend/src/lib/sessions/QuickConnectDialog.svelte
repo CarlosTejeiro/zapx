@@ -71,17 +71,15 @@
   <div class="dialog" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="dialog-header">
       <h2 class="dialog-title">Quick Connect</h2>
-      <button class="close-btn" onclick={onCancel} aria-label="Close"><Icon name="x" size={13} /></button>
+      <button class="close-btn" onclick={onCancel} aria-label="Close"
+        ><Icon name="x" size={13} /></button
+      >
     </div>
 
     <div class="dialog-body">
       <div class="protocol-tabs">
-        {#each (['ssh', 'telnet', 'local'] as const) as p}
-          <button
-            class="protocol-tab"
-            class:active={protocol === p}
-            onclick={() => setProtocol(p)}
-          >
+        {#each ['ssh', 'telnet', 'local'] as const as p}
+          <button class="protocol-tab" class:active={protocol === p} onclick={() => setProtocol(p)}>
             {p === 'local' ? 'Local Shell' : p.toUpperCase()}
           </button>
         {/each}
@@ -90,12 +88,7 @@
       {#if protocol !== 'local'}
         <div class="field">
           <label for="qc-host">Host</label>
-          <input
-            id="qc-host"
-            class="input"
-            bind:value={host}
-            placeholder="192.168.1.1"
-          />
+          <input id="qc-host" class="input" bind:value={host} placeholder="192.168.1.1" />
         </div>
         <div class="field">
           <label for="qc-port">Port</label>

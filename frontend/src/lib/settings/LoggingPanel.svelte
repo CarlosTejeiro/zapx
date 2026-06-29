@@ -38,8 +38,8 @@
   <section>
     <h3>File format</h3>
     <p class="hint">
-      Controls how the terminal content is saved when you toggle the record
-      button (●) in a pane header.
+      Controls how the terminal content is saved when you toggle the record button (●) in a pane
+      header.
     </p>
 
     <label class="row">
@@ -53,9 +53,9 @@
       <div>
         <div class="row-title">Plain text <span class="default-tag">default</span></div>
         <div class="row-help">
-          Strips ANSI codes (colors, window titles, paste modes) and keeps only
-          text. Same as SecureCRT's <em>Log Session</em> option. Recommended for
-          auditing and for opening the log in any editor.
+          Strips ANSI codes (colors, window titles, paste modes) and keeps only text. Same as
+          SecureCRT's <em>Log Session</em> option. Recommended for auditing and for opening the log in
+          any editor.
         </div>
       </div>
     </label>
@@ -71,9 +71,8 @@
       <div>
         <div class="row-title">Raw</div>
         <div class="row-help">
-          Saves the exact bytes the remote sends, including escape sequences.
-          Useful to replay the session with <code>cat logfile</code> in another
-          terminal, or to debug rendering issues.
+          Saves the exact bytes the remote sends, including escape sequences. Useful to replay the
+          session with <code>cat logfile</code> in another terminal, or to debug rendering issues.
         </div>
       </div>
     </label>
@@ -98,7 +97,11 @@
     color: var(--zx-text);
     font-family: var(--zx-font-ui);
   }
-  section { display: flex; flex-direction: column; gap: 0.5rem; }
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
   h3 {
     font-size: 0.78rem;
     font-weight: 600;
@@ -123,8 +126,14 @@
     border-radius: 4px;
     cursor: pointer;
   }
-  .row input { accent-color: var(--zx-accent); margin-top: 3px; }
-  .row-title { font-size: 0.82rem; color: var(--zx-text); }
+  .row input {
+    accent-color: var(--zx-accent);
+    margin-top: 3px;
+  }
+  .row-title {
+    font-size: 0.82rem;
+    color: var(--zx-text);
+  }
   .row-help {
     font-size: 0.72rem;
     color: var(--zx-text-muted);
@@ -163,7 +172,9 @@
     padding: 0.35rem 0.85rem;
     cursor: pointer;
   }
-  .ok-btn:hover { filter: brightness(1.1); }
+  .ok-btn:hover {
+    filter: brightness(1.1);
+  }
   .path {
     font-family: var(--zx-font-mono);
     font-size: 0.72rem;

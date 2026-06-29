@@ -50,27 +50,36 @@
   }
 
   const statusLabel = $derived(
-    status === 'connected'  ? 'CONNECTED'
-    : status === 'error'   ? 'FAILED'
-    : status === 'closed'  ? 'DISCONNECTED'
-    : 'CONNECTING…'
+    status === 'connected'
+      ? 'CONNECTED'
+      : status === 'error'
+        ? 'FAILED'
+        : status === 'closed'
+          ? 'DISCONNECTED'
+          : 'CONNECTING…',
   )
 
   const statusColor = $derived(
-    status === 'connected'  ? theme.ok
-    : status === 'error'   ? theme.err
-    : status === 'closed'  ? theme.textDim
-    : theme.warn
+    status === 'connected'
+      ? theme.ok
+      : status === 'error'
+        ? theme.err
+        : status === 'closed'
+          ? theme.textDim
+          : theme.warn,
   )
 
   /// Colour the latency reading by health so link quality reads at a glance:
   /// snappy (<80 ms) green, workable (<200 ms) neutral, sluggish (≥200 ms)
   /// amber. The handoff leaves latency uncoloured; this is a pure add.
   const latencyColor = $derived(
-    latencyMs === undefined ? theme.textMuted
-    : latencyMs < 80  ? theme.ok
-    : latencyMs < 200 ? theme.textMuted
-    : theme.warn
+    latencyMs === undefined
+      ? theme.textMuted
+      : latencyMs < 80
+        ? theme.ok
+        : latencyMs < 200
+          ? theme.textMuted
+          : theme.warn,
   )
 
   let uptimeStr = $state('')
@@ -84,13 +93,17 @@
         const h = Math.floor(secs / 3600)
         const m = Math.floor((secs % 3600) / 60)
         const s = secs % 60
-        uptimeStr = h > 0
-          ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-          : `${m}:${String(s).padStart(2,'0')}`
+        uptimeStr =
+          h > 0
+            ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+            : `${m}:${String(s).padStart(2, '0')}`
       }
       tick()
       const timer = setInterval(tick, 1000)
-      return () => { clearInterval(timer); uptimeStr = '' }
+      return () => {
+        clearInterval(timer)
+        uptimeStr = ''
+      }
     } else {
       uptimeStr = ''
     }
@@ -104,7 +117,6 @@
   style:font-family={theme.fontMono}
   style:color={theme.textDim}
 >
-
   <!-- Left segments -->
   <div class="sb-left">
     <span class="sb-seg">
@@ -132,7 +144,15 @@
 
     {#if mssLabel && status === 'connected'}
       <span class="sb-divider">│</span>
-      <span class="sb-seg sb-mono" style:color={theme.textMuted} title="TCP MSS — bytes per segment {mss?.send != null ? `we send (${mss.send})` : ''}{mss?.send != null && mss?.recv != null ? ' / ' : ''}{mss?.recv != null ? `the peer sends (${mss.recv})` : ''}">
+      <span
+        class="sb-seg sb-mono"
+        style:color={theme.textMuted}
+        title="TCP MSS — bytes per segment {mss?.send != null
+          ? `we send (${mss.send})`
+          : ''}{mss?.send != null && mss?.recv != null ? ' / ' : ''}{mss?.recv != null
+          ? `the peer sends (${mss.recv})`
+          : ''}"
+      >
         <span style:color={theme.textDim}>mss</span>
         <span>{mssLabel}</span>
       </span>
@@ -145,7 +165,9 @@
 
     {#if latencyMs !== undefined && status === 'connected'}
       <span class="sb-divider">│</span>
-      <span class="sb-seg sb-mono" style:color={latencyColor} title="Round-trip latency">{latencyMs}ms</span>
+      <span class="sb-seg sb-mono" style:color={latencyColor} title="Round-trip latency"
+        >{latencyMs}ms</span
+      >
     {/if}
 
     {#if bytesPerSec !== undefined && status === 'connected'}
@@ -164,7 +186,6 @@
     <span class="sb-divider">│</span>
     <span class="sb-seg">{layout}</span>
   </div>
-
 </footer>
 
 <style>

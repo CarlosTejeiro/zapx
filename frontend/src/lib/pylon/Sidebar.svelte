@@ -87,10 +87,7 @@
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const position: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-    if (
-      rowDropTarget?.sessionId !== sessionId ||
-      rowDropTarget?.position !== position
-    ) {
+    if (rowDropTarget?.sessionId !== sessionId || rowDropTarget?.position !== position) {
       rowDropTarget = { sessionId, position }
     }
   }
@@ -133,8 +130,7 @@
     const current = sessions.find((s) => s.id === id)?.folder_id ?? null
     // Dropped on the section background (not on a specific row) → append.
     if (onReorder) {
-      const peers = sessions
-        .filter((s) => (s.folder_id ?? null) === targetFolderId && s.id !== id)
+      const peers = sessions.filter((s) => (s.folder_id ?? null) === targetFolderId && s.id !== id)
       onReorder(id, targetFolderId, peers.length)
     } else if (current !== targetFolderId) {
       onMove?.(id, targetFolderId)
@@ -157,8 +153,16 @@
   let expandedFolders = $state<Set<number>>(new Set())
 
   const SESSION_COLORS = [
-    '#22d3ee','#f472b6','#a78bfa','#f59e0b',
-    '#ef4444','#10b981','#f97316','#84cc16','#c89b6b','#5eb3b2',
+    '#22d3ee',
+    '#f472b6',
+    '#a78bfa',
+    '#f59e0b',
+    '#ef4444',
+    '#10b981',
+    '#f97316',
+    '#84cc16',
+    '#c89b6b',
+    '#5eb3b2',
   ]
 
   function sessionColor(s: SavedSession): string {
@@ -187,15 +191,10 @@
     if (!query) return true
     if (s.name.toLowerCase().includes(query)) return true
     const { tags, notes } = sessionMeta(s)
-    return (
-      tags.some((t) => t.toLowerCase().includes(query)) ||
-      notes.toLowerCase().includes(query)
-    )
+    return tags.some((t) => t.toLowerCase().includes(query)) || notes.toLowerCase().includes(query)
   }
 
-  const rootSessions = $derived(
-    sessions.filter((s) => s.folder_id === null && matchesQuery(s))
-  )
+  const rootSessions = $derived(sessions.filter((s) => s.folder_id === null && matchesQuery(s)))
 
   /// Most-recently-opened sessions (by `last_used_at`, bumped on every open),
   /// surfaced as a quick-access section. Hidden while searching — the main
@@ -206,7 +205,7 @@
       : [...sessions]
           .filter((s) => s.last_used_at)
           .sort((a, b) => (b.last_used_at ?? '').localeCompare(a.last_used_at ?? ''))
-          .slice(0, 5)
+          .slice(0, 5),
   )
 
   function sessionsInFolder(id: number): SavedSession[] {
@@ -243,7 +242,6 @@
   style:--err={theme.err}
   style:--radius={theme.radius}
 >
-
   <!-- Search -->
   <div class="sb-search-wrap">
     <div
@@ -262,17 +260,14 @@
         style:color={theme.textPrimary}
         style:font-family={theme.fontUi}
       />
-      <kbd
-        class="sb-kbd"
-        style:border="1px solid {theme.border}"
-        style:font-family={theme.fontMono}
-      >⌘K</kbd>
+      <kbd class="sb-kbd" style:border="1px solid {theme.border}" style:font-family={theme.fontMono}
+        >⌘K</kbd
+      >
     </div>
   </div>
 
   <!-- Tree -->
   <div class="sb-tree">
-
     <!-- Recent: quick access to the last-opened sessions. Simplified rows
          (avatar + name + status), no drag/actions — those live in the main
          list. Hidden while searching. -->
@@ -319,8 +314,8 @@
                 <span
                   class="sb-name"
                   class:active={isActive}
-                  style:color={isActive ? theme.textPrimary : theme.textMuted}
-                >{s.name}</span>
+                  style:color={isActive ? theme.textPrimary : theme.textMuted}>{s.name}</span
+                >
               </div>
             {/each}
           </div>
@@ -360,15 +355,15 @@
             class="sb-add-btn"
             title="New folder"
             style:color={theme.textDim}
-            onclick={onCreateFolder}
-          ><Icon name="folder" size={13} /></button>
+            onclick={onCreateFolder}><Icon name="folder" size={13} /></button
+          >
         {/if}
         <button
           class="sb-add-btn"
           title="New session"
           style:color={theme.textDim}
-          onclick={onAddSession}
-        ><Icon name="plus" size={13} /></button>
+          onclick={onAddSession}><Icon name="plus" size={13} /></button
+        >
       </div>
 
       {#if expandedSections.has('sessions')}
@@ -381,8 +376,10 @@
               class="sb-row"
               class:active={isActive}
               class:dragging={draggingSessionId === s.id}
-              class:drop-before={rowDropTarget?.sessionId === s.id && rowDropTarget?.position === 'before'}
-              class:drop-after={rowDropTarget?.sessionId === s.id && rowDropTarget?.position === 'after'}
+              class:drop-before={rowDropTarget?.sessionId === s.id &&
+                rowDropTarget?.position === 'before'}
+              class:drop-after={rowDropTarget?.sessionId === s.id &&
+                rowDropTarget?.position === 'after'}
               draggable="true"
               role="button"
               tabindex="0"
@@ -411,15 +408,15 @@
                 class="sb-name"
                 class:active={isActive}
                 style:color={isActive ? theme.textPrimary : theme.textMuted}
-                title={sessionMeta(s).notes || undefined}
-              >{s.name}</span>
+                title={sessionMeta(s).notes || undefined}>{s.name}</span
+              >
               {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
                 <span
                   class="sb-tag sb-tagchip"
                   style:color={theme.accent}
                   style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
-                  style:font-family={theme.fontUi}
-                >{tag}</span>
+                  style:font-family={theme.fontUi}>{tag}</span
+                >
               {/each}
               {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                 <span
@@ -438,8 +435,11 @@
                   role="button"
                   title="Edit session"
                   style:color={theme.textDim}
-                  onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
-                ><Icon name="pencil" size={12} /></span>
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    onEdit?.(s)
+                  }}><Icon name="pencil" size={12} /></span
+                >
               {/if}
               {#if onDuplicate}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -448,8 +448,11 @@
                   role="button"
                   title="Duplicate session"
                   style:color={theme.textDim}
-                  onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
-                ><Icon name="copy" size={12} /></span>
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    onDuplicate?.(s)
+                  }}><Icon name="copy" size={12} /></span
+                >
               {/if}
               {#if onDelete}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -458,8 +461,11 @@
                   role="button"
                   title="Delete session"
                   style:color={theme.textDim}
-                  onclick={(e) => { e.stopPropagation(); onDelete?.(s) }}
-                ><Icon name="x" size={12} /></span>
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    onDelete?.(s)
+                  }}><Icon name="x" size={12} /></span
+                >
               {/if}
             </div>
           {/each}
@@ -505,8 +511,11 @@
                 role="button"
                 title="Rename folder"
                 style:color={theme.textDim}
-                onclick={(e) => { e.stopPropagation(); onRenameFolder?.(folder) }}
-              ><Icon name="pencil" size={12} /></span>
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onRenameFolder?.(folder)
+                }}><Icon name="pencil" size={12} /></span
+              >
             {/if}
             {#if onDeleteFolder}
               <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -515,8 +524,11 @@
                 role="button"
                 title="Delete folder"
                 style:color={theme.textDim}
-                onclick={(e) => { e.stopPropagation(); onDeleteFolder?.(folder) }}
-              ><Icon name="x" size={12} /></span>
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onDeleteFolder?.(folder)
+                }}><Icon name="x" size={12} /></span
+              >
             {/if}
           </div>
 
@@ -536,8 +548,10 @@
                   class="sb-row sb-row-indented"
                   class:active={isActive}
                   class:dragging={draggingSessionId === s.id}
-                  class:drop-before={rowDropTarget?.sessionId === s.id && rowDropTarget?.position === 'before'}
-                  class:drop-after={rowDropTarget?.sessionId === s.id && rowDropTarget?.position === 'after'}
+                  class:drop-before={rowDropTarget?.sessionId === s.id &&
+                    rowDropTarget?.position === 'before'}
+                  class:drop-after={rowDropTarget?.sessionId === s.id &&
+                    rowDropTarget?.position === 'after'}
                   draggable="true"
                   role="button"
                   tabindex="0"
@@ -566,15 +580,15 @@
                     class="sb-name sb-name-sm"
                     class:active={isActive}
                     style:color={isActive ? theme.textPrimary : theme.textMuted}
-                    title={sessionMeta(s).notes || undefined}
-                  >{s.name}</span>
+                    title={sessionMeta(s).notes || undefined}>{s.name}</span
+                  >
                   {#each sessionMeta(s).tags.slice(0, 3) as tag (tag)}
                     <span
                       class="sb-tag sb-tagchip"
                       style:color={theme.accent}
                       style:border-color="color-mix(in srgb, {theme.accent} 40%, transparent)"
-                      style:font-family={theme.fontUi}
-                    >{tag}</span>
+                      style:font-family={theme.fontUi}>{tag}</span
+                    >
                   {/each}
                   {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
                     <span
@@ -593,8 +607,11 @@
                       role="button"
                       title="Edit session"
                       style:color={theme.textDim}
-                      onclick={(e) => { e.stopPropagation(); onEdit?.(s) }}
-                    ><Icon name="pencil" size={12} /></span>
+                      onclick={(e) => {
+                        e.stopPropagation()
+                        onEdit?.(s)
+                      }}><Icon name="pencil" size={12} /></span
+                    >
                   {/if}
                   {#if onDuplicate}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -603,8 +620,11 @@
                       role="button"
                       title="Duplicate session"
                       style:color={theme.textDim}
-                      onclick={(e) => { e.stopPropagation(); onDuplicate?.(s) }}
-                    ><Icon name="copy" size={12} /></span>
+                      onclick={(e) => {
+                        e.stopPropagation()
+                        onDuplicate?.(s)
+                      }}><Icon name="copy" size={12} /></span
+                    >
                   {/if}
                   {#if onDelete}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
@@ -613,13 +633,17 @@
                       role="button"
                       title="Delete session"
                       style:color={theme.textDim}
-                      onclick={(e) => { e.stopPropagation(); onDelete?.(s) }}
-                    ><Icon name="x" size={12} /></span>
+                      onclick={(e) => {
+                        e.stopPropagation()
+                        onDelete?.(s)
+                      }}><Icon name="x" size={12} /></span
+                    >
                   {/if}
                 </div>
               {/each}
               {#if folderSessions.length === 0}
-                <span class="sb-empty" style:color={theme.textDim}>empty — drop a session here</span>
+                <span class="sb-empty" style:color={theme.textDim}>empty — drop a session here</span
+                >
               {/if}
             </div>
           {/if}
@@ -638,19 +662,28 @@
       class="sb-user-chip"
       style:background={theme.accent}
       style:color={theme.onAccent}
-      style:font-family={theme.fontUi}
-    >{initials}</span>
+      style:font-family={theme.fontUi}>{initials}</span
+    >
     <span class="sb-username" style:color={theme.textMuted} style:font-family={theme.fontUi}>
       {username}
     </span>
-    <button class="sb-settings-btn" title="Cycle theme" onclick={onToggleTheme} style:color={theme.textDim}>
+    <button
+      class="sb-settings-btn"
+      title="Cycle theme"
+      onclick={onToggleTheme}
+      style:color={theme.textDim}
+    >
       <Icon name="contrast" size={14} />
     </button>
-    <button class="sb-settings-btn" title="Settings" onclick={onSettings} style:color={theme.textDim}>
+    <button
+      class="sb-settings-btn"
+      title="Settings"
+      onclick={onSettings}
+      style:color={theme.textDim}
+    >
       <Icon name="gear" size={14} />
     </button>
   </div>
-
 </aside>
 
 <style>
@@ -706,8 +739,13 @@
   .sb-tree::-webkit-scrollbar {
     width: 4px;
   }
-  .sb-tree::-webkit-scrollbar-track { background: transparent; }
-  .sb-tree::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.25); border-radius: 2px; }
+  .sb-tree::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sb-tree::-webkit-scrollbar-thumb {
+    background: rgba(127, 127, 127, 0.25);
+    border-radius: 2px;
+  }
 
   .sb-section {
     margin-bottom: 2px;
@@ -732,12 +770,14 @@
     border-radius: 4px;
     padding: 0;
     flex-shrink: 0;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     color: inherit;
   }
 
   .sb-add-btn:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.06));
     color: var(--text-primary, #2c2924);
   }
 
@@ -814,7 +854,7 @@
   }
 
   .sb-row:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.04)) !important;
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.04)) !important;
   }
 
   .sb-row-indented {
@@ -835,8 +875,12 @@
     border-radius: 2px;
     pointer-events: none;
   }
-  .sb-row.drop-before::before { top: -1px; }
-  .sb-row.drop-after::after { bottom: -1px; }
+  .sb-row.drop-before::before {
+    top: -1px;
+  }
+  .sb-row.drop-after::after {
+    bottom: -1px;
+  }
 
   .sb-name {
     flex: 1;
@@ -861,7 +905,9 @@
     flex-direction: column;
     border: 1px dashed transparent;
     border-radius: var(--radius, 7px);
-    transition: border-color 0.1s, background 0.1s;
+    transition:
+      border-color 0.1s,
+      background 0.1s;
     padding: 1px;
     margin: 0 8px;
   }
@@ -890,7 +936,9 @@
     opacity: 0;
     display: inline-flex;
     align-items: center;
-    transition: opacity 0.1s, background 0.1s;
+    transition:
+      opacity 0.1s,
+      background 0.1s;
   }
   .sb-row:hover .sb-edit,
   .sb-row.active .sb-edit {
@@ -898,7 +946,7 @@
   }
   .sb-edit:hover {
     opacity: 1 !important;
-    background: var(--item-hover-bg, rgba(255,255,255,0.08));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.08));
   }
   .sb-del:hover {
     color: var(--err) !important;
@@ -987,12 +1035,14 @@
     justify-content: center;
     padding: 4px;
     border-radius: 4px;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     color: inherit;
   }
 
   .sb-settings-btn:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.06));
     color: var(--text-primary, #2c2924);
   }
 </style>

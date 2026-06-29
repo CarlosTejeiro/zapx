@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
   import type { PylonTheme } from '$lib/themes/index'
+  import Icon from '$lib/icons/Icon.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -80,8 +81,15 @@
   style:background={theme.titlebarBg}
   style:border-top="1px solid {theme.border}"
   style:font-family={theme.fontUi}
+  style:--mb-fill="color-mix(in srgb, {theme.textPrimary} 7%, transparent)"
+  style:--mb-fill-focus="color-mix(in srgb, {theme.textPrimary} 12%, transparent)"
+  style:--mb-border={theme.border}
+  style:--mb-accent={theme.accent}
 >
-  <span class="mb-label" style:color={theme.accent}>⇶ MASTER</span>
+  <span class="mb-label" style:color={theme.accent}>
+    <Icon name="cast" size={13} />
+    MASTER
+  </span>
   <input
     class="mb-input"
     placeholder={sessionIds.length
@@ -105,8 +113,8 @@
       style:border="1px solid {theme.accent}"
       style:color={theme.accent}
       onclick={runCompare}
-      title="Run on all and compare the output"
-    >▶ Run &amp; compare</button>
+      title="Run on all and compare the output">▶ Run &amp; compare</button
+    >
   {/if}
   <label class="mb-live" style:color={theme.textMuted} title="Stream every keystroke as you type">
     <input type="checkbox" bind:checked={live} />
@@ -124,6 +132,9 @@
   }
 
   .mb-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -132,18 +143,22 @@
 
   .mb-input {
     flex: 1;
-    background: rgba(255, 255, 255, 0.06);
-    border: none;
+    background: var(--mb-fill);
+    border: 1px solid var(--mb-border);
     border-radius: 5px;
     padding: 6px 10px;
     font-size: 13px;
     font-family: inherit;
     outline: none;
     min-width: 0;
+    transition:
+      background 0.1s,
+      border-color 0.1s;
   }
 
   .mb-input:focus {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--mb-fill-focus);
+    border-color: var(--mb-accent);
   }
 
   .mb-flash {

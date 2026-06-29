@@ -14,8 +14,16 @@
   import SftpDialog from '$lib/terminal/SftpDialog.svelte'
   import TunnelsDialog from '$lib/terminal/TunnelsDialog.svelte'
 
-  interface SshParams { host: string; port: number; user: string; auth: AuthMethod }
-  interface TelnetParams { host: string; port: number }
+  interface SshParams {
+    host: string
+    port: number
+    user: string
+    auth: AuthMethod
+  }
+  interface TelnetParams {
+    host: string
+    port: number
+  }
 
   export interface PaneData {
     id: number
@@ -125,7 +133,12 @@
       const cached = getCachedPassword(s.id)
       if (cached) {
         // Use cached password silently — no form shown
-        sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', auth: { type: 'password', password: cached } }
+        sshOverride = {
+          host: s.host ?? '',
+          port: s.port ?? 22,
+          user: s.username ?? '',
+          auth: { type: 'password', password: cached },
+        }
         status = 'connecting'
         onStatusChange?.('connecting')
         termKey++
@@ -146,7 +159,12 @@
     setCachedPassword(s.id, pw)
     // Also persist on the Rust side so it survives Cmd+R (webview reload).
     cacheSessionPassword(s.id, pw).catch(console.error)
-    sshOverride = { host: s.host ?? '', port: s.port ?? 22, user: s.username ?? '', auth: { type: 'password', password: pw } }
+    sshOverride = {
+      host: s.host ?? '',
+      port: s.port ?? 22,
+      user: s.username ?? '',
+      auth: { type: 'password', password: pw },
+    }
     passwordInput = ''
     needsPassword = false
     status = 'connecting'
@@ -155,12 +173,10 @@
   }
 
   const protocol = $derived(
-    pane.savedSession?.protocol ?? (pane.ssh ? 'ssh' : pane.telnet ? 'telnet' : 'local')
+    pane.savedSession?.protocol ?? (pane.ssh ? 'ssh' : pane.telnet ? 'telnet' : 'local'),
   )
 
-  const hostLabel = $derived(
-    pane.ssh?.host ?? pane.savedSession?.host ?? ''
-  )
+  const hostLabel = $derived(pane.ssh?.host ?? pane.savedSession?.host ?? '')
 
   // SFTP + port-forward dialogs are SSH-only and need the live runtime
   // session id (the redesign hid TerminalTab's own toolbar, so the pane
@@ -172,25 +188,25 @@
 
   // Map PylonTheme terminal tokens → xterm ColorPalette
   const terminalPalette = $derived<ColorPalette>({
-    background:    theme.terminal.bg,
-    foreground:    theme.terminal.fg,
-    cursor:        theme.terminal.cursor,
-    black:         theme.terminal.black,
-    red:           theme.terminal.red,
-    green:         theme.terminal.green,
-    yellow:        theme.terminal.yellow,
-    blue:          theme.terminal.blue,
-    magenta:       theme.terminal.magenta,
-    cyan:          theme.terminal.cyan,
-    white:         theme.terminal.white,
-    brightBlack:   theme.terminal.brightBlack,
-    brightRed:     theme.terminal.brightRed,
-    brightGreen:   theme.terminal.brightGreen,
-    brightYellow:  theme.terminal.brightYellow,
-    brightBlue:    theme.terminal.brightBlue,
+    background: theme.terminal.bg,
+    foreground: theme.terminal.fg,
+    cursor: theme.terminal.cursor,
+    black: theme.terminal.black,
+    red: theme.terminal.red,
+    green: theme.terminal.green,
+    yellow: theme.terminal.yellow,
+    blue: theme.terminal.blue,
+    magenta: theme.terminal.magenta,
+    cyan: theme.terminal.cyan,
+    white: theme.terminal.white,
+    brightBlack: theme.terminal.brightBlack,
+    brightRed: theme.terminal.brightRed,
+    brightGreen: theme.terminal.brightGreen,
+    brightYellow: theme.terminal.brightYellow,
+    brightBlue: theme.terminal.brightBlue,
     brightMagenta: theme.terminal.brightMagenta,
-    brightCyan:    theme.terminal.brightCyan,
-    brightWhite:   theme.terminal.brightWhite,
+    brightCyan: theme.terminal.brightCyan,
+    brightWhite: theme.terminal.brightWhite,
   })
 </script>
 
@@ -202,14 +218,15 @@
   style:background={theme.terminal.bg}
   style:border-radius="calc({theme.radius} + 4px)"
   style:box-shadow={focused
-    ? `inset 0 0 0 1.5px ${theme.accent}88, 0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)`
-    : '0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)'}
+    ? `inset 0 0 0 1.5px ${theme.accent}, 0 1px 2px rgba(0,0,0,0.14), 0 8px 26px rgba(0,0,0,0.18)`
+    : `inset 0 0 0 1px ${theme.border}, 0 1px 2px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.14)`}
   onclick={onFocus}
-  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onFocus() }}
+  onkeydown={(e) => {
+    if (e.key === 'Enter' || e.key === ' ') onFocus()
+  }}
   role="region"
   tabindex="-1"
 >
-
   <!-- Pane header (22px) — always dark, floats on terminal surface -->
   <div
     class="pane-header"
@@ -232,8 +249,11 @@
         aria-label={isLogging ? 'Stop logging' : 'Start logging'}
         disabled={logBusy}
         style:color={isLogging ? theme.err : theme.terminal.fg}
-        onclick={(e) => { e.stopPropagation(); toggleLogging() }}
-      ><Icon name="record" size={10} /></button>
+        onclick={(e) => {
+          e.stopPropagation()
+          toggleLogging()
+        }}><Icon name="record" size={10} /></button
+      >
       {#if isSsh}
         <button
           class="ph-btn"
@@ -242,8 +262,11 @@
           aria-label="SFTP file browser"
           disabled={!runtimeSid}
           style:color={theme.terminal.fg}
-          onclick={(e) => { e.stopPropagation(); showSftp = true }}
-        ><Icon name="transfer" size={12} /></button>
+          onclick={(e) => {
+            e.stopPropagation()
+            showSftp = true
+          }}><Icon name="transfer" size={12} /></button
+        >
         <button
           class="ph-btn"
           type="button"
@@ -251,8 +274,11 @@
           aria-label="Port forwards"
           disabled={!runtimeSid}
           style:color={theme.terminal.fg}
-          onclick={(e) => { e.stopPropagation(); showTunnels = true }}
-        ><Icon name="tunnel" size={12} /></button>
+          onclick={(e) => {
+            e.stopPropagation()
+            showTunnels = true
+          }}><Icon name="tunnel" size={12} /></button
+        >
       {/if}
       {#if onSplitH}
         <button
@@ -261,8 +287,11 @@
           title="Split horizontally"
           aria-label="Split horizontally"
           style:color={theme.terminal.fg}
-          onclick={(e) => { e.stopPropagation(); onSplitH?.() }}
-        ><Icon name="split" size={12} /></button>
+          onclick={(e) => {
+            e.stopPropagation()
+            onSplitH?.()
+          }}><Icon name="split" size={12} /></button
+        >
       {/if}
       {#if onSplitV}
         <button
@@ -271,8 +300,11 @@
           title="Split vertically"
           aria-label="Split vertically"
           style:color={theme.terminal.fg}
-          onclick={(e) => { e.stopPropagation(); onSplitV?.() }}
-        ><Icon name="splitV" size={12} /></button>
+          onclick={(e) => {
+            e.stopPropagation()
+            onSplitV?.()
+          }}><Icon name="splitV" size={12} /></button
+        >
       {/if}
       {#if canClose && onClosePane}
         <button
@@ -281,8 +313,11 @@
           title="Close pane"
           aria-label="Close pane"
           style:color={theme.terminal.fg}
-          onclick={(e) => { e.stopPropagation(); onClosePane?.() }}
-        ><Icon name="x" size={12} /></button>
+          onclick={(e) => {
+            e.stopPropagation()
+            onClosePane?.()
+          }}><Icon name="x" size={12} /></button
+        >
       {/if}
     </span>
   </div>
@@ -293,13 +328,23 @@
       <!-- Inline re-auth form when keyring credential is missing -->
       <div class="pw-overlay" style:background={theme.terminal.bg}>
         <form class="pw-box" onsubmit={handlePasswordSubmit} style:font-family={theme.fontUi}>
-          <svg class="pw-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={theme.terminal.cursor} stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          <svg
+            class="pw-icon"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={theme.terminal.cursor}
+            stroke-width="2"
+          >
+            <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <p class="pw-title" style:color={theme.terminal.fg}>
             {pane.savedSession?.username ?? 'user'}@{pane.savedSession?.host ?? 'host'}
           </p>
-          <p class="pw-sub" style:color={theme.terminal.dim}>Credentials missing from keyring — enter password to reconnect</p>
+          <p class="pw-sub" style:color={theme.terminal.dim}>
+            Credentials missing from keyring — enter password to reconnect
+          </p>
           <input
             class="pw-input"
             type="password"
@@ -309,11 +354,9 @@
             style:border="1px solid {theme.terminal.dim}"
             style:color={theme.terminal.fg}
           />
-          <button
-            class="pw-btn"
-            type="submit"
-            style:background={theme.terminal.cursor}
-          >Connect</button>
+          <button class="pw-btn" type="submit" style:background={theme.terminal.cursor}
+            >Connect</button
+          >
         </form>
       </div>
     {:else}
@@ -334,7 +377,6 @@
       {/key}
     {/if}
   </div>
-
 </div>
 
 {#if showSftp && runtimeSid}
@@ -420,7 +462,10 @@
     padding: 3px 7px;
     border-radius: 4px;
     opacity: 0.9;
-    transition: opacity 0.1s, background 0.1s, color 0.1s;
+    transition:
+      opacity 0.1s,
+      background 0.1s,
+      color 0.1s;
     font-family: inherit;
   }
 
@@ -445,8 +490,13 @@
     background: rgba(239, 68, 68, 0.18);
   }
   @keyframes ph-rec-pulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.55; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
   }
 
   /* Inner breathing room so terminal text doesn't kiss the card edge —
@@ -497,7 +547,7 @@
 
   .pw-input {
     width: 100%;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 5px;
     padding: 7px 10px;
     font-size: 13px;
@@ -507,7 +557,7 @@
   }
 
   .pw-input:focus {
-    border-color: rgba(255,255,255,0.35) !important;
+    border-color: rgba(255, 255, 255, 0.35) !important;
   }
 
   .pw-btn {

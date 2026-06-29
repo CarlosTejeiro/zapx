@@ -10,7 +10,11 @@
     listPlatforms,
   } from '$lib/bridge/commands'
   import type { Snippet, PlatformInfo } from '$lib/bridge/types'
-  import { getFocusedSessionId, broadcast, broadcastTargets } from '$lib/stores/sessionRuntime.svelte'
+  import {
+    getFocusedSessionId,
+    broadcast,
+    broadcastTargets,
+  } from '$lib/stores/sessionRuntime.svelte'
   import {
     snippets,
     loadSnippets,
@@ -48,7 +52,11 @@
 
   onMount(async () => {
     // Pull platforms once; the list is bundled, doesn't change at runtime.
-    try { platforms = await listPlatforms() } catch { /* stay empty */ }
+    try {
+      platforms = await listPlatforms()
+    } catch {
+      /* stay empty */
+    }
     await refresh()
   })
 
@@ -203,7 +211,13 @@
     {/if}
 
     {#if showAdd}
-      <form class="form" onsubmit={(e) => { e.preventDefault(); add() }}>
+      <form
+        class="form"
+        onsubmit={(e) => {
+          e.preventDefault()
+          add()
+        }}
+      >
         <label>
           <span>Name</span>
           <!-- svelte-ignore a11y_autofocus -->
@@ -230,9 +244,22 @@
         <label>
           <span>Color</span>
           <div class="swatch-row">
-            <button type="button" class="swatch none" class:sel={newColor === null} onclick={() => (newColor = null)} title="Sin color">✕</button>
+            <button
+              type="button"
+              class="swatch none"
+              class:sel={newColor === null}
+              onclick={() => (newColor = null)}
+              title="Sin color">✕</button
+            >
             {#each SWATCHES as c (c)}
-              <button type="button" class="swatch" class:sel={newColor === c} style:background={c} onclick={() => (newColor = c)} aria-label={c}></button>
+              <button
+                type="button"
+                class="swatch"
+                class:sel={newColor === c}
+                style:background={c}
+                onclick={() => (newColor = c)}
+                aria-label={c}
+              ></button>
             {/each}
           </div>
         </label>
@@ -257,7 +284,13 @@
           {#each snippets as s (s.id)}
             <li>
               {#if editingId === s.id}
-                <form class="form inline" onsubmit={(e) => { e.preventDefault(); commitEdit() }}>
+                <form
+                  class="form inline"
+                  onsubmit={(e) => {
+                    e.preventDefault()
+                    commitEdit()
+                  }}
+                >
                   <input bind:value={editName} />
                   <textarea bind:value={editContent} rows="3" spellcheck="false"></textarea>
                   <select bind:value={editPlatform}>
@@ -267,18 +300,35 @@
                     {/each}
                   </select>
                   <div class="swatch-row">
-                    <button type="button" class="swatch none" class:sel={editColor === null} onclick={() => (editColor = null)} title="Sin color">✕</button>
+                    <button
+                      type="button"
+                      class="swatch none"
+                      class:sel={editColor === null}
+                      onclick={() => (editColor = null)}
+                      title="Sin color">✕</button
+                    >
                     {#each SWATCHES as c (c)}
-                      <button type="button" class="swatch" class:sel={editColor === c} style:background={c} onclick={() => (editColor = c)} aria-label={c}></button>
+                      <button
+                        type="button"
+                        class="swatch"
+                        class:sel={editColor === c}
+                        style:background={c}
+                        onclick={() => (editColor = c)}
+                        aria-label={c}
+                      ></button>
                     {/each}
                   </div>
                   <div class="form-actions">
                     <button type="button" class="btn" onclick={cancelEdit}>Cancel</button>
-                    <button type="submit" class="btn primary" disabled={!editName.trim()}>Save</button>
+                    <button type="submit" class="btn primary" disabled={!editName.trim()}
+                      >Save</button
+                    >
                   </div>
                 </form>
               {:else}
-                <button class="send" onclick={() => send(s)} title="Send to focused session">▶</button>
+                <button class="send" onclick={() => send(s)} title="Send to focused session"
+                  >▶</button
+                >
                 <div class="info">
                   <span class="name">
                     {s.name}
@@ -288,8 +338,12 @@
                   </span>
                   <span class="preview">{preview(s.content)}</span>
                 </div>
-                <button class="btn icon" onclick={() => beginEdit(s)} title="Edit"><Icon name="pencil" size={12} /></button>
-                <button class="btn icon danger" onclick={() => remove(s)} title="Delete"><Icon name="x" size={12} /></button>
+                <button class="btn icon" onclick={() => beginEdit(s)} title="Edit"
+                  ><Icon name="pencil" size={12} /></button
+                >
+                <button class="btn icon danger" onclick={() => remove(s)} title="Delete"
+                  ><Icon name="x" size={12} /></button
+                >
               {/if}
             </li>
           {/each}
@@ -478,8 +532,12 @@
     flex-shrink: 0;
     transition: transform 0.1s;
   }
-  .swatch:hover { transform: scale(1.15); }
-  .swatch.sel { box-shadow: 0 0 0 2px var(--zx-accent); }
+  .swatch:hover {
+    transform: scale(1.15);
+  }
+  .swatch.sel {
+    box-shadow: 0 0 0 2px var(--zx-accent);
+  }
   .swatch.none {
     background: transparent;
     color: var(--zx-text-dim);

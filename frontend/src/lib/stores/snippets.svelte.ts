@@ -45,7 +45,9 @@ export async function loadSnippets(): Promise<void> {
     const fresh = await listSnippets()
     snippets.length = 0
     snippets.push(...fresh)
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 /** Refresh what the bar shows. Call when the focused session changes. */
@@ -61,19 +63,20 @@ export async function loadVisibleSnippets(): Promise<void> {
     const fresh = await listSnippetsForPlatform(platform)
     visibleSnippets.length = 0
     visibleSnippets.push(...fresh.slice(0, SNIPPET_BAR_LIMIT))
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 /** Refresh the "recents" zone. Returns the dataset the bar should mount. */
 export async function loadRecents(): Promise<void> {
   try {
-    const fresh = await listRecentCommandSnippets(
-      barContext.savedSessionId,
-      RECENTS_BAR_LIMIT,
-    )
+    const fresh = await listRecentCommandSnippets(barContext.savedSessionId, RECENTS_BAR_LIMIT)
     recents.length = 0
     recents.push(...fresh)
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 /// Update the focused-session context and refresh both panels. Safe to call
@@ -82,10 +85,7 @@ export async function setBarContext(
   platform: string | null,
   savedSessionId: number | null,
 ): Promise<void> {
-  if (
-    barContext.platform === platform &&
-    barContext.savedSessionId === savedSessionId
-  ) return
+  if (barContext.platform === platform && barContext.savedSessionId === savedSessionId) return
   barContext.platform = platform
   barContext.savedSessionId = savedSessionId
   await Promise.all([loadVisibleSnippets(), loadRecents()])

@@ -46,9 +46,12 @@
     reloading = true
     try {
       const n = await reloadHintCatalogs()
-      flashCatalog('ok', n === 0
-        ? 'No user files — using the built-in catalogs.'
-        : `Reloaded: ${n} catalog${n === 1 ? '' : 's'} replaced by your files.`)
+      flashCatalog(
+        'ok',
+        n === 0
+          ? 'No user files — using the built-in catalogs.'
+          : `Reloaded: ${n} catalog${n === 1 ? '' : 's'} replaced by your files.`,
+      )
     } catch (e) {
       flashCatalog('err', e instanceof Error ? e.message : String(e))
     } finally {
@@ -80,9 +83,12 @@
     // Surface auto-reloads emitted by the backend file watcher so the user
     // sees that their edit took effect without pressing the button.
     unlistenReload = await listen<number>('hint-catalogs-reloaded', (e) => {
-      flashCatalog('ok', e.payload === 0
-        ? 'Changes detected — using the built-in catalogs.'
-        : `Auto-reloaded: ${e.payload} catalog${e.payload === 1 ? '' : 's'} in use.`)
+      flashCatalog(
+        'ok',
+        e.payload === 0
+          ? 'Changes detected — using the built-in catalogs.'
+          : `Auto-reloaded: ${e.payload} catalog${e.payload === 1 ? '' : 's'} in use.`,
+      )
     })
     unlistenError = await listen<string>('hint-catalogs-error', (e) => {
       flashCatalog('err', `Reload failed: ${e.payload}`)
@@ -135,8 +141,8 @@
   <section>
     <h3>Snippets</h3>
     <p class="hint-help">
-      Snippets you create from the Snippets dialog also show up as priority
-      suggestions in the popup (⭐ badge).
+      Snippets you create from the Snippets dialog also show up as priority suggestions in the popup
+      (⭐ badge).
     </p>
   </section>
 
@@ -144,9 +150,9 @@
     <h3>Custom catalogs</h3>
     <p class="hint-help">
       Replace the built-in commands with your own lists: drop a
-      <code>&lt;platform&gt;.json</code> file (e.g. <code>fortigate.json</code>)
-      into the catalogs folder. It reloads <strong>automatically</strong> when
-      you save the file — the button is only there if you want to force it.
+      <code>&lt;platform&gt;.json</code> file (e.g. <code>fortigate.json</code>) into the catalogs
+      folder. It reloads <strong>automatically</strong> when you save the file — the button is only there
+      if you want to force it.
     </p>
     <div class="catalog-actions">
       <button type="button" class="catalog-btn" onclick={openCatalogsDir}>
@@ -167,15 +173,10 @@
   <section>
     <h3>History</h3>
     <p class="hint-help">
-      Commands are saved automatically per session. Anything that looks like it
-      contains passwords or tokens never enters the history.
+      Commands are saved automatically per session. Anything that looks like it contains passwords
+      or tokens never enters the history.
     </p>
-    <button
-      type="button"
-      class="danger-btn"
-      onclick={clearAllHistory}
-      disabled={clearingHistory}
-    >
+    <button type="button" class="danger-btn" onclick={clearAllHistory} disabled={clearingHistory}>
       {#if cleared}✓ History cleared{:else if clearingHistory}Clearing…{:else}Clear entire history{/if}
     </button>
   </section>
@@ -215,7 +216,9 @@
     color: var(--zx-text);
   }
 
-  .toggle input { accent-color: var(--zx-accent); }
+  .toggle input {
+    accent-color: var(--zx-accent);
+  }
 
   .hint-help {
     font-size: 0.72rem;

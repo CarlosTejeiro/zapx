@@ -157,8 +157,8 @@
         <button
           class="btn primary"
           disabled={lines.length === 0 || selected.size === 0}
-          onclick={send}
-        >Send to {selected.size} session{selected.size === 1 ? '' : 's'}</button>
+          onclick={send}>Send to {selected.size} session{selected.size === 1 ? '' : 's'}</button
+        >
       {/if}
     </div>
   </div>
@@ -215,8 +215,14 @@
     border-radius: 4px;
     display: flex;
   }
-  .close-btn:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
-  .close-btn:disabled { opacity: 0.4; cursor: default; }
+  .close-btn:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
+  .close-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
 
   .body {
     display: flex;
@@ -262,8 +268,12 @@
     font-size: 12.5px;
     cursor: pointer;
   }
-  .target-row:hover { background: var(--zx-hover-bg); }
-  .target-row input { accent-color: var(--zx-accent); }
+  .target-row:hover {
+    background: var(--zx-hover-bg);
+  }
+  .target-row input {
+    accent-color: var(--zx-accent);
+  }
 
   .target-name {
     flex: 1;
@@ -306,7 +316,9 @@
     line-height: 1.55;
     outline: none;
   }
-  textarea:focus { border-color: var(--zx-accent); }
+  textarea:focus {
+    border-color: var(--zx-accent);
+  }
 
   .options {
     display: flex;
@@ -334,7 +346,9 @@
     font-size: 12px;
   }
 
-  .count { color: var(--zx-text-dim); }
+  .count {
+    color: var(--zx-text-dim);
+  }
 
   .footer {
     display: flex;
@@ -362,7 +376,10 @@
     padding: 6px 14px;
     cursor: pointer;
   }
-  .btn:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
+  .btn:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
 
   .btn.primary {
     background: var(--zx-accent);
@@ -370,6 +387,12 @@
     color: var(--zx-on-accent);
     font-weight: 600;
   }
-  .btn.primary:hover { filter: brightness(1.1); }
-  .btn.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
+  .btn.primary:hover {
+    filter: brightness(1.1);
+  }
+  .btn.primary:disabled {
+    opacity: 0.45;
+    cursor: default;
+    filter: none;
+  }
 </style>

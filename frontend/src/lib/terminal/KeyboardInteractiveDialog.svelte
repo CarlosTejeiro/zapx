@@ -62,7 +62,13 @@
 
 {#if current}
   <div class="overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={onKeydown}>
-    <form class="dialog" onsubmit={(e) => { e.preventDefault(); submit() }}>
+    <form
+      class="dialog"
+      onsubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+    >
       <h2 class="title">{current.name || 'Authentication required'}</h2>
 
       {#if current.instructions}

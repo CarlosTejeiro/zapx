@@ -33,7 +33,13 @@
   onMount(refresh)
 
   function kindLabel(k: string): string {
-    return k === 'local' ? '-L local' : k === 'dynamic' ? '-D dynamic' : k === 'remote' ? '-R remote' : k
+    return k === 'local'
+      ? '-L local'
+      : k === 'dynamic'
+        ? '-D dynamic'
+        : k === 'remote'
+          ? '-R remote'
+          : k
   }
 
   function route(f: SessionForwardInfo): string {
@@ -79,15 +85,18 @@
       <p class="muted">Loading…</p>
     {:else if forwards.length === 0}
       <p class="muted">
-        No active tunnels. Open a session's <strong>Tunnels</strong> button (in the
-        pane header) to add a forward, or save them on the session so they
-        auto-start on connect.
+        No active tunnels. Open a session's <strong>Tunnels</strong> button (in the pane header) to add
+        a forward, or save them on the session so they auto-start on connect.
       </p>
     {:else}
       <ul class="list">
         {#each forwards as f (f.session_id + f.info.id)}
           <li>
-            <span class="kind" class:dyn={f.info.kind === 'dynamic'} class:remote={f.info.kind === 'remote'}>
+            <span
+              class="kind"
+              class:dyn={f.info.kind === 'dynamic'}
+              class:remote={f.info.kind === 'remote'}
+            >
               {kindLabel(f.info.kind)}
             </span>
             <div class="info">
@@ -136,10 +145,29 @@
     justify-content: space-between;
     margin-bottom: 0.75rem;
   }
-  h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
-  .header-right { display: flex; gap: 0.4rem; }
-  .muted { color: var(--zx-text-muted); font-size: 0.8rem; line-height: 1.6; margin: 0.5rem 0; }
-  .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .header-right {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .muted {
+    color: var(--zx-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin: 0.5rem 0;
+  }
+  .list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
   li {
     display: flex;
     align-items: center;
@@ -156,9 +184,19 @@
     flex-shrink: 0;
     width: 5.5rem;
   }
-  .kind.dyn { color: var(--zx-accent-2); }
-  .kind.remote { color: var(--zx-warn); }
-  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+  .kind.dyn {
+    color: var(--zx-accent-2);
+  }
+  .kind.remote {
+    color: var(--zx-warn);
+  }
+  .info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
   .route {
     font-family: var(--zx-font-mono);
     font-size: 0.78rem;
@@ -166,7 +204,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .session { font-size: 0.68rem; color: var(--zx-text-dim); }
+  .session {
+    font-size: 0.68rem;
+    color: var(--zx-text-dim);
+  }
   .btn {
     background: transparent;
     border: 1px solid var(--zx-border);
@@ -178,7 +219,10 @@
     display: inline-flex;
     align-items: center;
   }
-  .btn:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
+  .btn:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
   .rm {
     background: transparent;
     border: none;
@@ -189,5 +233,8 @@
     flex-shrink: 0;
     display: inline-flex;
   }
-  .rm:hover { color: var(--zx-err); background: color-mix(in srgb, var(--zx-err) 12%, transparent); }
+  .rm:hover {
+    color: var(--zx-err);
+    background: color-mix(in srgb, var(--zx-err) 12%, transparent);
+  }
 </style>

@@ -1,4 +1,6 @@
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -34,8 +36,8 @@
   --zx-ok: #3e8f60;
   --zx-warn: #b88528;
   --zx-err: #b13a3a;
-  --zx-font-ui: "Geist Variable", "Geist", "SF Pro Text", system-ui, sans-serif;
-  --zx-font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --zx-font-ui: 'Geist Variable', 'Geist', 'SF Pro Text', system-ui, sans-serif;
+  --zx-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   --zx-shadow: 0 24px 70px rgba(0, 0, 0, 0.15);
   --zx-term-bg: #20212b;
   --zx-term-fg: #d6d8e0;
@@ -73,7 +75,9 @@ input[type='range'] {
  * (fly/scale/fade dialog transitions, glow pulses) without removing final
  * states. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
@@ -81,7 +85,8 @@ input[type='range'] {
   }
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -93,13 +98,23 @@ html, body {
 }
 
 @keyframes pylon-glow-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes pylon-cursor-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Cursor glow — themes with glows: true set data-glow on the pylon shell.
@@ -107,6 +122,6 @@ html, body {
    loop, which forces WebKitGTK to re-blur every frame forever (a constant
    repaint that pins CPU on Linux). A static glow repaints only when the cursor
    moves or blinks. */
-.pylon-shell[data-glow="true"] :global(.xterm-cursor-layer) {
+.pylon-shell[data-glow='true'] :global(.xterm-cursor-layer) {
   filter: drop-shadow(0 0 6px var(--cursor-glow, rgba(244, 114, 182, 0.55)));
 }

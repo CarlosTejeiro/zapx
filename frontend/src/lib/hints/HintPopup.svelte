@@ -12,19 +12,27 @@
 
   function sourceIcon(h: Hint): string {
     switch (h.source.kind) {
-      case 'snippet': return '⭐'
-      case 'history': return '⟳'
-      case 'catalog': return '📘'
-      case 'sequence': return '↪'
+      case 'snippet':
+        return '⭐'
+      case 'history':
+        return '⟳'
+      case 'catalog':
+        return '📘'
+      case 'sequence':
+        return '↪'
     }
   }
 
   function sourceLabel(h: Hint): string {
     switch (h.source.kind) {
-      case 'snippet': return h.label ? `snippet · ${h.label}` : 'snippet'
-      case 'history': return 'history'
-      case 'catalog': return `catalog · ${h.source.platform}`
-      case 'sequence': return 'usual next'
+      case 'snippet':
+        return h.label ? `snippet · ${h.label}` : 'snippet'
+      case 'history':
+        return 'history'
+      case 'catalog':
+        return `catalog · ${h.source.platform}`
+      case 'sequence':
+        return 'usual next'
     }
   }
 
@@ -86,7 +94,9 @@
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 6px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.3);
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(0, 0, 0, 0.3);
     padding: 0.25rem;
     color: #d4dff0;
     font-size: 0.78rem;
@@ -95,8 +105,14 @@
   }
 
   @keyframes popup-in {
-    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0)    scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .row {

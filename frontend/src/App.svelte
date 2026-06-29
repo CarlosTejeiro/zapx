@@ -55,11 +55,7 @@
   import type { ImportSummary } from '$lib/bridge/commands'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
-  import {
-    loadBindings,
-    matchAction,
-    type ShortcutAction,
-  } from '$lib/stores/keybindings.svelte'
+  import { loadBindings, matchAction, type ShortcutAction } from '$lib/stores/keybindings.svelte'
   import {
     listSessions,
     listFolders,
@@ -73,12 +69,12 @@
     sendInputText,
     openLogsDir,
   } from '$lib/bridge/commands'
-  import { getFocusedSessionId, broadcastTargets, focusSession } from '$lib/stores/sessionRuntime.svelte'
   import {
-    visibleSnippets,
-    loadSnippets,
-    setBarContext,
-  } from '$lib/stores/snippets.svelte'
+    getFocusedSessionId,
+    broadcastTargets,
+    focusSession,
+  } from '$lib/stores/sessionRuntime.svelte'
+  import { visibleSnippets, loadSnippets, setBarContext } from '$lib/stores/snippets.svelte'
   import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
   import { getVersion } from '@tauri-apps/api/app'
@@ -176,15 +172,26 @@
   let nextId = 1
 
   const SESSION_COLORS = [
-    '#22d3ee','#f472b6','#a78bfa','#f59e0b',
-    '#ef4444','#10b981','#f97316','#84cc16','#c89b6b','#5eb3b2',
+    '#22d3ee',
+    '#f472b6',
+    '#a78bfa',
+    '#f59e0b',
+    '#ef4444',
+    '#10b981',
+    '#f97316',
+    '#84cc16',
+    '#c89b6b',
+    '#5eb3b2',
   ]
 
   function pickColor(id: number): string {
     return SESSION_COLORS[id % SESSION_COLORS.length] as string
   }
 
-  function mkPane(label: string, opts?: Partial<Omit<PaneData, 'id' | 'label' | 'color'>>): PaneData {
+  function mkPane(
+    label: string,
+    opts?: Partial<Omit<PaneData, 'id' | 'label' | 'color'>>,
+  ): PaneData {
     const id = nextId++
     return { id, label, color: pickColor(id), ...opts }
   }
@@ -241,7 +248,9 @@
   let showAbout = $state(false)
   // Bundle version from tauri.conf.json — single source of truth.
   let appVersion = $state('')
-  getVersion().then((v) => (appVersion = v)).catch(() => {})
+  getVersion()
+    .then((v) => (appVersion = v))
+    .catch(() => {})
   let showPalette = $state(false)
   // Lightweight text-prompt dialog (replaces window.prompt which Tauri blocks).
   let prompt = $state<{
@@ -251,7 +260,9 @@
     submitLabel?: string
     onSubmit: (v: string) => void
   } | null>(null)
-  function openPrompt(p: NonNullable<typeof prompt>) { prompt = p }
+  function openPrompt(p: NonNullable<typeof prompt>) {
+    prompt = p
+  }
 
   // Live throughput stats keyed by runtime session UUID, refreshed every
   // second from the backend's session-stats event.
@@ -308,7 +319,7 @@
       label: t.label,
       color: t.color,
       status: summaryStatus(t),
-    }))
+    })),
   )
 
   /// Find a pane by id in the active tab (split tree or grid).
@@ -319,9 +330,7 @@
 
   const focusedPaneData = $derived<PaneData | null>(findActiveLeaf(focusedPaneId))
 
-  const focusedStatus = $derived<PaneStatus>(
-    activeTab?.statuses.get(focusedPaneId) ?? 'connecting',
-  )
+  const focusedStatus = $derived<PaneStatus>(activeTab?.statuses.get(focusedPaneId) ?? 'connecting')
 
   /** Aggregated live status per saved-session id, across every open pane in
    *  every tab — drives the status dot on the sidebar avatars. A session with
@@ -384,27 +393,31 @@
   const liveTargets = $derived(
     tabs.flatMap((t) =>
       tabPanes(t)
-        .map((p) => ({ sessionId: paneToSession.get(p.id), label: p.label, tabLabel: t.label, active: t.id === activeTabId }))
-        .filter((x): x is { sessionId: string; label: string; tabLabel: string; active: boolean } => typeof x.sessionId === 'string'),
+        .map((p) => ({
+          sessionId: paneToSession.get(p.id),
+          label: p.label,
+          tabLabel: t.label,
+          active: t.id === activeTabId,
+        }))
+        .filter(
+          (x): x is { sessionId: string; label: string; tabLabel: string; active: boolean } =>
+            typeof x.sessionId === 'string',
+        ),
     ),
   )
   const canClosePanes = $derived(splitOn)
 
   const statusHost = $derived(
-    focusedPaneData?.ssh?.host ??
-    focusedPaneData?.savedSession?.host ??
-    ''
+    focusedPaneData?.ssh?.host ?? focusedPaneData?.savedSession?.host ?? '',
   )
 
   const statusPort = $derived(
-    focusedPaneData?.ssh?.port ??
-    focusedPaneData?.savedSession?.port ??
-    undefined
+    focusedPaneData?.ssh?.port ?? focusedPaneData?.savedSession?.port ?? undefined,
   )
 
   const statusProtocol = $derived(
     focusedPaneData?.savedSession?.protocol?.toUpperCase() ??
-    (focusedPaneData?.ssh ? 'SSH' : focusedPaneData?.telnet ? 'TELNET' : 'LOCAL')
+      (focusedPaneData?.ssh ? 'SSH' : focusedPaneData?.telnet ? 'TELNET' : 'LOCAL'),
   )
 
   const activeSessionName = $derived(activeTab?.label ?? '')
@@ -413,8 +426,12 @@
 
   async function load() {
     // Each call independent so a single failure doesn't blank the whole tree.
-    listSessions().then((v) => (sessions = v)).catch((e) => console.error('listSessions', e))
-    listFolders().then((v) => (folders = v)).catch((e) => console.error('listFolders', e))
+    listSessions()
+      .then((v) => (sessions = v))
+      .catch((e) => console.error('listSessions', e))
+    listFolders()
+      .then((v) => (folders = v))
+      .catch((e) => console.error('listFolders', e))
     loadSnippets().catch((e) => console.error('loadSnippets', e))
     loadGroups().catch((e) => console.error('loadGroups', e))
   }
@@ -581,9 +598,15 @@
   /// `onGlobalShortcut`), so xterm-focused panes route shortcuts identically.
   function dispatchAction(action: ShortcutAction) {
     switch (action) {
-      case 'new-session': showNewSession = true; break
-      case 'new-tab':     addLocalTab(); break
-      case 'close-tab':   closeTab(activeTabId); break
+      case 'new-session':
+        showNewSession = true
+        break
+      case 'new-tab':
+        addLocalTab()
+        break
+      case 'close-tab':
+        closeTab(activeTabId)
+        break
       case 'next-tab':
       case 'prev-tab': {
         const dir = action === 'prev-tab' ? -1 : 1
@@ -592,12 +615,24 @@
         if (next) activateTab(next.id)
         break
       }
-      case 'settings':    showSettings = true; break
-      case 'snippets':    showSnippets = true; break
-      case 'split-h':     handleSplit(focusedPaneId, 'h'); break
-      case 'split-v':     handleSplit(focusedPaneId, 'v'); break
-      case 'multi-exec':  multiOn = !multiOn; break
-      case 'quick-connect': showQuickConnect = true; break
+      case 'settings':
+        showSettings = true
+        break
+      case 'snippets':
+        showSnippets = true
+        break
+      case 'split-h':
+        handleSplit(focusedPaneId, 'h')
+        break
+      case 'split-v':
+        handleSplit(focusedPaneId, 'v')
+        break
+      case 'multi-exec':
+        multiOn = !multiOn
+        break
+      case 'quick-connect':
+        showQuickConnect = true
+        break
     }
   }
 
@@ -852,14 +887,62 @@
       section: 'Sessions' as const,
       run: () => openSavedSessionTab(s),
     })),
-    { id: 'act-new-tab',       label: 'New local tab',             icon: 'plus' as const,     section: 'Actions' as const, run: addLocalTab },
-    { id: 'act-new-session',   label: 'New saved session',         icon: 'file' as const,     section: 'Actions' as const, run: () => (showNewSession = true) },
-    { id: 'act-quick',         label: 'Quick Connect',             icon: 'bolt' as const,     section: 'Actions' as const, run: () => (showQuickConnect = true) },
-    { id: 'act-snippets',      label: 'Open Snippets',             icon: 'book' as const,     section: 'Actions' as const, run: () => (showSnippets = true) },
-    { id: 'act-groups',        label: 'Broadcast groups…',         icon: 'cast' as const,     section: 'Actions' as const, run: () => (showGroups = true) },
-    { id: 'act-cmdlist',       label: 'Send command list…',        icon: 'file' as const,     section: 'Actions' as const, run: () => (showCommandList = true) },
-    { id: 'act-tunnels',       label: 'Active tunnels…',           icon: 'tunnel' as const,   section: 'Actions' as const, run: () => (showTunnelsManager = true) },
-    { id: 'act-settings',      label: 'Open Settings',             icon: 'gear' as const,     section: 'Actions' as const, run: () => (showSettings = true) },
+    {
+      id: 'act-new-tab',
+      label: 'New local tab',
+      icon: 'plus' as const,
+      section: 'Actions' as const,
+      run: addLocalTab,
+    },
+    {
+      id: 'act-new-session',
+      label: 'New saved session',
+      icon: 'file' as const,
+      section: 'Actions' as const,
+      run: () => (showNewSession = true),
+    },
+    {
+      id: 'act-quick',
+      label: 'Quick Connect',
+      icon: 'bolt' as const,
+      section: 'Actions' as const,
+      run: () => (showQuickConnect = true),
+    },
+    {
+      id: 'act-snippets',
+      label: 'Open Snippets',
+      icon: 'book' as const,
+      section: 'Actions' as const,
+      run: () => (showSnippets = true),
+    },
+    {
+      id: 'act-groups',
+      label: 'Broadcast groups…',
+      icon: 'cast' as const,
+      section: 'Actions' as const,
+      run: () => (showGroups = true),
+    },
+    {
+      id: 'act-cmdlist',
+      label: 'Send command list…',
+      icon: 'file' as const,
+      section: 'Actions' as const,
+      run: () => (showCommandList = true),
+    },
+    {
+      id: 'act-tunnels',
+      label: 'Active tunnels…',
+      icon: 'tunnel' as const,
+      section: 'Actions' as const,
+      run: () => (showTunnelsManager = true),
+    },
+    {
+      id: 'act-settings',
+      label: 'Open Settings',
+      icon: 'gear' as const,
+      section: 'Actions' as const,
+      run: () => (showSettings = true),
+    },
     ...groups.map((g) => ({
       id: `group-${g.id}`,
       label: `Open group: ${g.name}`,
@@ -868,25 +951,101 @@
       section: 'Groups' as const,
       run: () => openGroupAsGrid(g),
     })),
-    { id: 'act-split-h',       label: 'Split horizontally',        icon: 'split' as const,    section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'h') },
-    { id: 'act-split-v',       label: 'Split vertically',          icon: 'splitV' as const,   section: 'Actions' as const, run: () => handleSplit(focusedPaneId, 'v') },
-    { id: 'act-multi',         label: 'Toggle multi-exec',         icon: 'cast' as const,     section: 'Actions' as const, run: () => (multiOn = !multiOn) },
-    { id: 'act-close-tab',     label: 'Close current tab',         icon: 'x' as const,        section: 'Actions' as const, run: () => closeTab(activeTabId) },
-    { id: 'act-open-logs',     label: 'Open logs folder',          icon: 'folder' as const,   section: 'Actions' as const, run: async () => {
-      try {
-        const path = await openLogsDir()
-        showToast({ kind: 'info', title: 'Logs', detail: path })
-      } catch (e) {
-        showToast({ kind: 'error', title: 'Logs', detail: e instanceof Error ? e.message : String(e) })
-      }
-    } },
-    { id: 'act-export',        label: 'Export sessions…',          icon: 'transfer' as const, section: 'Actions' as const, run: handleExport },
-    { id: 'act-import',        label: 'Import sessions…',          icon: 'transfer' as const, section: 'Actions' as const, run: handleImport },
-    { id: 'act-import-ssh',    label: 'Import from SSH config…',   icon: 'transfer' as const, section: 'Actions' as const, run: handleImportSshConfig },
-    { id: 'act-import-putty',  label: 'Import from PuTTY…',        icon: 'transfer' as const, section: 'Actions' as const, run: handleImportPutty },
-    { id: 'act-import-moba',   label: 'Import from MobaXterm…',    icon: 'transfer' as const, section: 'Actions' as const, run: handleImportMobaXterm },
-    { id: 'act-import-scrt',   label: 'Import from SecureCRT…',    icon: 'transfer' as const, section: 'Actions' as const, run: handleImportSecureCrt },
-    { id: 'act-about',         label: 'About ZAPX',                icon: 'book' as const,     section: 'Actions' as const, run: () => (showAbout = true) },
+    {
+      id: 'act-split-h',
+      label: 'Split horizontally',
+      icon: 'split' as const,
+      section: 'Actions' as const,
+      run: () => handleSplit(focusedPaneId, 'h'),
+    },
+    {
+      id: 'act-split-v',
+      label: 'Split vertically',
+      icon: 'splitV' as const,
+      section: 'Actions' as const,
+      run: () => handleSplit(focusedPaneId, 'v'),
+    },
+    {
+      id: 'act-multi',
+      label: 'Toggle multi-exec',
+      icon: 'cast' as const,
+      section: 'Actions' as const,
+      run: () => (multiOn = !multiOn),
+    },
+    {
+      id: 'act-close-tab',
+      label: 'Close current tab',
+      icon: 'x' as const,
+      section: 'Actions' as const,
+      run: () => closeTab(activeTabId),
+    },
+    {
+      id: 'act-open-logs',
+      label: 'Open logs folder',
+      icon: 'folder' as const,
+      section: 'Actions' as const,
+      run: async () => {
+        try {
+          const path = await openLogsDir()
+          showToast({ kind: 'info', title: 'Logs', detail: path })
+        } catch (e) {
+          showToast({
+            kind: 'error',
+            title: 'Logs',
+            detail: e instanceof Error ? e.message : String(e),
+          })
+        }
+      },
+    },
+    {
+      id: 'act-export',
+      label: 'Export sessions…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleExport,
+    },
+    {
+      id: 'act-import',
+      label: 'Import sessions…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleImport,
+    },
+    {
+      id: 'act-import-ssh',
+      label: 'Import from SSH config…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleImportSshConfig,
+    },
+    {
+      id: 'act-import-putty',
+      label: 'Import from PuTTY…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleImportPutty,
+    },
+    {
+      id: 'act-import-moba',
+      label: 'Import from MobaXterm…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleImportMobaXterm,
+    },
+    {
+      id: 'act-import-scrt',
+      label: 'Import from SecureCRT…',
+      icon: 'transfer' as const,
+      section: 'Actions' as const,
+      run: handleImportSecureCrt,
+    },
+    {
+      id: 'act-about',
+      label: 'About ZAPX',
+      icon: 'book' as const,
+      section: 'Actions' as const,
+      run: () => (showAbout = true),
+    },
     ...Object.entries(themeLabels).map(([key, label]) => ({
       id: `theme-${key}`,
       label: `Tema · ${label}`,
@@ -898,9 +1057,7 @@
 
   // Throughput in the StatusBar reflects the runtime session of the focused
   // pane. paneToSession is the runtime-store map updated by TerminalTab.
-  const focusedRuntimeSessionId = $derived(
-    paneToSession.get(focusedPaneId) ?? null,
-  )
+  const focusedRuntimeSessionId = $derived(paneToSession.get(focusedPaneId) ?? null)
 
   // TCP MSS for the focused SSH session. Initial value comes from the
   // snapshot the backend captured at connect; live updates arrive via the
@@ -913,7 +1070,10 @@
 
   $effect(() => {
     const sid = focusedRuntimeSessionId
-    if (!sid) { focusedMss = null; return }
+    if (!sid) {
+      focusedMss = null
+      return
+    }
     const cached = mssBySession.get(sid)
     if (cached) {
       focusedMss = cached
@@ -923,7 +1083,9 @@
           mssBySession.set(sid, m)
           if (focusedRuntimeSessionId === sid) focusedMss = m
         })
-        .catch(() => { focusedMss = null })
+        .catch(() => {
+          focusedMss = null
+        })
     }
   })
 
@@ -949,7 +1111,9 @@
         ...bytesPerSecBySession,
         [e.payload.session_id]: e.payload.bytes_per_sec,
       }
-    }).then((fn) => { unlistenStats = fn })
+    }).then((fn) => {
+      unlistenStats = fn
+    })
 
     // Live MSS updates — backend emits when the value changes (typically
     // because Path-MTU Discovery revised the negotiated size). We cache by
@@ -963,7 +1127,9 @@
           focusedMss = e.payload.mss
         }
       },
-    ).then((fn) => { unlistenMss = fn })
+    ).then((fn) => {
+      unlistenMss = fn
+    })
 
     // Platform auto-detect — backend emits once per session the first time
     // it latches onto a recognisable prompt. Surface a toast and refresh
@@ -979,7 +1145,9 @@
           detail: e.payload.display_name,
         })
         // Refresh sessions so the updated platform is visible immediately.
-        listSessions().then((v) => (sessions = v)).catch(() => {})
+        listSessions()
+          .then((v) => (sessions = v))
+          .catch(() => {})
         // If the detection landed on the focused session, refresh the bar with
         // the new platform — that's what surfaces the seeded defaults. Match by
         // RUNTIME session id so this also works for unsaved/quick-connect
@@ -990,18 +1158,24 @@
           await setBarContext(e.payload.platform, savedSid)
         }
       },
-    ).then((fn) => { unlistenPlatform = fn })
+    ).then((fn) => {
+      unlistenPlatform = fn
+    })
 
     // SFTP "edit remote file": the backend re-uploads on each save and emits
     // these so the user gets feedback that their edit landed.
     let unlistenEditSaved: UnlistenFn | null = null
     listen<string>('sftp-edit-saved', (e) => {
       showToast({ kind: 'success', title: 'Uploaded', detail: e.payload })
-    }).then((fn) => { unlistenEditSaved = fn })
+    }).then((fn) => {
+      unlistenEditSaved = fn
+    })
     let unlistenEditError: UnlistenFn | null = null
     listen<string>('sftp-edit-error', (e) => {
       showToast({ kind: 'error', title: 'Upload failed', detail: e.payload })
-    }).then((fn) => { unlistenEditError = fn })
+    }).then((fn) => {
+      unlistenEditError = fn
+    })
 
     return () => {
       document.removeEventListener('keydown', onKeydown)
@@ -1025,18 +1199,17 @@
   data-glow={theme.glows ? 'true' : 'false'}
   data-theme={theme.name}
 >
-
   <TitleBar
     {theme}
     sessionName={activeSessionName}
     themeName={theme.name}
-    onNewSession={() => showNewSession = true}
+    onNewSession={() => (showNewSession = true)}
     onQuickConnect={() => (showQuickConnect = true)}
-    onSettings={() => showSettings = true}
-    onSnippets={() => showSnippets = true}
+    onSettings={() => (showSettings = true)}
+    onSnippets={() => (showSnippets = true)}
     onCheckUpdates={handleCheckUpdates}
     onSetTheme={(k) => setTheme(k)}
-    onAbout={() => showAbout = true}
+    onAbout={() => (showAbout = true)}
     onExport={handleExport}
     onImport={handleImport}
     onImportSshConfig={handleImportSshConfig}
@@ -1048,7 +1221,6 @@
   />
 
   <div class="pylon-body">
-
     <Sidebar
       {theme}
       {sessions}
@@ -1063,7 +1235,11 @@
           await load()
           showToast({ kind: 'success', title: 'Session duplicated', detail: `${s.name} (copy)` })
         } catch (e) {
-          showToast({ kind: 'error', title: 'Duplicate failed', detail: e instanceof Error ? e.message : String(e) })
+          showToast({
+            kind: 'error',
+            title: 'Duplicate failed',
+            detail: e instanceof Error ? e.message : String(e),
+          })
         }
       }}
       onDelete={async (s) => {
@@ -1113,10 +1289,10 @@
         })
       }}
       onDeleteFolder={async (folder) => {
-        const ok = await ask(
-          `Delete folder "${folder.name}"? Its sessions move to the root.`,
-          { title: 'Delete folder', kind: 'warning' },
-        )
+        const ok = await ask(`Delete folder "${folder.name}"? Its sessions move to the root.`, {
+          title: 'Delete folder',
+          kind: 'warning',
+        })
         if (!ok) return
         try {
           await deleteFolder(folder.id)
@@ -1141,17 +1317,16 @@
           console.error('reorder session failed:', e)
         }
       }}
-      onAddSession={() => showNewSession = true}
-      onSettings={() => showSettings = true}
+      onAddSession={() => (showNewSession = true)}
+      onSettings={() => (showSettings = true)}
       onToggleTheme={toggleTheme}
     />
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>
-
       <TabBar
         {theme}
         tabs={tabEntries}
-        activeTabId={activeTabId}
+        {activeTabId}
         {splitOn}
         {multiOn}
         onActivate={activateTab}
@@ -1161,7 +1336,7 @@
         onDuplicate={duplicateTab}
         onSetColor={setTabColor}
         onToggleSplit={handleSplitFocused}
-        onToggleMulti={() => multiOn = !multiOn}
+        onToggleMulti={() => (multiOn = !multiOn)}
       />
 
       <div class="pylon-panes">
@@ -1220,20 +1395,20 @@
         host={statusHost || undefined}
         port={statusPort ?? undefined}
         protocol={statusProtocol}
-        bytesPerSec={focusedRuntimeSessionId ? bytesPerSecBySession[focusedRuntimeSessionId] : undefined}
+        bytesPerSec={focusedRuntimeSessionId
+          ? bytesPerSecBySession[focusedRuntimeSessionId]
+          : undefined}
         mss={focusedMss}
       />
-
     </div>
   </div>
-
 </div>
 
 <!-- ── Dialogs ──────────────────────────────────────────────────────────────── -->
 {#if showNewSession}
   <NewSessionDialog
     {folders}
-    onCancel={() => showNewSession = false}
+    onCancel={() => (showNewSession = false)}
     onCreated={(_id) => handleSessionAdded()}
   />
 {/if}
@@ -1243,15 +1418,15 @@
     {folders}
     existing={editingSession}
     onCancel={() => (editingSession = null)}
-    onCreated={() => { editingSession = null; load() }}
+    onCreated={() => {
+      editingSession = null
+      load()
+    }}
   />
 {/if}
 
 {#if showQuickConnect}
-  <QuickConnectDialog
-    onCancel={() => (showQuickConnect = false)}
-    onConnect={handleQuickConnect}
-  />
+  <QuickConnectDialog onCancel={() => (showQuickConnect = false)} onConnect={handleQuickConnect} />
 {/if}
 
 <KeyboardInteractiveDialog />
@@ -1264,15 +1439,15 @@
   <GroupsDialog
     {sessions}
     onClose={() => (showGroups = false)}
-    onOpenGrid={(g) => { showGroups = false; openGroupAsGrid(g) }}
+    onOpenGrid={(g) => {
+      showGroups = false
+      openGroupAsGrid(g)
+    }}
   />
 {/if}
 
 {#if showCommandList}
-  <CommandListDialog
-    targets={liveTargets}
-    onClose={() => (showCommandList = false)}
-  />
+  <CommandListDialog targets={liveTargets} onClose={() => (showCommandList = false)} />
 {/if}
 
 {#if showComparePanel}
@@ -1281,26 +1456,23 @@
     command={compareRunner.command}
     hosts={compareRunner.hosts}
     running={compareRunner.running}
-    onClose={() => { showComparePanel = false; compareRunner.reset() }}
+    onClose={() => {
+      showComparePanel = false
+      compareRunner.reset()
+    }}
   />
 {/if}
 
 {#if showTunnelsManager}
-  <TunnelsManagerDialog
-    labels={sessionLabels}
-    onClose={() => (showTunnelsManager = false)}
-  />
+  <TunnelsManagerDialog labels={sessionLabels} onClose={() => (showTunnelsManager = false)} />
 {/if}
 
 {#if showSettings}
-  <SettingsModal onClose={() => showSettings = false} />
+  <SettingsModal onClose={() => (showSettings = false)} />
 {/if}
 
 {#if showPalette}
-  <CommandPalette
-    items={paletteItems}
-    onClose={() => (showPalette = false)}
-  />
+  <CommandPalette items={paletteItems} onClose={() => (showPalette = false)} />
 {/if}
 
 {#if prompt}
@@ -1320,8 +1492,10 @@
 {#if showAbout}
   <div
     class="about-backdrop"
-    onclick={() => showAbout = false}
-    onkeydown={(e) => { if (e.key === 'Escape') showAbout = false }}
+    onclick={() => (showAbout = false)}
+    onkeydown={(e) => {
+      if (e.key === 'Escape') showAbout = false
+    }}
     role="presentation"
     tabindex="-1"
   >
@@ -1338,23 +1512,31 @@
     >
       <div class="about-header" style:border-bottom="1px solid {theme.border}">
         <MarkTile size={20} accent={theme.accent} paper={theme.appBg} />
-        <span style:color={theme.textPrimary} style:font-size="15px" style:font-weight="600">ZAPX</span>
-        <button
-          class="about-close"
-          style:color={theme.textDim}
-          onclick={() => showAbout = false}
-        ><Icon name="x" size={13} /></button>
+        <span style:color={theme.textPrimary} style:font-size="15px" style:font-weight="600"
+          >ZAPX</span
+        >
+        <button class="about-close" style:color={theme.textDim} onclick={() => (showAbout = false)}
+          ><Icon name="x" size={13} /></button
+        >
       </div>
       <div class="about-body">
         <p style:color={theme.textMuted} style:font-size="12.5px" style:line-height="1.7">
-          A modern multiprotocol terminal for network engineers.<br/>
+          A modern multiprotocol terminal for network engineers.<br />
           Built with Tauri · Svelte 5 · xterm.js · Rust.
         </p>
         <table class="about-table" style:color={theme.textMuted}>
           <tbody>
-            <tr><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}>{appVersion || '—'}</td></tr>
+            <tr
+              ><td style:color={theme.textDim}>Version</td><td style:color={theme.textPrimary}
+                >{appVersion || '—'}</td
+              ></tr
+            >
             <tr><td style:color={theme.textDim}>Runtime</td><td>Tauri 2 · WebView</td></tr>
-            <tr><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}>{themeLabels[theme.name] ?? theme.name}</td></tr>
+            <tr
+              ><td style:color={theme.textDim}>Theme</td><td style:color={theme.accent}
+                >{themeLabels[theme.name] ?? theme.name}</td
+              ></tr
+            >
           </tbody>
         </table>
         <p class="about-hint" style:color={theme.textDim} style:font-family={theme.fontMono}>
@@ -1414,7 +1596,7 @@
   .about-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.55);
+    background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(4px);
     z-index: 300;
     display: flex;
@@ -1448,7 +1630,9 @@
     transition: background 0.1s;
   }
 
-  .about-close:hover { background: var(--zx-hover-bg); }
+  .about-close:hover {
+    background: var(--zx-hover-bg);
+  }
 
   .about-body {
     padding: 0 18px 18px;

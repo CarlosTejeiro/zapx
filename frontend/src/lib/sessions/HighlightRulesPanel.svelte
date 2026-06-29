@@ -39,7 +39,8 @@
 
   let testSpans = $derived.by<Span[]>(() => {
     testError = null
-    if (!testInput || !newPattern) return [{ text: testInput, fg: null, bg: null, bold: false, underline: false }]
+    if (!testInput || !newPattern)
+      return [{ text: testInput, fg: null, bg: null, bold: false, underline: false }]
 
     let regex: RegExp
     try {
@@ -53,7 +54,14 @@
     let last = 0
     for (const m of testInput.matchAll(regex)) {
       const start = m.index ?? 0
-      if (start > last) spans.push({ text: testInput.slice(last, start), fg: null, bg: null, bold: false, underline: false })
+      if (start > last)
+        spans.push({
+          text: testInput.slice(last, start),
+          fg: null,
+          bg: null,
+          bold: false,
+          underline: false,
+        })
       spans.push({
         text: m[0],
         fg: newFgColor || null,
@@ -63,8 +71,11 @@
       })
       last = start + m[0].length
     }
-    if (last < testInput.length) spans.push({ text: testInput.slice(last), fg: null, bg: null, bold: false, underline: false })
-    return spans.length ? spans : [{ text: testInput, fg: null, bg: null, bold: false, underline: false }]
+    if (last < testInput.length)
+      spans.push({ text: testInput.slice(last), fg: null, bg: null, bold: false, underline: false })
+    return spans.length
+      ? spans
+      : [{ text: testInput, fg: null, bg: null, bold: false, underline: false }]
   })
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -86,10 +97,21 @@
 
   async function handleCreate() {
     formError = null
-    if (!newName.trim()) { formError = 'Name is required'; return }
-    if (!newPattern.trim()) { formError = 'Pattern is required'; return }
+    if (!newName.trim()) {
+      formError = 'Name is required'
+      return
+    }
+    if (!newPattern.trim()) {
+      formError = 'Pattern is required'
+      return
+    }
     if (newIsRegex) {
-      try { new RegExp(newPattern) } catch (e) { formError = `Invalid regex: ${e}`; return }
+      try {
+        new RegExp(newPattern)
+      } catch (e) {
+        formError = `Invalid regex: ${e}`
+        return
+      }
     }
     creating = true
     try {
@@ -136,7 +158,9 @@
   }
 
   // load on mount
-  $effect(() => { load() })
+  $effect(() => {
+    load()
+  })
 </script>
 
 <div class="flex flex-col gap-4 p-4 text-sm">
@@ -166,18 +190,19 @@
           <span
             class="rule-chip"
             style:color={rule.fg_color ?? 'var(--zx-text)'}
-            style:background-color={rule.bg_color ?? 'color-mix(in srgb, var(--zx-text) 6%, transparent)'}
+            style:background-color={rule.bg_color ??
+              'color-mix(in srgb, var(--zx-text) 6%, transparent)'}
             style:font-weight={rule.bold ? 'bold' : undefined}
             style:text-decoration={rule.underline ? 'underline' : undefined}
-            title="Preview"
-          >Aa</span>
+            title="Preview">Aa</span
+          >
           <code class="rule-pattern" title={rule.pattern}>{rule.pattern}</code>
           <span class="rule-kind">{rule.is_regex ? 'rx' : 'str'}</span>
           <button
             onclick={() => handleDelete(rule.id)}
             class="rule-del"
-            aria-label="Delete {rule.name}"
-          ><Icon name="x" size={12} /></button>
+            aria-label="Delete {rule.name}"><Icon name="x" size={12} /></button
+          >
         </li>
       {/each}
     </ul>
@@ -187,7 +212,10 @@
   <details class="rounded bg-zinc-800">
     <summary class="cursor-pointer px-3 py-2 font-medium select-none">Add rule…</summary>
     <form
-      onsubmit={(e) => { e.preventDefault(); handleCreate() }}
+      onsubmit={(e) => {
+        e.preventDefault()
+        handleCreate()
+      }}
       class="flex flex-col gap-3 p-3"
     >
       {#if formError}
@@ -196,12 +224,20 @@
 
       <label class="flex flex-col gap-1">
         <span class="text-zinc-400">Name</span>
-        <input bind:value={newName} class="bg-zinc-700 rounded px-2 py-1" placeholder="Cisco Error" />
+        <input
+          bind:value={newName}
+          class="bg-zinc-700 rounded px-2 py-1"
+          placeholder="Cisco Error"
+        />
       </label>
 
       <label class="flex flex-col gap-1">
         <span class="text-zinc-400">Pattern</span>
-        <input bind:value={newPattern} class="bg-zinc-700 rounded px-2 py-1 font-mono" placeholder="%ERROR" />
+        <input
+          bind:value={newPattern}
+          class="bg-zinc-700 rounded px-2 py-1 font-mono"
+          placeholder="%ERROR"
+        />
       </label>
 
       <label class="flex items-center gap-2">
@@ -212,11 +248,19 @@
       <div class="flex gap-4">
         <label class="flex flex-col gap-1">
           <span class="text-zinc-400">Foreground</span>
-          <input type="color" bind:value={newFgColor} class="w-10 h-8 rounded cursor-pointer bg-transparent" />
+          <input
+            type="color"
+            bind:value={newFgColor}
+            class="w-10 h-8 rounded cursor-pointer bg-transparent"
+          />
         </label>
         <label class="flex flex-col gap-1">
           <span class="text-zinc-400">Background</span>
-          <input type="color" bind:value={newBgColor} class="w-10 h-8 rounded cursor-pointer bg-transparent" />
+          <input
+            type="color"
+            bind:value={newBgColor}
+            class="w-10 h-8 rounded cursor-pointer bg-transparent"
+          />
         </label>
         <label class="flex items-end gap-2 pb-1">
           <input type="checkbox" bind:checked={newBold} class="accent-green-500" />
@@ -246,8 +290,8 @@
               style:color={span.fg ?? undefined}
               style:background-color={span.bg ?? undefined}
               style:font-weight={span.bold ? 'bold' : undefined}
-              style:text-decoration={span.underline ? 'underline' : undefined}
-            >{span.text}</span>
+              style:text-decoration={span.underline ? 'underline' : undefined}>{span.text}</span
+            >
           {/each}
         </p>
       {/if}
@@ -256,7 +300,8 @@
         type="submit"
         disabled={creating}
         class="self-start bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded px-3 py-1"
-      >{creating ? 'Saving…' : 'Add rule'}</button>
+        >{creating ? 'Saving…' : 'Add rule'}</button
+      >
     </form>
   </details>
 </div>

@@ -64,34 +64,124 @@
 
   const menus = $derived<Record<string, MenuItem[]>>({
     File: [
-      { label: 'Export sessions…', action: () => { onExport?.(); openMenu = null } },
-      { label: 'Import sessions…', action: () => { onImport?.(); openMenu = null } },
+      {
+        label: 'Export sessions…',
+        action: () => {
+          onExport?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Import sessions…',
+        action: () => {
+          onImport?.()
+          openMenu = null
+        },
+      },
       { label: '', divider: true },
-      { label: 'Import from SSH config…', action: () => { onImportSshConfig?.(); openMenu = null } },
-      { label: 'Import from PuTTY…', action: () => { onImportPutty?.(); openMenu = null } },
-      { label: 'Import from MobaXterm…', action: () => { onImportMobaXterm?.(); openMenu = null } },
-      { label: 'Import from SecureCRT…', action: () => { onImportSecureCrt?.(); openMenu = null } },
+      {
+        label: 'Import from SSH config…',
+        action: () => {
+          onImportSshConfig?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Import from PuTTY…',
+        action: () => {
+          onImportPutty?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Import from MobaXterm…',
+        action: () => {
+          onImportMobaXterm?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Import from SecureCRT…',
+        action: () => {
+          onImportSecureCrt?.()
+          openMenu = null
+        },
+      },
       { label: '', divider: true },
       { label: 'Quit', action: () => win.close() },
     ],
     View: Object.entries(themeLabels).map(([key, label]) => ({
       label,
       checked: themeName === key,
-      action: () => { onSetTheme?.(key); openMenu = null },
+      action: () => {
+        onSetTheme?.(key)
+        openMenu = null
+      },
     })),
     Session: [
-      { label: 'New Session', shortcut: 'Ctrl+N', action: () => { onNewSession?.(); openMenu = null } },
-      { label: 'Quick Connect', shortcut: 'Ctrl+Shift+N', action: () => { onQuickConnect?.(); openMenu = null } },
+      {
+        label: 'New Session',
+        shortcut: 'Ctrl+N',
+        action: () => {
+          onNewSession?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Quick Connect',
+        shortcut: 'Ctrl+Shift+N',
+        action: () => {
+          onQuickConnect?.()
+          openMenu = null
+        },
+      },
     ],
     Tools: [
-      { label: 'Snippets…', action: () => { onSnippets?.(); openMenu = null } },
-      { label: 'Send command list…', action: () => { onCommandList?.(); openMenu = null } },
-      { label: 'Active tunnels…', action: () => { onTunnelsManager?.(); openMenu = null } },
-      { label: 'Settings', shortcut: 'Ctrl+,', action: () => { onSettings?.(); openMenu = null } },
+      {
+        label: 'Snippets…',
+        action: () => {
+          onSnippets?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Send command list…',
+        action: () => {
+          onCommandList?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Active tunnels…',
+        action: () => {
+          onTunnelsManager?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Settings',
+        shortcut: 'Ctrl+,',
+        action: () => {
+          onSettings?.()
+          openMenu = null
+        },
+      },
     ],
     Help: [
-      { label: 'Check for updates…', action: () => { onCheckUpdates?.(); openMenu = null } },
-      { label: 'About ZAPX', action: () => { onAbout?.(); openMenu = null }},
+      {
+        label: 'Check for updates…',
+        action: () => {
+          onCheckUpdates?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'About ZAPX',
+        action: () => {
+          onAbout?.()
+          openMenu = null
+        },
+      },
     ],
   })
 
@@ -105,10 +195,12 @@
 </script>
 
 <!-- close menus on outside click -->
-<svelte:window onclick={(e) => {
-  const target = e.target as Element
-  if (!target.closest?.('.tb-menu-wrap')) closeMenus()
-}} />
+<svelte:window
+  onclick={(e) => {
+    const target = e.target as Element
+    if (!target.closest?.('.tb-menu-wrap')) closeMenus()
+  }}
+/>
 
 <header
   class="titlebar"
@@ -118,7 +210,6 @@
   style:--item-hover-bg={theme.itemHoverBg}
   style:--text-primary={theme.textPrimary}
 >
-
   <!-- Left: brand + active session -->
   <div class="tb-left">
     <MarkTile size={15} accent={theme.accent} paper={theme.appBg} />
@@ -148,8 +239,8 @@
             class:active={openMenu === name}
             style:color={openMenu === name ? theme.textPrimary : theme.textMuted}
             style:background={openMenu === name ? theme.itemHoverBg : 'transparent'}
-            onclick={() => toggleMenu(name)}
-          >{name}</button>
+            onclick={() => toggleMenu(name)}>{name}</button
+          >
 
           {#if openMenu === name}
             <div
@@ -177,8 +268,8 @@
                         class="dd-kbd"
                         style:border="1px solid {theme.border}"
                         style:color={theme.textDim}
-                        style:font-family={theme.fontMono}
-                      >{item.shortcut}</kbd>
+                        style:font-family={theme.fontMono}>{item.shortcut}</kbd
+                      >
                     {/if}
                   </button>
                 {/if}
@@ -190,18 +281,32 @@
     </nav>
 
     <div class="tb-controls">
-      <button class="tb-ctrl" title="Minimize" style:color={theme.textDim} onclick={() => win.minimize()}>
+      <button
+        class="tb-ctrl"
+        title="Minimize"
+        style:color={theme.textDim}
+        onclick={() => win.minimize()}
+      >
         <Icon name="min" size={13} />
       </button>
-      <button class="tb-ctrl" title="Maximize" style:color={theme.textDim} onclick={() => win.toggleMaximize()}>
+      <button
+        class="tb-ctrl"
+        title="Maximize"
+        style:color={theme.textDim}
+        onclick={() => win.toggleMaximize()}
+      >
         <Icon name="max" size={12} />
       </button>
-      <button class="tb-ctrl tb-ctrl-close" title="Close" style:color={theme.textDim} onclick={() => win.close()}>
+      <button
+        class="tb-ctrl tb-ctrl-close"
+        title="Close"
+        style:color={theme.textDim}
+        onclick={() => win.close()}
+      >
         <Icon name="x" size={13} />
       </button>
     </div>
   </div>
-
 </header>
 
 <style>
@@ -231,7 +336,9 @@
     letter-spacing: 1.5px;
   }
 
-  .tb-sep { font-size: 12px; }
+  .tb-sep {
+    font-size: 12px;
+  }
 
   .tb-session {
     font-size: 12px;
@@ -241,7 +348,10 @@
     white-space: nowrap;
   }
 
-  .tb-drag { flex: 1; height: 100%; }
+  .tb-drag {
+    flex: 1;
+    height: 100%;
+  }
 
   .tb-right {
     display: flex;
@@ -267,12 +377,14 @@
     padding: 4px 10px;
     border-radius: 5px;
     color: inherit;
-    transition: color 0.1s, background 0.1s;
+    transition:
+      color 0.1s,
+      background 0.1s;
   }
 
   .tb-menu-item:hover,
   .tb-menu-item.active {
-    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.06));
     color: var(--text-primary, #2c2924);
   }
 
@@ -283,7 +395,7 @@
     min-width: 180px;
     border-radius: 7px;
     padding: 4px 0;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
     z-index: 200;
   }
 
@@ -332,7 +444,7 @@
   }
 
   .dd-item:not(:disabled):hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.07));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.07));
   }
 
   .dd-item:disabled {
@@ -347,7 +459,12 @@
 
   /* Sit above the window resize handles (z-index 9999) so the min/max/close
      buttons stay clickable where the top-right corner handle overlaps them. */
-  .tb-controls { display: flex; height: 100%; position: relative; z-index: 10000; }
+  .tb-controls {
+    display: flex;
+    height: 100%;
+    position: relative;
+    z-index: 10000;
+  }
 
   .tb-ctrl {
     background: none;
@@ -358,12 +475,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     color: inherit;
   }
 
   .tb-ctrl:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.08));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.08));
     color: var(--text-primary, #2c2924);
   }
 

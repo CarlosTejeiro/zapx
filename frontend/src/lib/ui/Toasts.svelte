@@ -5,10 +5,34 @@
 
   function colorFor(kind: Toast['kind']): { fg: string; bg: string; border: string; icon: string } {
     switch (kind) {
-      case 'success': return { fg: 'var(--zx-ok)', bg: 'color-mix(in srgb, var(--zx-ok) 10%, transparent)', border: 'color-mix(in srgb, var(--zx-ok) 45%, transparent)', icon: '✓' }
-      case 'warning': return { fg: 'var(--zx-warn)', bg: 'color-mix(in srgb, var(--zx-warn) 10%, transparent)', border: 'color-mix(in srgb, var(--zx-warn) 45%, transparent)', icon: '⚠' }
-      case 'error':   return { fg: 'var(--zx-err)', bg: 'color-mix(in srgb, var(--zx-err) 10%, transparent)',  border: 'color-mix(in srgb, var(--zx-err) 45%, transparent)',  icon: '⨯' }
-      default:        return { fg: 'var(--zx-accent)', bg: 'color-mix(in srgb, var(--zx-accent) 10%, transparent)', border: 'color-mix(in srgb, var(--zx-accent) 40%, transparent)', icon: 'ℹ' }
+      case 'success':
+        return {
+          fg: 'var(--zx-ok)',
+          bg: 'color-mix(in srgb, var(--zx-ok) 12%, var(--zx-surface))',
+          border: 'color-mix(in srgb, var(--zx-ok) 45%, transparent)',
+          icon: '✓',
+        }
+      case 'warning':
+        return {
+          fg: 'var(--zx-warn)',
+          bg: 'color-mix(in srgb, var(--zx-warn) 12%, var(--zx-surface))',
+          border: 'color-mix(in srgb, var(--zx-warn) 45%, transparent)',
+          icon: '⚠',
+        }
+      case 'error':
+        return {
+          fg: 'var(--zx-err)',
+          bg: 'color-mix(in srgb, var(--zx-err) 12%, var(--zx-surface))',
+          border: 'color-mix(in srgb, var(--zx-err) 45%, transparent)',
+          icon: '⨯',
+        }
+      default:
+        return {
+          fg: 'var(--zx-accent)',
+          bg: 'color-mix(in srgb, var(--zx-accent) 12%, var(--zx-surface))',
+          border: 'color-mix(in srgb, var(--zx-accent) 40%, transparent)',
+          icon: 'ℹ',
+        }
     }
   }
 </script>
@@ -29,12 +53,9 @@
         <div class="title">{toast.title}</div>
         {#if toast.detail}<div class="detail">{toast.detail}</div>{/if}
       </div>
-      <button
-        type="button"
-        class="close"
-        onclick={() => dismissToast(toast.id)}
-        aria-label="Close"
-      ><Icon name="x" size={12} /></button>
+      <button type="button" class="close" onclick={() => dismissToast(toast.id)} aria-label="Close"
+        ><Icon name="x" size={12} /></button
+      >
     </div>
   {/each}
 </div>
@@ -100,5 +121,7 @@
     padding: 0 0.2rem;
     font-size: 0.85rem;
   }
-  .close:hover { color: var(--zx-text); }
+  .close:hover {
+    color: var(--zx-text);
+  }
 </style>

@@ -27,7 +27,10 @@
     // Drop a trailing prompt-ish line (last non-empty line) + trailing blanks.
     while (lines.length && lines[lines.length - 1]!.trim() === '') lines.pop()
     if (lines.length) lines = lines.slice(0, -1) // the returned prompt line
-    return lines.map((l) => l.replace(/\s+$/, '')).join('\n').trim()
+    return lines
+      .map((l) => l.replace(/\s+$/, ''))
+      .join('\n')
+      .trim()
   }
 
   interface OutputGroup {
@@ -77,7 +80,8 @@
     const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
     for (let i = n - 1; i >= 0; i--) {
       for (let j = m - 1; j >= 0; j--) {
-        lcs[i]![j] = A[i] === B[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)
+        lcs[i]![j] =
+          A[i] === B[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)
       }
     }
     const out: DiffLine[] = []
@@ -110,11 +114,20 @@
   })
 
   function pickDiff(i: number) {
-    if (diffA === i) { diffA = null; return }
-    if (diffB === i) { diffB = null; return }
+    if (diffA === i) {
+      diffA = null
+      return
+    }
+    if (diffB === i) {
+      diffB = null
+      return
+    }
     if (diffA == null) diffA = i
     else if (diffB == null) diffB = i
-    else { diffA = i; diffB = null }
+    else {
+      diffA = i
+      diffB = null
+    }
   }
 
   // ── export ─────────────────────────────────────────────────────────────────
@@ -124,10 +137,14 @@
   function buildReport(): string {
     const out: string[] = []
     out.push(`$ ${command || '—'}`)
-    out.push(`# ${new Date().toISOString().replace('T', ' ').slice(0, 19)} · ${hosts.length} hosts · ${groups.length} variant${groups.length === 1 ? '' : 's'}${timedOut.length ? ` · ${timedOut.length} no reply` : ''}`)
+    out.push(
+      `# ${new Date().toISOString().replace('T', ' ').slice(0, 19)} · ${hosts.length} hosts · ${groups.length} variant${groups.length === 1 ? '' : 's'}${timedOut.length ? ` · ${timedOut.length} no reply` : ''}`,
+    )
     for (const g of groups) {
       out.push('')
-      out.push(`── ${g.hosts.length} host${g.hosts.length === 1 ? '' : 's'}: ${g.hosts.map((h) => h.label).join(', ')} ──`)
+      out.push(
+        `── ${g.hosts.length} host${g.hosts.length === 1 ? '' : 's'}: ${g.hosts.map((h) => h.label).join(', ')} ──`,
+      )
       out.push(g.text || '(no output)')
     }
     if (timedOut.length) {
@@ -162,7 +179,9 @@
         {:else if allSame}
           <span class="badge ok">✓ {hosts.length} hosts identical</span>
         {:else}
-          <span class="badge warn">{groups.length} variants{timedOut.length ? ` · ${timedOut.length} no reply` : ''}</span>
+          <span class="badge warn"
+            >{groups.length} variants{timedOut.length ? ` · ${timedOut.length} no reply` : ''}</span
+          >
         {/if}
       </div>
       <div class="header-actions">
@@ -170,29 +189,29 @@
           class="btn small"
           onclick={copyReport}
           disabled={running || groups.length === 0}
-          title="Copy the comparison as text"
-        ><Icon name="copy" size={12} /> Copy</button>
+          title="Copy the comparison as text"><Icon name="copy" size={12} /> Copy</button
+        >
         <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
       </div>
     </div>
 
-    <p class="hint">
-      Outputs grouped by identical content. Select two groups to see the diff.
-    </p>
+    <p class="hint">Outputs grouped by identical content. Select two groups to see the diff.</p>
 
     <div class="groups">
       {#each groups as g, i (i)}
         <div class="group" class:diff-a={diffA === i} class:diff-b={diffB === i}>
           <div class="group-head">
-            <button class="caret" onclick={() => toggle(i)}><Icon name="chevron" size={11} open={open.has(i)} /></button>
+            <button class="caret" onclick={() => toggle(i)}
+              ><Icon name="chevron" size={11} open={open.has(i)} /></button
+            >
             <span class="count" style:background={theme.accent}>{g.hosts.length}</span>
             <span class="hostnames">{g.hosts.map((h) => h.label).join(', ')}</span>
             <button
               class="btn small"
               class:active={diffA === i || diffB === i}
               onclick={() => pickDiff(i)}
-              title="Mark for diff"
-            >diff</button>
+              title="Mark for diff">diff</button
+            >
           </div>
           {#if open.has(i)}
             <pre class="output">{g.text || '(no output)'}</pre>
@@ -220,7 +239,8 @@
         <div class="diff-head">
           Diff: group {(diffA ?? 0) + 1} (red) ↔ group {(diffB ?? 0) + 1} (green)
         </div>
-        <pre class="diff-body">{#each diff as l (l.text + l.kind)}<span class="dl {l.kind}">{l.kind === 'a' ? '- ' : l.kind === 'b' ? '+ ' : '  '}{l.text}
+        <pre class="diff-body">{#each diff as l (l.text + l.kind)}<span class="dl {l.kind}"
+              >{l.kind === 'a' ? '- ' : l.kind === 'b' ? '+ ' : '  '}{l.text}
 </span>{/each}</pre>
       </div>
     {/if}
@@ -288,9 +308,18 @@
     border-radius: 0.6rem;
     flex-shrink: 0;
   }
-  .badge.ok { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
-  .badge.warn { background: rgba(251, 191, 36, 0.18); color: #fbbf24; }
-  .badge.running { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+  .badge.ok {
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+  }
+  .badge.warn {
+    background: rgba(251, 191, 36, 0.18);
+    color: #fbbf24;
+  }
+  .badge.running {
+    background: rgba(96, 165, 250, 0.18);
+    color: #60a5fa;
+  }
 
   .hint {
     margin: 0;
@@ -313,9 +342,15 @@
     border-radius: 0.3rem;
     overflow: hidden;
   }
-  .group.diff-a { border-color: #ef4444; }
-  .group.diff-b { border-color: #22c55e; }
-  .group.timeout { border-color: #52525b; }
+  .group.diff-a {
+    border-color: #ef4444;
+  }
+  .group.diff-b {
+    border-color: #22c55e;
+  }
+  .group.timeout {
+    border-color: #52525b;
+  }
 
   .group-head {
     display: flex;
@@ -341,7 +376,10 @@
     padding: 0.05rem 0.4rem;
     flex-shrink: 0;
   }
-  .count.to { background: #52525b; color: #e4e4e7; }
+  .count.to {
+    background: #52525b;
+    color: #e4e4e7;
+  }
 
   .hostnames {
     flex: 1;
@@ -401,10 +439,22 @@
     font-size: 0.74rem;
   }
 
-  .dl { display: block; white-space: pre-wrap; word-break: break-word; }
-  .dl.same { color: #71717a; }
-  .dl.a { color: #f87171; background: rgba(239, 68, 68, 0.08); }
-  .dl.b { color: #4ade80; background: rgba(34, 197, 94, 0.08); }
+  .dl {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .dl.same {
+    color: #71717a;
+  }
+  .dl.a {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.08);
+  }
+  .dl.b {
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.08);
+  }
 
   .btn {
     display: inline-flex;
@@ -425,7 +475,16 @@
     opacity: 0.45;
     cursor: default;
   }
-  .btn:hover { background: #3f3f46; }
-  .btn.small { font-size: 0.7rem; padding: 0.15rem 0.45rem; }
-  .btn.active { background: #1d4ed8; border-color: #2563eb; color: #fff; }
+  .btn:hover {
+    background: #3f3f46;
+  }
+  .btn.small {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
+  }
+  .btn.active {
+    background: #1d4ed8;
+    border-color: #2563eb;
+    color: #fff;
+  }
 </style>

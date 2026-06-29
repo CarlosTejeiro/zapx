@@ -194,22 +194,40 @@
 </script>
 
 {#if collapsed}
-  <div class="bar collapsed" style:background={theme.tabBarBg} style:border-color={theme.border}>
+  <div
+    class="bar collapsed"
+    style:background={theme.tabBarBg}
+    style:border-color={theme.border}
+    style:--hover={theme.itemHoverBg}
+  >
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
       onclick={() => (collapsed = false)}
       title="Show button bar"
-    >▴ Buttons ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recent` : ''}</button>
+      >▴ Buttons ({visibleSnippets.length}){recents.length
+        ? ` · ${recents.length} recent`
+        : ''}</button
+    >
   </div>
 {:else}
-  <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border} style:--accent={theme.accent}>
+  <div
+    class="bar"
+    style:background={theme.tabBarBg}
+    style:border-color={theme.border}
+    style:--accent={theme.accent}
+    style:--hover={theme.itemHoverBg}
+    style:--ok={theme.ok}
+    style:--err={theme.err}
+    style:--pill-bg="color-mix(in srgb, {theme.textPrimary} 10%, transparent)"
+    style:--scroll="color-mix(in srgb, {theme.textPrimary} 22%, transparent)"
+  >
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
       onclick={() => (collapsed = true)}
-      title="Hide button bar"
-    >▾</button>
+      title="Hide button bar">▾</button
+    >
 
     <div class="snippets">
       {#each visibleSnippets as s, i (s.id)}
@@ -220,16 +238,31 @@
           class="btn-wrap"
           class:dragging={dragIndex === i}
           class:drop-target={dropIndex === i && dragIndex !== i}
-          ondragover={(e) => { if (dragIndex !== null) { e.preventDefault(); dropIndex = i } }}
-          ondrop={(e) => { e.preventDefault(); reorderTo(i) }}
+          ondragover={(e) => {
+            if (dragIndex !== null) {
+              e.preventDefault()
+              dropIndex = i
+            }
+          }}
+          ondrop={(e) => {
+            e.preventDefault()
+            reorderTo(i)
+          }}
         >
           <button
             class="snippet-btn"
             draggable="true"
-            ondragstart={() => { dragIndex = i }}
-            ondragend={() => { dragIndex = null; dropIndex = null }}
+            ondragstart={() => {
+              dragIndex = i
+            }}
+            ondragend={() => {
+              dragIndex = null
+              dropIndex = null
+            }}
             style:color={theme.textPrimary}
-            style:background={s.color ? `color-mix(in srgb, ${s.color} 18%, transparent)` : theme.itemActiveBg}
+            style:background={s.color
+              ? `color-mix(in srgb, ${s.color} 18%, transparent)`
+              : theme.itemActiveBg}
             style:border-color={s.color ?? theme.border}
             style:border-left={s.color ? `3px solid ${s.color}` : `1px solid ${theme.border}`}
             onclick={() => fireSnippet(s)}
@@ -251,8 +284,11 @@
             style:background={theme.tabBarBg}
             title="Edit button"
             aria-label="Edit button"
-            onclick={(e) => { e.stopPropagation(); editing = s }}
-          ><Icon name="pencil" size={10} /></button>
+            onclick={(e) => {
+              e.stopPropagation()
+              editing = s
+            }}><Icon name="pencil" size={10} /></button
+          >
         </span>
       {/each}
 
@@ -263,8 +299,8 @@
         style:border-color={theme.border}
         onclick={() => (editing = 'new')}
         title="New button"
-        aria-label="New button"
-      ><Icon name="plus" size={12} /></button>
+        aria-label="New button"><Icon name="plus" size={12} /></button
+      >
 
       {#if recents.length > 0}
         <span class="divider" style:background={theme.border}></span>
@@ -278,7 +314,9 @@
           onclick={() => fireRecent(r)}
           title={`Recent: ${r.text}`}
         >
-          <span class="recent-mark" title="From your recent history">⏱</span>
+          <span class="recent-mark" title="From your recent history"
+            ><Icon name="clock" size={11} /></span
+          >
           <span class="snippet-name">{shortLabel(r.text)}</span>
         </button>
       {/each}
@@ -340,12 +378,24 @@
     padding: 0;
     z-index: 2;
   }
-  .btn-wrap:hover .edit-dot { display: inline-flex; }
-  .btn-wrap.dragging { opacity: 0.45; }
-  .btn-wrap.drop-target { box-shadow: -2px 0 0 0 var(--accent, #5eb3b2); }
-  .snippet-btn[draggable='true'] { cursor: grab; }
-  .snippet-btn[draggable='true']:active { cursor: grabbing; }
-  .edit-dot:hover { filter: brightness(1.3); }
+  .btn-wrap:hover .edit-dot {
+    display: inline-flex;
+  }
+  .btn-wrap.dragging {
+    opacity: 0.45;
+  }
+  .btn-wrap.drop-target {
+    box-shadow: -2px 0 0 0 var(--accent, #5eb3b2);
+  }
+  .snippet-btn[draggable='true'] {
+    cursor: grab;
+  }
+  .snippet-btn[draggable='true']:active {
+    cursor: grabbing;
+  }
+  .edit-dot:hover {
+    filter: brightness(1.3);
+  }
 
   .add-btn {
     display: inline-flex;
@@ -360,7 +410,9 @@
     flex-shrink: 0;
     transition: filter 0.1s;
   }
-  .add-btn:hover { filter: brightness(1.3); }
+  .add-btn:hover {
+    filter: brightness(1.3);
+  }
 
   .bar.collapsed {
     padding: 2px 8px;
@@ -382,7 +434,7 @@
 
   .collapse-toggle:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--hover);
   }
 
   .snippets {
@@ -400,7 +452,7 @@
   }
 
   .snippets::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--scroll);
     border-radius: 2px;
   }
 
@@ -417,11 +469,13 @@
     line-height: 1.3;
     white-space: nowrap;
     flex-shrink: 0;
-    transition: border-color 0.1s, background 0.1s;
+    transition:
+      border-color 0.1s,
+      background 0.1s;
   }
 
   .snippet-btn:hover {
-    border-color: rgba(59, 130, 246, 0.6);
+    border-color: var(--accent);
     filter: brightness(1.15);
   }
 
@@ -445,7 +499,7 @@
     font-family: monospace;
     font-size: 9.5px;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--pill-bg);
     border-radius: 3px;
     padding: 1px 5px;
     line-height: 1;
@@ -460,7 +514,8 @@
   }
 
   .recent-mark {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
     opacity: 0.7;
     line-height: 1;
   }
@@ -481,16 +536,16 @@
 
   .status {
     font-size: 11px;
-    color: #34d399;
+    color: var(--ok);
     padding: 2px 8px;
     border-radius: 3px;
-    background: rgba(52, 211, 153, 0.1);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
     flex-shrink: 0;
     white-space: nowrap;
   }
 
   .status.err {
-    color: #f87171;
-    background: rgba(239, 68, 68, 0.12);
+    color: var(--err);
+    background: color-mix(in srgb, var(--err) 12%, transparent);
   }
 </style>
