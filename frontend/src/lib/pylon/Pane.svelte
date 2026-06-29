@@ -218,8 +218,8 @@
   style:background={theme.terminal.bg}
   style:border-radius="calc({theme.radius} + 4px)"
   style:box-shadow={focused
-    ? `inset 0 0 0 1.5px ${theme.accent}88, 0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)`
-    : '0 1px 2px rgba(45,35,15,0.10), 0 8px 28px rgba(45,35,15,0.10)'}
+    ? `inset 0 0 0 1.5px ${theme.accent}, 0 1px 2px rgba(0,0,0,0.14), 0 8px 26px rgba(0,0,0,0.18)`
+    : `inset 0 0 0 1px ${theme.border}, 0 1px 2px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.14)`}
   onclick={onFocus}
   onkeydown={(e) => {
     if (e.key === 'Enter' || e.key === ' ') onFocus()

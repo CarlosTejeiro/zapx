@@ -194,7 +194,12 @@
 </script>
 
 {#if collapsed}
-  <div class="bar collapsed" style:background={theme.tabBarBg} style:border-color={theme.border}>
+  <div
+    class="bar collapsed"
+    style:background={theme.tabBarBg}
+    style:border-color={theme.border}
+    style:--hover={theme.itemHoverBg}
+  >
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
@@ -211,6 +216,11 @@
     style:background={theme.tabBarBg}
     style:border-color={theme.border}
     style:--accent={theme.accent}
+    style:--hover={theme.itemHoverBg}
+    style:--ok={theme.ok}
+    style:--err={theme.err}
+    style:--pill-bg="color-mix(in srgb, {theme.textPrimary} 10%, transparent)"
+    style:--scroll="color-mix(in srgb, {theme.textPrimary} 22%, transparent)"
   >
     <button
       class="collapse-toggle"
@@ -304,7 +314,9 @@
           onclick={() => fireRecent(r)}
           title={`Recent: ${r.text}`}
         >
-          <span class="recent-mark" title="From your recent history">⏱</span>
+          <span class="recent-mark" title="From your recent history"
+            ><Icon name="clock" size={11} /></span
+          >
           <span class="snippet-name">{shortLabel(r.text)}</span>
         </button>
       {/each}
@@ -422,7 +434,7 @@
 
   .collapse-toggle:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--hover);
   }
 
   .snippets {
@@ -440,7 +452,7 @@
   }
 
   .snippets::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--scroll);
     border-radius: 2px;
   }
 
@@ -463,7 +475,7 @@
   }
 
   .snippet-btn:hover {
-    border-color: rgba(59, 130, 246, 0.6);
+    border-color: var(--accent);
     filter: brightness(1.15);
   }
 
@@ -487,7 +499,7 @@
     font-family: monospace;
     font-size: 9.5px;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--pill-bg);
     border-radius: 3px;
     padding: 1px 5px;
     line-height: 1;
@@ -502,7 +514,8 @@
   }
 
   .recent-mark {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
     opacity: 0.7;
     line-height: 1;
   }
@@ -523,16 +536,16 @@
 
   .status {
     font-size: 11px;
-    color: #34d399;
+    color: var(--ok);
     padding: 2px 8px;
     border-radius: 3px;
-    background: rgba(52, 211, 153, 0.1);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
     flex-shrink: 0;
     white-space: nowrap;
   }
 
   .status.err {
-    color: #f87171;
-    background: rgba(239, 68, 68, 0.12);
+    color: var(--err);
+    background: color-mix(in srgb, var(--err) 12%, transparent);
   }
 </style>
