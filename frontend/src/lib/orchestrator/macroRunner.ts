@@ -32,6 +32,65 @@ function stepMatches(step: LoginStep, haystack: string): boolean {
   return haystack.includes(step.expect)
 }
 
+/**
+ * Decode C-style backslash escapes (`\r` `\n` `\t` `\b` `\e` `\0` `\\` `\xHH`)
+ * so a step typed as `cmd\r` presses Enter instead of sending the two literal
+ * characters. Unknown/malformed escapes are kept verbatim (backslash included).
+ */
+function decodeEscapes(s: string): string {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '\\') {
+      out += s[i]
+      continue
+    }
+    const n = s[i + 1]
+    switch (n) {
+      case 'r':
+        out += '\r'
+        i++
+        break
+      case 'n':
+        out += '\n'
+        i++
+        break
+      case 't':
+        out += '\t'
+        i++
+        break
+      case 'b':
+        out += '\b'
+        i++
+        break
+      case 'e':
+        out += '\x1b'
+        i++
+        break
+      case '0':
+        out += '\0'
+        i++
+        break
+      case '\\':
+        out += '\\'
+        i++
+        break
+      case 'x': {
+        const hex = s.slice(i + 2, i + 4)
+        if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16))
+          i += 3
+        } else {
+          out += '\\' // not a valid \xHH — keep the backslash literally
+        }
+        break
+      }
+      default:
+        out += '\\' // unknown escape — keep backslash; next iteration emits the char
+    }
+  }
+  return out
+}
+
 /** Encode `text` for the PTY, appending Enter unless the user ended the line. */
 function withEnter(text: string): number[] {
   let t = text
@@ -40,8 +99,9 @@ function withEnter(text: string): number[] {
 }
 
 async function send(sessionId: string, text: string): Promise<void> {
-  if (text.length === 0) return
-  await invoke('send_input', { sessionId, data: withEnter(text) }).catch(() => {})
+  const decoded = decodeEscapes(text)
+  if (decoded.length === 0) return
+  await invoke('send_input', { sessionId, data: withEnter(decoded) }).catch(() => {})
 }
 
 export interface MacroResult {
