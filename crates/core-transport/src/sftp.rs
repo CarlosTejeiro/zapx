@@ -267,6 +267,10 @@ impl SftpClient {
             progress(done, total);
         }
         remote.flush().await.map_err(Error::Io)?;
+        // Explicitly close the remote handle so the final writes are acked by
+        // the server before we report success — relying on drop would close it
+        // without awaiting the SFTP CLOSE, which can race a subsequent stat.
+        remote.shutdown().await.map_err(Error::Io)?;
         Ok(done)
     }
 }

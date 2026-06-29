@@ -5,6 +5,50 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-29
+
+### Added
+- **Macros (expect / send / wait)** — login scripts gained explicit step kinds:
+  *expect* a pattern then send, *send* immediately, or *wait* a fixed delay. The
+  same engine powers on-demand macros: any button-bar snippet can be a macro
+  (marked with a bolt) that runs the sequence against the focused session.
+- **Clone a saved session** — duplicate a host from the sidebar, including its
+  credential (copied into a fresh keyring entry), login script, triggers and
+  forwards.
+- **Per-host notes and tags** — annotate sessions; tags show as chips and both
+  notes and tags are searchable from the sidebar filter.
+- **"Recent" quick-access** — the sidebar surfaces your most recently used
+  sessions in a dedicated section.
+- **Multi-host compare on split tabs** — run a command across panes and diff the
+  per-host output outside of grids too, with a one-click "copy as text report".
+- **Session identity avatars** — initials tinted by the session colour, a
+  four-state connection dot, and a protocol glyph (T/S/L) for non-SSH hosts.
+
+### Changed
+- **Visual redesign** — themed avatars and sidebar, tab-bar polish, SVG icons in
+  the command palette, latency health colour in the status bar, title-bar
+  shortcut chips, a unified frosted dialog backdrop, accented native form
+  controls, and a refreshed settings shell.
+- **Theme-aware polish** — terminal panes, the master input bar, the snippet bar
+  and toasts now read correctly on all seven themes (no more hardcoded colours).
+- **CI quality gates** — Prettier formatting, ESLint, type-check and tests on the
+  frontend; `cargo fmt`/`clippy -D warnings`/tests on the Rust side.
+
+### Fixed
+- **SFTP streaming upload** closes the remote handle (awaiting the SFTP CLOSE)
+  before reporting success, instead of relying on drop.
+- **Terminal listener leak** and **session-log finalisation** on close.
+
+### Security
+- **Host keys fail-closed on direct connects** — unknown keys are rejected;
+  Trust-On-First-Use is limited to bastions and jump targets, with a TOCTOU
+  guard so the trusted key matches the one preflighted.
+- **Vault seed is a random per-install keyfile** (no longer derived from a
+  predictable path/constant), with a migration that re-encrypts existing
+  secrets.
+- **Tightened Content-Security-Policy**; the output highlighter preserves server
+  ANSI and bounds regex pattern/compiled size.
+
 ## [0.10.4] - 2026-06-23
 
 ### Fixed
