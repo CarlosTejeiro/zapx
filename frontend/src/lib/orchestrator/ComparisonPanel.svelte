@@ -53,7 +53,9 @@
     return [...map.values()].sort((a, b) => b.hosts.length - a.hosts.length)
   })
 
-  const timedOut = $derived(hosts.filter((h) => h.state === 'timeout' && normalize(h.buffer) === ''))
+  const timedOut = $derived(
+    hosts.filter((h) => h.state === 'timeout' && normalize(h.buffer) === ''),
+  )
   const allSame = $derived(!running && groups.length === 1 && timedOut.length === 0)
 
   // Expand/collapse a group's output.

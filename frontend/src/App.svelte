@@ -547,6 +547,22 @@
   // ── tab management ────────────────────────────────────────────────────────────
 
   function openSavedSessionTab(s: SavedSession) {
+    // If the focused pane is an empty split placeholder, open the session INTO
+    // it (filling the pane the user just split) instead of a new tab.
+    const activeT = tabs.find((t) => t.id === activeTabId)
+    if (activeT && activeT.layout.kind === 'split') {
+      const target = tabPanes(activeT).find((p) => p.id === focusedPaneId)
+      if (target?.empty) {
+        target.savedSession = s
+        target.label = s.name
+        target.color = pickColor(s.id)
+        target.ssh = undefined
+        target.telnet = undefined
+        target.empty = false
+        activeT.statuses.set(target.id, 'connecting')
+        return
+      }
+    }
     const pane = mkPane(s.name, { savedSession: s, color: pickColor(s.id) } as Partial<PaneData>)
     pane.color = pickColor(s.id)
     const tab = mkTab(pane)
@@ -639,9 +655,11 @@
   function handleSplit(paneId: number, direction: SplitDirection) {
     const tab = tabs.find((t) => t.id === activeTabId)
     if (!tab || tab.layout.kind !== 'split') return
-    const newPane = mkPane('shell')
+    // Split into an EMPTY placeholder pane (no auto local-shell). The user
+    // fills it by clicking a saved session in the sidebar, which routes into
+    // the focused empty pane. No status until it's filled.
+    const newPane = mkPane('New pane', { empty: true } as Partial<PaneData>)
     tab.layout.root = splitLeaf(tab.layout.root, paneId, direction, newPane)
-    tab.statuses.set(newPane.id, 'connecting')
     focusedPaneId = newPane.id
   }
 

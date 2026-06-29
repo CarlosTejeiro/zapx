@@ -32,6 +32,9 @@
     savedSession?: SavedSession
     ssh?: SshParams
     telnet?: TelnetParams
+    /** A freshly-split placeholder pane with no session yet — renders a
+     *  "pick a session" prompt and is filled by clicking a sidebar session. */
+    empty?: boolean
   }
 
   type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
@@ -239,72 +242,76 @@
     {#if hostLabel}
       <span class="ph-host" style:color={theme.terminal.dim}>{hostLabel}</span>
     {/if}
-    <span class="ph-proto" style:color={theme.terminal.dim}>{protocol.toUpperCase()}</span>
+    {#if !pane.empty}
+      <span class="ph-proto" style:color={theme.terminal.dim}>{protocol.toUpperCase()}</span>
+    {/if}
     <span class="ph-actions">
-      <button
-        class="ph-btn ph-btn-rec"
-        class:recording={isLogging}
-        type="button"
-        title={isLogging ? `Stop logging\n${logPath ?? ''}` : 'Start logging this session'}
-        aria-label={isLogging ? 'Stop logging' : 'Start logging'}
-        disabled={logBusy}
-        style:color={isLogging ? theme.err : theme.terminal.fg}
-        onclick={(e) => {
-          e.stopPropagation()
-          toggleLogging()
-        }}><Icon name="record" size={10} /></button
-      >
-      {#if isSsh}
+      {#if !pane.empty}
         <button
-          class="ph-btn"
+          class="ph-btn ph-btn-rec"
+          class:recording={isLogging}
           type="button"
-          title="SFTP file browser"
-          aria-label="SFTP file browser"
-          disabled={!runtimeSid}
-          style:color={theme.terminal.fg}
+          title={isLogging ? `Stop logging\n${logPath ?? ''}` : 'Start logging this session'}
+          aria-label={isLogging ? 'Stop logging' : 'Start logging'}
+          disabled={logBusy}
+          style:color={isLogging ? theme.err : theme.terminal.fg}
           onclick={(e) => {
             e.stopPropagation()
-            showSftp = true
-          }}><Icon name="transfer" size={12} /></button
+            toggleLogging()
+          }}><Icon name="record" size={10} /></button
         >
-        <button
-          class="ph-btn"
-          type="button"
-          title="Port forwards (-L / -D / -R)"
-          aria-label="Port forwards"
-          disabled={!runtimeSid}
-          style:color={theme.terminal.fg}
-          onclick={(e) => {
-            e.stopPropagation()
-            showTunnels = true
-          }}><Icon name="tunnel" size={12} /></button
-        >
-      {/if}
-      {#if onSplitH}
-        <button
-          class="ph-btn"
-          type="button"
-          title="Split horizontally"
-          aria-label="Split horizontally"
-          style:color={theme.terminal.fg}
-          onclick={(e) => {
-            e.stopPropagation()
-            onSplitH?.()
-          }}><Icon name="split" size={12} /></button
-        >
-      {/if}
-      {#if onSplitV}
-        <button
-          class="ph-btn"
-          type="button"
-          title="Split vertically"
-          aria-label="Split vertically"
-          style:color={theme.terminal.fg}
-          onclick={(e) => {
-            e.stopPropagation()
-            onSplitV?.()
-          }}><Icon name="splitV" size={12} /></button
-        >
+        {#if isSsh}
+          <button
+            class="ph-btn"
+            type="button"
+            title="SFTP file browser"
+            aria-label="SFTP file browser"
+            disabled={!runtimeSid}
+            style:color={theme.terminal.fg}
+            onclick={(e) => {
+              e.stopPropagation()
+              showSftp = true
+            }}><Icon name="transfer" size={12} /></button
+          >
+          <button
+            class="ph-btn"
+            type="button"
+            title="Port forwards (-L / -D / -R)"
+            aria-label="Port forwards"
+            disabled={!runtimeSid}
+            style:color={theme.terminal.fg}
+            onclick={(e) => {
+              e.stopPropagation()
+              showTunnels = true
+            }}><Icon name="tunnel" size={12} /></button
+          >
+        {/if}
+        {#if onSplitH}
+          <button
+            class="ph-btn"
+            type="button"
+            title="Split horizontally"
+            aria-label="Split horizontally"
+            style:color={theme.terminal.fg}
+            onclick={(e) => {
+              e.stopPropagation()
+              onSplitH?.()
+            }}><Icon name="split" size={12} /></button
+          >
+        {/if}
+        {#if onSplitV}
+          <button
+            class="ph-btn"
+            type="button"
+            title="Split vertically"
+            aria-label="Split vertically"
+            style:color={theme.terminal.fg}
+            onclick={(e) => {
+              e.stopPropagation()
+              onSplitV?.()
+            }}><Icon name="splitV" size={12} /></button
+          >
+        {/if}
       {/if}
       {#if canClose && onClosePane}
         <button
@@ -324,7 +331,27 @@
 
   <!-- Terminal body -->
   <div class="pane-body" style:--term-bg={theme.terminal.bg}>
-    {#if needsPassword}
+    {#if pane.empty}
+      <!-- Freshly-split placeholder: filled by clicking a sidebar session. -->
+      <div class="empty-overlay" style:background={theme.terminal.bg}>
+        <svg
+          class="empty-icon"
+          width="30"
+          height="30"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={theme.terminal.dim}
+          stroke-width="1.6"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="12" y1="3" x2="12" y2="21" />
+        </svg>
+        <p class="empty-title" style:color={theme.terminal.fg}>Empty pane</p>
+        <p class="empty-sub" style:color={theme.terminal.dim}>
+          Click a session in the sidebar to open it here.
+        </p>
+      </div>
+    {:else if needsPassword}
       <!-- Inline re-auth form when keyring credential is missing -->
       <div class="pw-overlay" style:background={theme.terminal.bg}>
         <form class="pw-box" onsubmit={handlePasswordSubmit} style:font-family={theme.fontUi}>
@@ -515,6 +542,32 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .empty-overlay {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .empty-icon {
+    opacity: 0.7;
+    margin-bottom: 4px;
+  }
+  .empty-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .empty-sub {
+    font-size: 11.5px;
+    margin: 0;
+    text-align: center;
+    max-width: 80%;
+    line-height: 1.5;
   }
 
   .pw-box {

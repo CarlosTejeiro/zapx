@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-06-29
+
+### Added
+- **Open a saved session into a split pane** — splitting a pane now creates an
+  empty placeholder instead of a local shell; clicking a session in the sidebar
+  opens it into that focused empty pane. This lets you put two hosts side by
+  side in one tab (and then Compare them), instead of every session opening in
+  its own tab.
+
 ## [0.11.2] - 2026-06-29
 
 ### Fixed
