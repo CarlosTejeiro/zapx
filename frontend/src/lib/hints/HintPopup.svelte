@@ -46,13 +46,60 @@
   }
 
   const prefix = $derived(controller.buffer.snapshot.text)
+
+  // Placement: the popup lives inside `.terminal-stage` (overflow:hidden), so a
+  // popup anchored below the cursor gets clipped when the cursor is near the
+  // bottom. Measure the rendered popup against the stage and flip it above the
+  // line when there's no room below; clamp horizontally and cap its height so
+  // it always stays fully visible inside the terminal.
+  let popupEl = $state<HTMLDivElement | undefined>()
+  let placement = $state({ top: 0, left: 0, maxHeight: 0 })
+  let measured = $state(false)
+
+  $effect(() => {
+    const open = controller.popupOpen
+    const n = controller.hints.length
+    const { top: cy, left: cx, cellHeight } = controller.cursor
+    if (!open || n === 0 || !popupEl) {
+      measured = false
+      return
+    }
+    const parent = popupEl.offsetParent as HTMLElement | null
+    const stageW = parent?.clientWidth ?? window.innerWidth
+    const stageH = parent?.clientHeight ?? window.innerHeight
+    const pw = popupEl.offsetWidth
+    const ph = popupEl.offsetHeight
+    const margin = 4
+    const belowTop = cy + cellHeight + 2
+    const roomBelow = stageH - belowTop - margin
+    const roomAbove = cy - 2 - margin
+
+    let top: number
+    let maxHeight: number
+    if (ph <= roomBelow || roomBelow >= roomAbove) {
+      top = belowTop
+      maxHeight = Math.max(80, roomBelow)
+    } else {
+      maxHeight = Math.max(80, roomAbove)
+      top = cy - 2 - Math.min(ph, maxHeight)
+    }
+    placement = {
+      top,
+      left: Math.max(4, Math.min(cx, stageW - pw - margin)),
+      maxHeight,
+    }
+    measured = true
+  })
 </script>
 
 {#if controller.popupOpen && controller.hints.length > 0}
   <div
+    bind:this={popupEl}
     class="popup"
-    style:left="{controller.cursor.left}px"
-    style:top="{controller.cursor.top + controller.cursor.cellHeight + 2}px"
+    style:left="{placement.left}px"
+    style:top="{placement.top}px"
+    style:max-height={measured ? `${placement.maxHeight}px` : undefined}
+    style:visibility={measured ? 'visible' : 'hidden'}
     style:font-family={fontFamily}
     style:--accent={accentColor}
     role="listbox"
@@ -86,9 +133,11 @@
 <style>
   .popup {
     position: absolute;
-    z-index: 5;
+    z-index: 20;
     min-width: 320px;
     max-width: 560px;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: rgba(13, 18, 32, 0.96);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -101,7 +150,6 @@
     color: #d4dff0;
     font-size: 0.78rem;
     animation: popup-in 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
-    overflow: hidden;
   }
 
   @keyframes popup-in {

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.11.1] - 2026-06-29
 
 ### Fixed
+- **Suggestions popup no longer gets clipped** — the command-hint popup was
+  anchored below the cursor inside the terminal's `overflow:hidden` stage, so it
+  was cut off when the cursor sat near the bottom. It now flips above the line
+  when there's no room below, clamps to the terminal's width, and caps its
+  height to the available space (scrolling if needed).
 - **Macro / login-script `send` now decodes escapes** — a step written as
   `cmd\r` presses Enter instead of typing the two literal characters `\` and
   `r`. `\r` `\n` `\t` `\b` `\e` `\0` `\\` and `\xHH` are all decoded (and an
