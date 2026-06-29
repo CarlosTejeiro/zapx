@@ -92,6 +92,11 @@
         }
         if (typeof opts.notes === 'string') notes = opts.notes
         if (Array.isArray(opts.tags)) tagsInput = opts.tags.join(', ')
+        if (opts.anti_idle && typeof opts.anti_idle === 'object') {
+          if (typeof opts.anti_idle.interval_sec === 'number')
+            antiIdleSec = String(opts.anti_idle.interval_sec)
+          if (typeof opts.anti_idle.send === 'string') antiIdleSend = opts.anti_idle.send
+        }
       } catch {
         // ignore malformed options_json
       }
@@ -142,6 +147,11 @@
   /// Freeform notes + comma-separated tags, persisted inside options_json.
   let notes = $state('')
   let tagsInput = $state('')
+  /// Anti-idle / keepalive: send `antiIdleSend` every `antiIdleSec` seconds
+  /// while connected (for servers whose idle timeout fires despite SSH
+  /// keepalives). Empty interval = disabled. Persisted in options_json.
+  let antiIdleSec = $state('')
+  let antiIdleSend = $state('')
   let error = $state('')
 
   // Optional login automation: list of expect/send pairs run after connect.
@@ -261,6 +271,10 @@
           .map((t) => t.trim())
           .filter(Boolean)
         if (tagList.length) opts.tags = tagList
+        const aiSec = parseInt(antiIdleSec, 10)
+        if (aiSec > 0 && antiIdleSend.length > 0) {
+          opts.anti_idle = { interval_sec: aiSec, send: antiIdleSend }
+        }
         return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
       }
       if (existing) {
@@ -312,7 +326,13 @@
       // Post-create touch-up: if a color-scheme override, notes or tags were
       // set, persist them into options_json. We rebuild the same blob the
       // backend would have written so nothing protocol-specific is lost.
-      if (!existing && (colorScheme || notes.trim() || tagsInput.trim())) {
+      if (
+        !existing &&
+        (colorScheme ||
+          notes.trim() ||
+          tagsInput.trim() ||
+          (parseInt(antiIdleSec, 10) > 0 && antiIdleSend.length > 0))
+      ) {
         await updateSavedSession(
           id,
           name.trim(),
@@ -576,6 +596,27 @@
       ></textarea>
     </label>
 
+    <label>
+      Anti-idle <span class="hint-pill">keepalive</span>
+      <div class="anti-idle-row">
+        <input
+          class="ai-send"
+          bind:value={antiIdleSend}
+          placeholder={'send (e.g. ! or \\x00)'}
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <span class="ai-every">every</span>
+        <input class="ai-sec" type="number" min="5" bind:value={antiIdleSec} placeholder="100" />
+        <span class="ai-unit">s</span>
+      </div>
+      <span class="ai-hint"
+        >Sends the string on a timer while connected, to beat server idle timeouts. Use <code
+          >\x00</code
+        > for an invisible keepalive. Leave the interval empty to disable.</span
+      >
+    </label>
+
     {#if platforms.length > 0}
       <label>
         Platform <span class="hint-pill">command hints</span>
@@ -798,6 +839,40 @@
     letter-spacing: 0.04em;
     font-weight: 600;
     vertical-align: middle;
+  }
+
+  .anti-idle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .anti-idle-row .ai-send {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--zx-font-mono);
+  }
+  .anti-idle-row .ai-sec {
+    width: 4.5rem;
+    flex-shrink: 0;
+  }
+  .ai-every,
+  .ai-unit {
+    color: var(--zx-text-muted);
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+  .ai-hint {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--zx-text-dim);
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+  .ai-hint code {
+    font-family: var(--zx-font-mono);
+    background: var(--zx-active-bg);
+    padding: 0 0.25rem;
+    border-radius: 0.25rem;
   }
 
   .overlay {

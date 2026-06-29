@@ -2,10 +2,7 @@ name: Release
 
 # Triggered on tag pushes shaped like `v1.2.3`. Builds platform-specific
 # bundles (DMG/AppImage/deb on macOS+Linux, MSI/NSIS on Windows) plus the
-# Windows portable exe, and attaches them to a draft Release on this repo.
-#
-# This repo is private; its Releases are private too (visible to the owner
-# and collaborators only). That's intentional.
+# Windows portable exe, and attaches them to a published Release on this repo.
 #
 # Signing secrets (optional until in-app updates are enabled):
 # - `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
@@ -90,7 +87,10 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'ZAPX ${{ github.ref_name }}'
           releaseBody: 'See CHANGELOG.md for details.'
-          releaseDraft: true
+          # Publish straight away (not a draft). A draft isn't attached to the
+          # tag, so re-pushing a tag made tauri-action create duplicate empty
+          # drafts; a published release is found by tag and reused on re-run.
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
 

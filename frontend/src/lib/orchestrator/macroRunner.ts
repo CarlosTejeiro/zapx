@@ -39,7 +39,7 @@ function stepMatches(step: LoginStep, haystack: string): boolean {
  * so a step typed as `cmd\r` presses Enter instead of sending the two literal
  * characters. Unknown/malformed escapes are kept verbatim (backslash included).
  */
-function decodeEscapes(s: string): string {
+export function decodeEscapes(s: string): string {
   let out = ''
   for (let i = 0; i < s.length; i++) {
     if (s[i] !== '\\') {
