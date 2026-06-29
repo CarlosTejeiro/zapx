@@ -527,9 +527,25 @@
     }
   }
 
+  // Whether to AUTO-reconnect this session on an unexpected drop. Manual
+  // reconnect (toolbar / banner) always works; this only gates the automatic
+  // retry. Quick-connect and local sessions (no saved row) never auto-reconnect.
+  // A saved session opts out via `options_json.auto_reconnect = false`;
+  // otherwise it follows the global default.
+  function autoReconnectEnabled(): boolean {
+    if (!savedSession) return false
+    try {
+      const o = JSON.parse(savedSession.options_json || '{}') as { auto_reconnect?: unknown }
+      if (o.auto_reconnect === false) return false
+    } catch {
+      /* malformed options_json — fall through to the global default */
+    }
+    return connectionSettings.autoReconnect
+  }
+
   // Auto-reconnect with linear backoff (2s, 4s … capped 15s), a few attempts.
   function scheduleReconnect() {
-    if (!connectionSettings.autoReconnect) return
+    if (!autoReconnectEnabled()) return
     if (reconnectAttempt >= 6) return
     reconnectAttempt += 1
     const delay = Math.min(2000 * reconnectAttempt, 15000)

@@ -97,6 +97,7 @@
             antiIdleSec = String(opts.anti_idle.interval_sec)
           if (typeof opts.anti_idle.send === 'string') antiIdleSend = opts.anti_idle.send
         }
+        autoReconnect = opts.auto_reconnect !== false
       } catch {
         // ignore malformed options_json
       }
@@ -152,6 +153,10 @@
   /// keepalives). Empty interval = disabled. Persisted in options_json.
   let antiIdleSec = $state('')
   let antiIdleSend = $state('')
+  /// Auto-reconnect this saved session when the link drops (manual reconnect
+  /// always works regardless). Default on; stored in options_json only when
+  /// disabled, so it falls back to the global default otherwise.
+  let autoReconnect = $state(true)
   let error = $state('')
 
   // Optional login automation: list of expect/send pairs run after connect.
@@ -275,6 +280,8 @@
         if (aiSec > 0 && antiIdleSend.length > 0) {
           opts.anti_idle = { interval_sec: aiSec, send: antiIdleSend }
         }
+        // Only persisted when disabled; absent = follow the global default.
+        if (!autoReconnect) opts.auto_reconnect = false
         return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
       }
       if (existing) {
@@ -331,7 +338,8 @@
         (colorScheme ||
           notes.trim() ||
           tagsInput.trim() ||
-          (parseInt(antiIdleSec, 10) > 0 && antiIdleSend.length > 0))
+          (parseInt(antiIdleSec, 10) > 0 && antiIdleSend.length > 0) ||
+          !autoReconnect)
       ) {
         await updateSavedSession(
           id,
@@ -615,6 +623,16 @@
           >\x00</code
         > for an invisible keepalive. Leave the interval empty to disable.</span
       >
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" bind:checked={autoReconnect} />
+      <span>
+        Auto-reconnect if the connection drops
+        <span class="ai-hint"
+          >Manual reconnect always works. Quick-connect sessions never auto-reconnect.</span
+        >
+      </span>
     </label>
 
     {#if platforms.length > 0}
@@ -948,6 +966,22 @@
     gap: 0.25rem;
     font-size: 0.8rem;
     color: var(--zx-text-muted);
+  }
+
+  .checkbox-row {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+  .checkbox-row input[type='checkbox'] {
+    width: auto;
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+    accent-color: var(--zx-accent);
+  }
+  .checkbox-row .ai-hint {
+    margin-top: 0.15rem;
   }
 
   input,
