@@ -264,10 +264,6 @@
     else next.add(id)
     expandedFolders = next
   }
-
-  // User initials chip (deterministic from username)
-  const username = 'admin'
-  const initials = username.slice(0, 2).toUpperCase()
 </script>
 
 <aside
@@ -774,15 +770,7 @@
 
   <!-- Footer: user chip + theme + settings -->
   <div class="sb-footer" style:border-top="1px solid {theme.border}">
-    <span
-      class="sb-user-chip"
-      style:background={theme.accent}
-      style:color={theme.onAccent}
-      style:font-family={theme.fontUi}>{initials}</span
-    >
-    <span class="sb-username" style:color={theme.textMuted} style:font-family={theme.fontUi}>
-      {username}
-    </span>
+    <span class="sb-footer-spacer"></span>
     <button
       class="sb-settings-btn"
       title="Cycle theme"
@@ -1151,25 +1139,8 @@
     flex-shrink: 0;
   }
 
-  .sb-user-chip {
-    width: 24px;
-    height: 24px;
-    border-radius: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-
-  .sb-username {
-    font-size: 12px;
+  .sb-footer-spacer {
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .sb-settings-btn {

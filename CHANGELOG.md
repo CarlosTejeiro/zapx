@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   expect/send/wait steps.
 - **Reorder macro steps** — the step editor gained ▲/▼ controls to move a step
   up or down.
+- **Onyx theme** — a true-black background with white text and vivid ANSI
+  colours.
+
+### Changed
+- **Removed the user chip** from the sidebar footer (single-user app); the
+  theme and settings buttons remain.
 
 ### Fixed
 - **Suggestions popup no longer gets clipped** — the command-hint popup was
