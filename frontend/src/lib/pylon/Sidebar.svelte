@@ -309,6 +309,7 @@
                   ok={theme.ok}
                   warn={theme.warn}
                   err={theme.err}
+                  protocol={s.protocol}
                   size={22}
                 />
                 <span
@@ -402,6 +403,7 @@
                 ok={theme.ok}
                 warn={theme.warn}
                 err={theme.err}
+                protocol={s.protocol}
                 size={22}
               />
               <span
@@ -418,16 +420,6 @@
                   style:font-family={theme.fontUi}>{tag}</span
                 >
               {/each}
-              {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
-                <span
-                  class="sb-tag"
-                  style:color={theme.textDim}
-                  style:border-color={theme.border}
-                  style:font-family={theme.fontMono}
-                >
-                  {s.protocol.toUpperCase()}
-                </span>
-              {/if}
               {#if onEdit}
                 <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
                 <span
@@ -574,6 +566,7 @@
                     ok={theme.ok}
                     warn={theme.warn}
                     err={theme.err}
+                    protocol={s.protocol}
                     size={19}
                   />
                   <span
@@ -590,16 +583,6 @@
                       style:font-family={theme.fontUi}>{tag}</span
                     >
                   {/each}
-                  {#if s.protocol !== 'local' && s.protocol !== 'ssh'}
-                    <span
-                      class="sb-tag"
-                      style:color={theme.textDim}
-                      style:border-color={theme.border}
-                      style:font-family={theme.fontMono}
-                    >
-                      {s.protocol.toUpperCase()}
-                    </span>
-                  {/if}
                   {#if onEdit}
                     <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
                     <span
@@ -953,7 +936,8 @@
     background: color-mix(in srgb, var(--err) 12%, transparent) !important;
   }
 
-  /* The protocol tag yields to the action icons on hover/active. */
+  /* Tags yield to the action icons on hover/active. (Protocol now lives as a
+     glyph on the avatar, so only user tag chips remain here.) */
   .sb-row:hover .sb-tag,
   .sb-row.active .sb-tag {
     display: none;

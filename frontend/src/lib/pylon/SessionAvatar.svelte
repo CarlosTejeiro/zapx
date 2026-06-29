@@ -22,6 +22,10 @@
     ok?: string
     warn?: string
     err?: string
+    /// Session protocol (`ssh` | `telnet` | `serial` | `local`). SSH is the
+    /// default and stays glyph-free; everything else gets a corner letter so
+    /// non-SSH hosts are scannable without a separate row tag.
+    protocol?: string
     size?: number
   }
 
@@ -36,6 +40,7 @@
     ok = '#3ddc84',
     warn = '#d8b16a',
     err = '#e07474',
+    protocol,
     size = 22,
   }: Props = $props()
 
@@ -43,6 +48,12 @@
 
   const dotColor = $derived(
     status === 'connected' ? ok : status === 'connecting' ? warn : status === 'error' ? err : null,
+  )
+
+  /// One-letter protocol glyph for the top-left corner, or null for SSH (the
+  /// common case — kept clean). telnet → T, serial → S, local → L.
+  const protoGlyph = $derived(
+    protocol && protocol !== 'ssh' ? (protocol[0]?.toUpperCase() ?? null) : null,
   )
 
   /// First letters of the first two name parts (split on - _ . space), else the
@@ -71,6 +82,20 @@
   >
     {initials}
   </span>
+  {#if protoGlyph}
+    <span
+      class="proto-badge"
+      style:min-width="{Math.max(10, Math.round(size * 0.5))}px"
+      style:height="{Math.max(10, Math.round(size * 0.5))}px"
+      style:font-size="{Math.max(7, Math.round(size * 0.32))}px"
+      style:background="color-mix(in srgb, {color} 65%, {ink})"
+      style:color={paper}
+      style:box-shadow="0 0 0 1.5px {paper}"
+      title={protocol}
+    >
+      {protoGlyph}
+    </span>
+  {/if}
   {#if dotColor}
     <span
       class="status-dot"
@@ -110,6 +135,26 @@
     right: -2px;
     bottom: -2px;
     border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* Protocol glyph — top-left corner, opposite the status dot. A saturated
+     chip (session colour) with the letter knocked out in the surface colour,
+     ringed in paper so it lifts off the tile. */
+  .proto-badge {
+    position: absolute;
+    left: -3px;
+    top: -3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+    border-radius: 4px;
+    font-family: var(--zx-font-mono);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    user-select: none;
     pointer-events: none;
   }
 
