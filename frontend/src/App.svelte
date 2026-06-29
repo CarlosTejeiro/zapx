@@ -74,13 +74,29 @@
     broadcastTargets,
     focusSession,
   } from '$lib/stores/sessionRuntime.svelte'
-  import { visibleSnippets, loadSnippets, setBarContext } from '$lib/stores/snippets.svelte'
+  import {
+    visibleSnippets,
+    snippets,
+    loadSnippets,
+    loadVisibleSnippets,
+    setBarContext,
+  } from '$lib/stores/snippets.svelte'
   import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
+  import {
+    createSnippet,
+    updateSnippet,
+    deleteSnippet,
+    setSnippetSteps,
+    setSnippetFolder,
+  } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
+  import MacroDialog from '$lib/pylon/MacroDialog.svelte'
+  import MacroImportDialog from '$lib/pylon/MacroImportDialog.svelte'
+  import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { loadSettings } from '$lib/stores/settings.svelte'
-  import type { SavedSession, Folder, BroadcastGroup } from '$lib/bridge/types'
+  import type { SavedSession, Folder, BroadcastGroup, Snippet, LoginStep } from '$lib/bridge/types'
   import { groups, loadGroups } from '$lib/stores/groups.svelte'
   import GroupsDialog from '$lib/sessions/GroupsDialog.svelte'
 
@@ -270,6 +286,91 @@
   /// When set, opens NewSessionDialog in edit mode with the given session pre-filled.
   let editingSession = $state<SavedSession | null>(null)
   let multiOn = $state(false)
+
+  // Macro library (sidebar Macros section): macros are snippets carrying steps.
+  let editingMacro = $state<Snippet | 'new' | null>(null)
+  let showMacroImport = $state(false)
+  const macros = $derived(snippets.filter((s) => s.steps_json))
+  // Distinct, sorted folder names across macros — autocomplete in the dialog.
+  const macroFolders = $derived(
+    [...new Set(macros.map((m) => m.folder).filter((f): f is string => !!f))].sort(),
+  )
+
+  async function refreshSnippets() {
+    await Promise.all([loadSnippets(), loadVisibleSnippets()])
+  }
+
+  async function saveMacro(v: {
+    name: string
+    color: string | null
+    folder: string | null
+    steps: LoginStep[]
+  }) {
+    try {
+      const stepsJson = JSON.stringify(v.steps)
+      let id: number
+      if (editingMacro && editingMacro !== 'new') {
+        // Preserve the macro's existing content/platform; only name/color change here.
+        await updateSnippet(
+          editingMacro.id,
+          v.name,
+          editingMacro.content,
+          editingMacro.platform,
+          v.color,
+        )
+        id = editingMacro.id
+      } else {
+        id = await createSnippet(v.name, '', null, v.color)
+      }
+      await setSnippetSteps(id, stepsJson)
+      await setSnippetFolder(id, v.folder)
+      editingMacro = null
+      await refreshSnippets()
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Save macro failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  async function importMacro(name: string, steps: LoginStep[]) {
+    try {
+      const id = await createSnippet(name, '', null, null)
+      await setSnippetSteps(id, JSON.stringify(steps))
+      showMacroImport = false
+      await refreshSnippets()
+      showToast({
+        kind: 'success',
+        title: 'Macro imported',
+        detail: `${name} (${steps.length} steps)`,
+      })
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Import failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  async function deleteMacro() {
+    if (!editingMacro || editingMacro === 'new') return
+    const name = editingMacro.name
+    try {
+      await deleteSnippet(editingMacro.id)
+      editingMacro = null
+      await refreshSnippets()
+      showToast({ kind: 'info', title: 'Macro deleted', detail: name })
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Delete macro failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
 
   // Mirror focusedPaneId + multi-exec toggle into the shared runtime store so
   // snippets / broadcast can act on the currently focused session.
@@ -1320,6 +1421,11 @@
       onAddSession={() => (showNewSession = true)}
       onSettings={() => (showSettings = true)}
       onToggleTheme={toggleTheme}
+      {macros}
+      onRunMacro={(m) => runMacroOnFocused(m)}
+      onEditMacro={(m) => (editingMacro = m)}
+      onNewMacro={() => (editingMacro = 'new')}
+      onImportMacro={() => (showMacroImport = true)}
     />
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>
@@ -1423,6 +1529,23 @@
       load()
     }}
   />
+{/if}
+
+{#if editingMacro}
+  {#key editingMacro}
+    <MacroDialog
+      {theme}
+      macro={editingMacro === 'new' ? null : editingMacro}
+      folders={macroFolders}
+      onSave={saveMacro}
+      onDelete={editingMacro === 'new' ? undefined : deleteMacro}
+      onClose={() => (editingMacro = null)}
+    />
+  {/key}
+{/if}
+
+{#if showMacroImport}
+  <MacroImportDialog {theme} onImport={importMacro} onClose={() => (showMacroImport = false)} />
 {/if}
 
 {#if showQuickConnect}

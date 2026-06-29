@@ -95,6 +95,8 @@ pub struct Snippet {
     /// an expect/send/wait step array (same shape as `login_script_json`) run
     /// on the focused session.
     pub steps_json: Option<String>,
+    /// Optional folder name for the sidebar Macros library. `None` = ungrouped.
+    pub folder: Option<String>,
 }
 
 /// One row from `command_history`, used by the hint engine for
@@ -243,6 +245,9 @@ impl Database {
         }
         if version < 18 {
             conn.execute_batch(include_str!("migrations/018_snippet_steps.sql"))?;
+        }
+        if version < 19 {
+            conn.execute_batch(include_str!("migrations/019_snippet_folder.sql"))?;
         }
         Ok(())
     }
@@ -1113,7 +1118,7 @@ impl Database {
     pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder
              FROM snippets ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1126,6 +1131,7 @@ impl Database {
                 platform: row.get(5)?,
                 color: row.get(6)?,
                 steps_json: row.get(7)?,
+                folder: row.get(8)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1137,7 +1143,7 @@ impl Database {
     pub fn list_snippets_for_platform(&self, platform: &str) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder
              FROM snippets
              WHERE platform IS NULL OR platform = ?1
              ORDER BY (platform IS NULL) DESC, sort_order, name",
@@ -1152,6 +1158,7 @@ impl Database {
                 platform: row.get(5)?,
                 color: row.get(6)?,
                 steps_json: row.get(7)?,
+                folder: row.get(8)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1220,6 +1227,21 @@ impl Database {
         let n = conn.execute(
             "UPDATE snippets SET steps_json = ?1 WHERE id = ?2",
             rusqlite::params![steps_json, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Set (or clear with `None`) a snippet's folder. Kept separate from
+    /// `update_snippet` so existing call sites are unchanged (mirrors
+    /// [`set_snippet_steps`]).
+    pub fn set_snippet_folder(&self, id: i64, folder: Option<&str>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE snippets SET folder = ?1 WHERE id = ?2",
+            rusqlite::params![folder, id],
         )?;
         if n == 0 {
             return Err(Error::NotFound);

@@ -9,7 +9,9 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { onTerminalData } from '$lib/bridge/events'
-import type { LoginStep } from '$lib/bridge/types'
+import { getFocusedSessionId, focusSession } from '$lib/stores/sessionRuntime.svelte'
+import { showToast, type ToastKind } from '$lib/ui/toast-store.svelte'
+import type { LoginStep, Snippet } from '$lib/bridge/types'
 
 function stripAnsi(s: string): string {
   return s
@@ -152,5 +154,43 @@ export async function runMacro(sessionId: string, steps: LoginStep[]): Promise<M
     return { ok: true }
   } finally {
     unlisten()
+  }
+}
+
+/** Status sink for {@link runMacroOnFocused}. Defaults to toasts; the button
+ *  bar passes its own so feedback shows inline next to the bar instead. */
+export type MacroNotify = (level: ToastKind, message: string) => void
+
+const toastNotify: MacroNotify = (level, message) => showToast({ kind: level, title: message })
+
+/**
+ * Run a macro snippet against the currently-focused session. Shared by the
+ * snippet button bar and the sidebar Macros section: resolves the focused
+ * session, parses the snippet's steps, runs them, hands focus back to the
+ * terminal, and reports progress through `notify`.
+ */
+export async function runMacroOnFocused(
+  snippet: Snippet,
+  notify: MacroNotify = toastNotify,
+): Promise<void> {
+  const focused = getFocusedSessionId()
+  if (!focused) {
+    notify('warning', 'No session focused — click a terminal first.')
+    return
+  }
+  let steps: LoginStep[]
+  try {
+    steps = JSON.parse(snippet.steps_json ?? '[]')
+  } catch {
+    notify('error', `Macro "${snippet.name}" is corrupt`)
+    return
+  }
+  notify('info', `Running macro "${snippet.name}"…`)
+  const res = await runMacro(focused, steps)
+  focusSession(focused)
+  if (res.ok) {
+    notify('success', `Macro "${snippet.name}" done`)
+  } else {
+    notify('error', `Macro "${snippet.name}" timed out at step ${(res.failedStep ?? 0) + 1}`)
   }
 }

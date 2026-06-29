@@ -312,6 +312,11 @@ export async function setSnippetSteps(id: number, stepsJson: string | null): Pro
   return invoke<void>('set_snippet_steps', { id, stepsJson })
 }
 
+/** Set or clear (null) a snippet's folder for the sidebar Macros library. */
+export async function setSnippetFolder(id: number, folder: string | null): Promise<void> {
+  return invoke<void>('set_snippet_folder', { id, folder })
+}
+
 // Persist a new display order (sort_order) for the listed snippet ids.
 export async function setSnippetsOrder(orderedIds: number[]): Promise<void> {
   return invoke<void>('set_snippets_order', { orderedIds })

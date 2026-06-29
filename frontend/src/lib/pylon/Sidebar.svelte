@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PylonTheme } from '$lib/themes/index'
-  import type { SavedSession, Folder } from '$lib/bridge/types'
+  import type { SavedSession, Folder, Snippet } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
   import SessionAvatar from '$lib/pylon/SessionAvatar.svelte'
 
@@ -29,6 +29,12 @@
     onAddSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
+    /** Macro library shown in a section below the sessions. */
+    macros?: Snippet[]
+    onRunMacro?: (macro: Snippet) => void
+    onEditMacro?: (macro: Snippet) => void
+    onNewMacro?: () => void
+    onImportMacro?: () => void
   }
 
   const {
@@ -49,7 +55,40 @@
     onAddSession,
     onSettings,
     onToggleTheme,
+    macros,
+    onRunMacro,
+    onEditMacro,
+    onNewMacro,
+    onImportMacro,
   }: Props = $props()
+
+  const macroList = $derived(macros ?? [])
+
+  // Group macros for the sidebar: ungrouped first, then named folders (sorted).
+  const macroGroups = $derived.by(() => {
+    const ungrouped: Snippet[] = []
+    const byFolder = new Map<string, Snippet[]>()
+    for (const m of macroList) {
+      if (m.folder) {
+        const arr = byFolder.get(m.folder) ?? []
+        arr.push(m)
+        byFolder.set(m.folder, arr)
+      } else {
+        ungrouped.push(m)
+      }
+    }
+    const folders = [...byFolder.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return { ungrouped, folders }
+  })
+
+  // Membership = collapsed (folders are expanded by default).
+  let collapsedFolders = $state<Set<string>>(new Set())
+  function toggleMacroFolder(name: string) {
+    const next = new Set(collapsedFolders)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    collapsedFolders = next
+  }
 
   // ── Drag-and-drop (native HTML5) ────────────────────────────────────────
   /// Session id currently being dragged. `dragOver` is the drop target's id
@@ -149,7 +188,7 @@
   }
 
   let search = $state('')
-  let expandedSections = $state<Set<string>>(new Set(['pinned', 'recent', 'sessions']))
+  let expandedSections = $state<Set<string>>(new Set(['pinned', 'recent', 'sessions', 'macros']))
   let expandedFolders = $state<Set<number>>(new Set())
 
   const SESSION_COLORS = [
@@ -637,6 +676,100 @@
     {#if sessions.length === 0 && !search}
       <p class="sb-hint" style:color={theme.textDim}>No sessions yet.</p>
     {/if}
+
+    {#snippet macroRow(m: Snippet)}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="sb-row"
+        role="button"
+        tabindex="0"
+        title="Run on the focused session"
+        onclick={() => onRunMacro?.(m)}
+      >
+        <span class="sb-macro-bolt" style:color={m.color ?? theme.accent}>
+          <Icon name="bolt" size={13} />
+        </span>
+        <span class="sb-name" style:color={theme.textMuted}>{m.name}</span>
+        {#if onEditMacro}
+          <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+          <span
+            class="sb-edit"
+            role="button"
+            title="Edit macro"
+            style:color={theme.textDim}
+            onclick={(e) => {
+              e.stopPropagation()
+              onEditMacro?.(m)
+            }}><Icon name="pencil" size={12} /></span
+          >
+        {/if}
+      </div>
+    {/snippet}
+
+    <!-- Macros: a library of saved macros (snippets with steps), run on the
+         focused session with one click. Lives below the sessions. -->
+    {#if !search && (macroList.length > 0 || onNewMacro)}
+      <div class="sb-section">
+        <div class="sb-section-row" style:color={theme.textDim}>
+          <button
+            class="sb-section-header"
+            style:color={theme.textDim}
+            onclick={() => toggleSection('macros')}
+          >
+            <Icon name="chevron" size={11} open={expandedSections.has('macros')} />
+            MACROS
+            <span class="sb-count" style:color={theme.textDim}>{macroList.length}</span>
+          </button>
+          {#if onImportMacro}
+            <button
+              class="sb-add-btn"
+              title="Import from MobaXterm"
+              style:color={theme.textDim}
+              onclick={onImportMacro}><Icon name="transfer" size={13} /></button
+            >
+          {/if}
+          {#if onNewMacro}
+            <button
+              class="sb-add-btn"
+              title="New macro"
+              style:color={theme.textDim}
+              onclick={onNewMacro}><Icon name="plus" size={13} /></button
+            >
+          {/if}
+        </div>
+        {#if expandedSections.has('macros')}
+          <div class="sb-droparea">
+            {#each macroGroups.ungrouped as m (m.id)}
+              {@render macroRow(m)}
+            {/each}
+            {#each macroGroups.folders as [folderName, items] (folderName)}
+              <button
+                class="sb-folder-row"
+                style:color={theme.textDim}
+                onclick={() => toggleMacroFolder(folderName)}
+              >
+                <Icon name="chevron" size={10} open={!collapsedFolders.has(folderName)} />
+                <Icon name="folder" size={12} />
+                <span class="sb-folder-name">{folderName}</span>
+                <span class="sb-count" style:color={theme.textDim}>{items.length}</span>
+              </button>
+              {#if !collapsedFolders.has(folderName)}
+                <div class="sb-folder-items">
+                  {#each items as m (m.id)}
+                    {@render macroRow(m)}
+                  {/each}
+                </div>
+              {/if}
+            {/each}
+            {#if macroList.length === 0}
+              <span class="sb-empty" style:color={theme.textDim}
+                >No macros yet — click + to add</span
+              >
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <!-- Footer: user chip + theme + settings -->
@@ -972,6 +1105,35 @@
     padding: 4px 22px;
     font-size: 11px;
     font-style: italic;
+  }
+
+  .sb-macro-bolt {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .sb-folder-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 10px 4px 16px;
+    font-family: inherit;
+    font-size: 11.5px;
+    text-align: left;
+  }
+  .sb-folder-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sb-folder-items {
+    padding-left: 10px;
   }
 
   .sb-hint {

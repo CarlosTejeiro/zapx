@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.11.1] - 2026-06-29
 
+### Added
+- **Macros library in the sidebar** — a "Macros" section below the sessions
+  lists your saved macros; click one to run it on the focused session, edit it
+  in a dialog, or organise them into folders.
+- **Import a MobaXterm macro** — paste the lines from MobaXterm's macro editor
+  (text, `RETURN`, `SLEEP=ms`, `BACK`…) and ZAPX turns them into runnable
+  expect/send/wait steps.
+- **Reorder macro steps** — the step editor gained ▲/▼ controls to move a step
+  up or down.
+
 ### Fixed
 - **Suggestions popup no longer gets clipped** — the command-hint popup was
   anchored below the cursor inside the terminal's `overflow:hidden` stage, so it

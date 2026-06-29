@@ -3,7 +3,7 @@
   /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
   import type { PylonTheme } from '$lib/themes/index'
   import type { Snippet, LoginStep } from '$lib/bridge/types'
-  import Icon from '$lib/icons/Icon.svelte'
+  import MacroStepEditor from './MacroStepEditor.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -58,13 +58,6 @@
       return []
     }
   }
-  function addStep() {
-    steps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
-  }
-  function removeStep(i: number) {
-    steps.splice(i, 1)
-  }
-
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
@@ -154,7 +147,8 @@
       style:border-color={isMacro ? theme.accent : theme.border}
       onclick={() => {
         isMacro = true
-        if (steps.length === 0) addStep()
+        if (steps.length === 0)
+          steps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
       }}>Macro</button
     >
   </div>
@@ -171,94 +165,7 @@
       style:font-family={theme.fontMono}
     ></textarea>
   {:else}
-    <div class="steps">
-      {#each steps as step, i (i)}
-        <div class="mstep">
-          <select
-            class="m-kind"
-            bind:value={step.kind}
-            title="Step type"
-            style:background={theme.bodyBg}
-            style:color={theme.textPrimary}
-            style:border="1px solid {theme.border}"
-          >
-            <option value="expect">expect</option>
-            <option value="send">send</option>
-            <option value="wait">wait</option>
-          </select>
-          {#if step.kind === 'expect'}
-            <input
-              class="m-in"
-              placeholder="expect"
-              bind:value={step.expect}
-              spellcheck="false"
-              style:background={theme.bodyBg}
-              style:color={theme.textPrimary}
-              style:border="1px solid {theme.border}"
-            />
-            <input
-              class="m-in"
-              placeholder="send"
-              bind:value={step.send}
-              spellcheck="false"
-              style:background={theme.bodyBg}
-              style:color={theme.textPrimary}
-              style:border="1px solid {theme.border}"
-            />
-            <input
-              class="m-ms"
-              type="number"
-              min={500}
-              step={500}
-              bind:value={step.timeout_ms}
-              title="timeout (ms)"
-              style:background={theme.bodyBg}
-              style:color={theme.textPrimary}
-              style:border="1px solid {theme.border}"
-            />
-          {:else if step.kind === 'send'}
-            <input
-              class="m-in m-wide"
-              placeholder={'send (\\r for bare Enter)'}
-              bind:value={step.send}
-              spellcheck="false"
-              style:background={theme.bodyBg}
-              style:color={theme.textPrimary}
-              style:border="1px solid {theme.border}"
-            />
-          {:else}
-            <input
-              class="m-ms m-waitms"
-              type="number"
-              min={100}
-              step={100}
-              bind:value={step.timeout_ms}
-              title="pause (ms)"
-              style:background={theme.bodyBg}
-              style:color={theme.textPrimary}
-              style:border="1px solid {theme.border}"
-            />
-            <span class="m-hint" style:color={theme.textDim}>ms pause</span>
-          {/if}
-          <button
-            type="button"
-            class="m-rm"
-            style:color={theme.textDim}
-            title="Remove step"
-            onclick={() => removeStep(i)}
-          >
-            <Icon name="x" size={11} />
-          </button>
-        </div>
-      {/each}
-      <button
-        type="button"
-        class="m-add"
-        style:color={theme.textDim}
-        style:border="1px solid {theme.border}"
-        onclick={addStep}>+ Add step</button
-      >
-    </div>
+    <MacroStepEditor {theme} bind:steps />
   {/if}
 
   <div class="footer">
@@ -378,64 +285,6 @@
     border: 1px solid;
     border-radius: 5px;
     padding: 2px 10px;
-    font-size: 11.5px;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  .steps {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .mstep {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .m-kind {
-    width: 4.6rem;
-    flex-shrink: 0;
-    border-radius: 5px;
-    padding: 4px 4px;
-    font-size: 11px;
-    font-family: var(--zx-font-mono);
-    outline: none;
-  }
-  .m-in {
-    flex: 1;
-    min-width: 0;
-    border-radius: 5px;
-    padding: 4px 6px;
-    font-size: 11.5px;
-    font-family: var(--zx-font-mono);
-    outline: none;
-  }
-  .m-ms {
-    width: 4.2rem;
-    flex-shrink: 0;
-    border-radius: 5px;
-    padding: 4px 4px;
-    font-size: 11.5px;
-    outline: none;
-  }
-  .m-hint {
-    font-size: 10.5px;
-    flex-shrink: 0;
-  }
-  .m-rm {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 2px;
-    display: inline-flex;
-    flex-shrink: 0;
-  }
-  .m-add {
-    align-self: flex-start;
-    background: transparent;
-    border-radius: 5px;
-    padding: 3px 10px;
     font-size: 11.5px;
     font-family: inherit;
     cursor: pointer;

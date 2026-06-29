@@ -27,7 +27,7 @@
     setSnippetsOrder,
     setSnippetSteps,
   } from '$lib/bridge/commands'
-  import { runMacro } from '$lib/orchestrator/macroRunner'
+  import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import {
     getFocusedSessionId,
     focusSession,
@@ -158,23 +158,11 @@
   }
 
   async function fireMacro(s: Snippet) {
-    const focused = getFocusedSessionId()
-    if (!focused) {
-      flash('err', 'No session focused — click a terminal first.')
-      return
-    }
-    let steps: LoginStep[]
-    try {
-      steps = JSON.parse(s.steps_json ?? '[]')
-    } catch {
-      flash('err', `Macro "${s.name}" is corrupt`)
-      return
-    }
-    flash('ok', `Running macro "${s.name}"…`)
-    const res = await runMacro(focused, steps)
-    focusSession(focused)
-    if (res.ok) flash('ok', `Macro "${s.name}" done`)
-    else flash('err', `Macro "${s.name}" timed out at step ${(res.failedStep ?? 0) + 1}`)
+    // Shared runner; map its toast levels onto the bar's inline flash so
+    // feedback stays next to the button instead of as a corner toast.
+    await runMacroOnFocused(s, (level, message) =>
+      flash(level === 'error' || level === 'warning' ? 'err' : 'ok', message),
+    )
   }
 
   function fireRecent(r: RecentCommand) {
