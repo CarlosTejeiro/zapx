@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frontend; `cargo fmt`/`clippy -D warnings`/tests on the Rust side.
 
 ### Fixed
+- **MobaXterm import no longer defaults SSH to agent auth** — imported SSH
+  sessions default to password (ZAPX prompts on connect) instead of failing on
+  Windows hosts that have no OpenSSH agent / Pageant running. Connecting a
+  credential-less password session now shows the inline re-auth prompt instead
+  of erroring with "missing credential".
 - **SFTP streaming upload** closes the remote handle (awaiting the SFTP CLOSE)
   before reporting success, instead of relying on drop.
 - **Terminal listener leak** and **session-log finalisation** on close.

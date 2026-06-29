@@ -229,7 +229,7 @@ fn attach_forwards(
                     Some(gw_host.to_owned()),
                     Some(gw_port),
                     gw_user.map(|u| u.to_owned()),
-                    Auth::Agent,
+                    Auth::Password,
                     *next_id - 1,
                 ));
                 warnings.push(format!(
@@ -316,11 +316,13 @@ fn decode_session(
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or_else(|| common::default_port(protocol));
     let username = field(3).map(|s| s.to_owned());
-    let auth = if protocol == "ssh" {
-        Auth::Agent
-    } else {
-        Auth::Password
-    };
+    // MobaXterm doesn't export stored passwords (they live encrypted in its
+    // vault), so the import carries no credential. Default SSH to password
+    // auth — ZAPX then prompts on connect — instead of agent, which
+    // hard-fails on the typical Windows host with no OpenSSH agent / Pageant
+    // running (the most common MobaXterm scenario). Users on key/agent auth
+    // can still set that up per host.
+    let auth = Auth::Password;
     *next_id += 1;
     Some(common::session(
         *next_id,
@@ -370,6 +372,9 @@ desktop=#91#4%10.0.0.50%3389%user
         assert_eq!(jump.port, Some(22));
         assert_eq!(jump.username.as_deref(), Some("ops"));
         assert_eq!(jump.folder_id, None, "root section");
+        // MobaXterm carries no exported secret → SSH defaults to password auth
+        // (prompts on connect), never agent.
+        assert_eq!(jump.auth_method.as_deref(), Some("password"));
 
         let spine = s.iter().find(|x| x.name == "spine-01").unwrap();
         assert_eq!(spine.port, Some(2222));
@@ -428,6 +433,7 @@ jump=#109#0%bastion.example%22%ops%%-1%-1
             .find(|s| s.name == "deploy@10.9.9.9")
             .unwrap();
         assert_eq!(gw.port, Some(2200));
+        assert_eq!(gw.auth_method.as_deref(), Some("password"));
         let dyn_fwd = parsed
             .file
             .session_forwards
