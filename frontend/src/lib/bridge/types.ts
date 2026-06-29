@@ -51,7 +51,11 @@ export interface SftpEntry {
 }
 
 // One step of an automated login script, mirroring app::login_script::LoginStep.
+export type StepKind = 'expect' | 'send' | 'wait'
+
 export interface LoginStep {
+  /** 'expect' = wait for output then send; 'send' = send now; 'wait' = pause. */
+  kind: StepKind
   expect: string
   is_regex: boolean
   send: string
@@ -97,6 +101,9 @@ export interface Snippet {
   platform: string | null
   /** Optional accent color (hex) for the button-bar tile; null = theme tint. */
   color: string | null
+  /** When set, this snippet is a macro: a JSON expect/send/wait step array run
+   *  on the focused session instead of sending `content`. null = plain text. */
+  steps_json: string | null
 }
 
 /** Item in the "Recents" zone of the snippet bar — a frequently-typed command

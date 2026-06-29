@@ -25,7 +25,9 @@
     updateSnippet,
     deleteSnippet,
     setSnippetsOrder,
+    setSnippetSteps,
   } from '$lib/bridge/commands'
+  import { runMacro } from '$lib/orchestrator/macroRunner'
   import {
     getFocusedSessionId,
     focusSession,
@@ -36,7 +38,7 @@
   import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import ButtonEditor from './ButtonEditor.svelte'
-  import type { Snippet, RecentCommand } from '$lib/bridge/types'
+  import type { Snippet, RecentCommand, LoginStep } from '$lib/bridge/types'
   import type { PylonTheme } from '$lib/themes/index'
 
   interface Props {
@@ -74,14 +76,20 @@
     content: string
     color: string | null
     platformScoped: boolean
+    steps: LoginStep[] | null
   }) {
     const platform = v.platformScoped ? barContext.platform : null
+    const stepsJson = v.steps && v.steps.length > 0 ? JSON.stringify(v.steps) : null
     try {
+      let id: number
       if (editing && editing !== 'new') {
         await updateSnippet(editing.id, v.name, v.content, platform, v.color)
+        id = editing.id
       } else {
-        await createSnippet(v.name, v.content, platform, v.color)
+        id = await createSnippet(v.name, v.content, platform, v.color)
       }
+      // Macro steps live in a separate column (set/cleared independently).
+      await setSnippetSteps(id, stepsJson)
       editing = null
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
     } catch (e) {
@@ -137,10 +145,36 @@
   }
 
   async function fireSnippet(s: Snippet) {
+    // Macro snippets run an expect/send/wait sequence on the focused session;
+    // plain snippets just send their (variable-resolved) text.
+    if (s.steps_json) {
+      await fireMacro(s)
+      return
+    }
     // Resolve any {{variables}} (prompts the user) before sending.
     const text = await resolveSnippet(s.content)
     if (text === null) return
     fireText(text, s.name)
+  }
+
+  async function fireMacro(s: Snippet) {
+    const focused = getFocusedSessionId()
+    if (!focused) {
+      flash('err', 'No session focused — click a terminal first.')
+      return
+    }
+    let steps: LoginStep[]
+    try {
+      steps = JSON.parse(s.steps_json ?? '[]')
+    } catch {
+      flash('err', `Macro "${s.name}" is corrupt`)
+      return
+    }
+    flash('ok', `Running macro "${s.name}"…`)
+    const res = await runMacro(focused, steps)
+    focusSession(focused)
+    if (res.ok) flash('ok', `Macro "${s.name}" done`)
+    else flash('err', `Macro "${s.name}" timed out at step ${(res.failedStep ?? 0) + 1}`)
   }
 
   function fireRecent(r: RecentCommand) {
@@ -203,6 +237,11 @@
           >
             {#if i < SNIPPET_BAR_LIMIT}
               <span class="key-pill" style:color={theme.accent2}>{i + 1}</span>
+            {/if}
+            {#if s.steps_json}
+              <span class="macro-badge" style:color={theme.accent} title="Macro (expect/send/wait)">
+                <Icon name="bolt" size={10} />
+              </span>
             {/if}
             <span class="snippet-name">{s.name}</span>
           </button>
@@ -410,6 +449,14 @@
     border-radius: 3px;
     padding: 1px 5px;
     line-height: 1;
+  }
+
+  /* Macro snippets (expect/send/wait) carry a small bolt so they read as more
+     than plain text. */
+  .macro-badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
   }
 
   .recent-mark {

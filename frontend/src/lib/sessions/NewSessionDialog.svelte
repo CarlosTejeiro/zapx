@@ -140,7 +140,7 @@
   let showLoginScript = $state(false)
   let loginSteps = $state<LoginStep[]>([])
   function addStep() {
-    loginSteps.push({ expect: '', is_regex: false, send: '', timeout_ms: 10000 })
+    loginSteps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
   }
   function removeStep(idx: number) {
     loginSteps.splice(idx, 1)
@@ -330,7 +330,9 @@
         return out
       }
       const cleanSteps = loginSteps
-        .filter((s) => s.expect.trim() || s.send)
+        .filter((s) =>
+          s.kind === 'wait' ? s.timeout_ms > 0 : s.expect.trim() || s.send,
+        )
         .map((s) => ({ ...s, send: unescape(s.send) }))
       // In edit mode push unconditionally so clearing all steps takes effect.
       if (existing || cleanSteps.length > 0) {
@@ -564,37 +566,62 @@
     <details class="login-script" bind:open={showLoginScript}>
       <summary>Login automation ({loginSteps.length} step{loginSteps.length === 1 ? '' : 's'})</summary>
       <p class="hint">
-        On connect, wait for each <strong>expect</strong> pattern in the output and then
-        send the corresponding text. <strong>Enter is added automatically</strong> — use
-        <code>\n</code> only if you need extra newlines.
+        Runs on connect, step by step. <strong>expect</strong> waits for a pattern then
+        sends text; <strong>send</strong> sends immediately; <strong>wait</strong> pauses
+        for N ms. <strong>Enter is added automatically</strong> — use <code>\r</code> for a
+        bare Enter, <code>\n</code> for extra newlines.
       </p>
       {#each loginSteps as step, idx (idx)}
         <div class="step">
           <span class="step-num">{idx + 1}</span>
-          <input
-            class="step-expect"
-            placeholder="expect (e.g. Password:)"
-            bind:value={step.expect}
-            spellcheck="false"
-          />
-          <input
-            class="step-send"
-            placeholder="send"
-            bind:value={step.send}
-            spellcheck="false"
-          />
-          <input
-            class="step-timeout"
-            type="number"
-            min={500}
-            step={500}
-            bind:value={step.timeout_ms}
-            title="timeout (ms)"
-          />
-          <label class="step-rx" title="Treat 'expect' as a regular expression">
-            <input type="checkbox" bind:checked={step.is_regex} />
-            .*
-          </label>
+          <select class="step-kind" bind:value={step.kind} title="Step type">
+            <option value="expect">expect</option>
+            <option value="send">send</option>
+            <option value="wait">wait</option>
+          </select>
+          {#if step.kind === 'expect'}
+            <input
+              class="step-expect"
+              placeholder="expect (e.g. Password:)"
+              bind:value={step.expect}
+              spellcheck="false"
+            />
+            <input
+              class="step-send"
+              placeholder="send"
+              bind:value={step.send}
+              spellcheck="false"
+            />
+            <input
+              class="step-timeout"
+              type="number"
+              min={500}
+              step={500}
+              bind:value={step.timeout_ms}
+              title="timeout (ms)"
+            />
+            <label class="step-rx" title="Treat 'expect' as a regular expression">
+              <input type="checkbox" bind:checked={step.is_regex} />
+              .*
+            </label>
+          {:else if step.kind === 'send'}
+            <input
+              class="step-expect"
+              placeholder={'send now — text + Enter (use \\r for just Enter)'}
+              bind:value={step.send}
+              spellcheck="false"
+            />
+          {:else}
+            <input
+              class="step-timeout step-wait"
+              type="number"
+              min={100}
+              step={100}
+              bind:value={step.timeout_ms}
+              title="pause (ms)"
+            />
+            <span class="step-waithint">ms pause</span>
+          {/if}
           <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step"><Icon name="x" size={12} /></button>
         </div>
       {/each}
@@ -956,6 +983,19 @@
   .step-timeout {
     width: 4.5rem;
     font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+
+  .step-kind {
+    width: 5rem;
+    font-size: 0.72rem;
+    flex-shrink: 0;
+    font-family: var(--zx-font-mono);
+  }
+
+  .step-waithint {
+    font-size: 0.72rem;
+    color: var(--zx-text-muted);
     flex-shrink: 0;
   }
 

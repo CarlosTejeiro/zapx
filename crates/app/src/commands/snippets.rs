@@ -111,6 +111,21 @@ pub async fn delete_snippet(state: State<'_, AppState>, id: i64) -> Result<(), A
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Set (`Some`) or clear (`None`) a snippet's macro steps (expect/send/wait
+/// JSON). When set, the snippet runs as a macro on the focused session instead
+/// of sending its plain `content`.
+#[tauri::command]
+pub async fn set_snippet_steps(
+    state: State<'_, AppState>,
+    id: i64,
+    steps_json: Option<String>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_snippet_steps(id, steps_json.as_deref())
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Top recently-typed commands for the focused saved session. Drives the
 /// "Recents" zone of the bottom button bar. Trailing newline is appended so
 /// dispatching the snippet executes the command exactly like the original

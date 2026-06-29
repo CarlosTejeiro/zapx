@@ -233,6 +233,7 @@ pub fn run() {
             commands::snippets::update_snippet,
             commands::snippets::set_snippets_order,
             commands::snippets::delete_snippet,
+            commands::snippets::set_snippet_steps,
             commands::login_scripts::get_login_script,
             commands::login_scripts::set_login_script,
             commands::sessions::send_input,

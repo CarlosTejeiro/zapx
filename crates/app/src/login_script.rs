@@ -18,18 +18,38 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use core_transport::SessionCmd;
 
-/// One step of a login script.
+/// What a macro step does. Older saved scripts have no `kind` field and default
+/// to [`StepKind::Expect`] — the original wait-then-send behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StepKind {
+    /// Wait for `expect` in the output, then send `send`. `timeout_ms` bounds
+    /// the wait (script aborts if it never matches).
+    #[default]
+    Expect,
+    /// Send `send` immediately, without waiting for any output.
+    Send,
+    /// Pause for `timeout_ms` milliseconds, then continue. No output/send.
+    Wait,
+}
+
+/// One step of a login/macro script.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LoginStep {
-    /// Pattern to wait for in the (ANSI-stripped) output stream.
+    /// Step type. Defaults to `expect` for backwards compatibility.
+    #[serde(default)]
+    pub kind: StepKind,
+    /// Pattern to wait for in the (ANSI-stripped) output stream (`expect` only).
     pub expect: String,
     /// If true, `expect` is a regex (matched against the ANSI-stripped output).
     /// An invalid regex falls back to literal matching with a warning.
     #[serde(default)]
     pub is_regex: bool,
-    /// Bytes to send when `expect` matches (interpreted as UTF-8).
+    /// Bytes to send (interpreted as UTF-8). Used by `expect` and `send` steps;
+    /// a trailing Enter is appended automatically when missing.
     pub send: String,
-    /// How long to wait for this step before giving up (milliseconds).
+    /// For `expect`, how long to wait before giving up; for `wait`, the pause
+    /// duration. Milliseconds. Ignored by `send`.
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -109,8 +129,6 @@ impl LoginRunner {
         cmd_tx: UnboundedSender<SessionCmd>,
         on_progress: Box<dyn Fn(LoginProgress) + Send + Sync>,
     ) -> Self {
-        let first_timeout = steps.first().map(|s| s.timeout_ms).unwrap_or(10_000);
-        let total = steps.len();
         let matchers = steps
             .iter()
             .map(|s| Matcher::build(&s.expect, s.is_regex, &session_id))
@@ -119,43 +137,114 @@ impl LoginRunner {
             steps,
             matchers,
             cmd_tx,
-            session_id: session_id.clone(),
+            session_id,
             on_progress,
             inner: Mutex::new(RunnerInner {
                 index: 0,
                 buffer: Vec::with_capacity(8192),
-                deadline: Instant::now() + Duration::from_millis(first_timeout),
+                deadline: Instant::now(),
             }),
         };
-        (runner.on_progress)(LoginProgress {
-            session_id,
-            current: 0,
-            total,
-            status: "running",
-        });
+        // Arm the first actionable step. This fires any leading `send` steps
+        // immediately and parks on the first `expect`/`wait` (or completes).
+        {
+            let mut inner = runner.inner.lock().unwrap();
+            runner.arm(&mut inner);
+        }
         runner
     }
 
-    /// Expire the current step if its deadline has passed, returning `true`
-    /// when the script is finished afterwards.
-    ///
-    /// [`feed`](Self::feed) only runs when bytes arrive, so a server that
-    /// goes completely silent would never trip the per-step timeout. A
-    /// timer-driven watchdog calls this so the step still expires (and the
-    /// frontend gets a `timeout` progress event) even with zero output.
-    pub fn check_timeout(&self) -> bool {
-        let mut inner = self.inner.lock().unwrap();
-        self.expire_if_due(&mut inner);
-        inner.index >= self.steps.len()
+    /// Advance from the current index, firing consecutive `send` steps right
+    /// away, until we hit an `expect`/`wait` step (whose deadline we arm) or run
+    /// out of steps (complete). Emits the matching progress event.
+    fn arm(&self, inner: &mut RunnerInner) {
+        loop {
+            if inner.index >= self.steps.len() {
+                self.emit(inner.index, "complete");
+                return;
+            }
+            let step = &self.steps[inner.index];
+            match step.kind {
+                StepKind::Send => {
+                    self.fire_send(step);
+                    inner.index += 1;
+                    // Loop on to the next step.
+                }
+                StepKind::Expect | StepKind::Wait => {
+                    inner.deadline = Instant::now() + Duration::from_millis(step.timeout_ms);
+                    inner.buffer.clear();
+                    self.emit(inner.index, "running");
+                    return;
+                }
+            }
+        }
     }
 
-    /// If the current step's deadline has passed, mark the script timed out
-    /// and emit the `timeout` progress event. Returns `true` if the script
-    /// is finished (already done, or just expired).
-    fn expire_if_due(&self, inner: &mut RunnerInner) -> bool {
+    /// Send a step's `send` payload, appending a trailing Enter when the user
+    /// didn't end the line themselves (so `enable` actually executes). Empty
+    /// payloads send nothing.
+    fn fire_send(&self, step: &LoginStep) {
+        let mut bytes = step.send.as_bytes().to_vec();
+        if !bytes.is_empty() && !bytes.ends_with(b"\n") && !bytes.ends_with(b"\r") {
+            bytes.push(b'\r');
+        }
+        if !bytes.is_empty() {
+            let _ = self.cmd_tx.send(SessionCmd::Data(bytes));
+        }
+    }
+
+    fn emit(&self, current: usize, status: &'static str) {
+        (self.on_progress)(LoginProgress {
+            session_id: self.session_id.clone(),
+            current,
+            total: self.steps.len(),
+            status,
+        });
+    }
+
+    /// Timer tick from the watchdog: release a `wait` whose pause elapsed, or
+    /// abort an `expect` that never matched in time. Drives `wait` steps and
+    /// silent-server timeouts (which `feed` can't, since it only runs on
+    /// output). Returns `true` once the script has finished.
+    pub fn check_timeout(&self) -> bool {
+        let mut inner = self.inner.lock().unwrap();
         if inner.index >= self.steps.len() {
             return true;
         }
+        if Instant::now() <= inner.deadline {
+            return false;
+        }
+        match self.steps[inner.index].kind {
+            StepKind::Wait => {
+                // Pause elapsed → move on (firing any following `send` steps).
+                inner.index += 1;
+                self.arm(&mut inner);
+            }
+            _ => {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    step = inner.index,
+                    "login script: step timed out"
+                );
+                let current = inner.index;
+                inner.index = self.steps.len();
+                self.emit(current, "timeout");
+            }
+        }
+        inner.index >= self.steps.len()
+    }
+
+    /// Feed a chunk of session output. Only `expect` steps consume it; `wait`
+    /// is timer-driven and `send` already fired during [`arm`](Self::arm).
+    pub fn feed(&self, data: &[u8]) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.index >= self.steps.len() {
+            return;
+        }
+        if self.steps[inner.index].kind != StepKind::Expect {
+            return;
+        }
+        // A silent stretch may have blown the expect deadline before this chunk.
         if Instant::now() > inner.deadline {
             tracing::warn!(
                 session_id = %self.session_id,
@@ -164,23 +253,7 @@ impl LoginRunner {
             );
             let current = inner.index;
             inner.index = self.steps.len();
-            (self.on_progress)(LoginProgress {
-                session_id: self.session_id.clone(),
-                current,
-                total: self.steps.len(),
-                status: "timeout",
-            });
-            return true;
-        }
-        false
-    }
-
-    /// Feed a chunk of session output to the runner. Cheap when the script
-    /// is already complete (early return).
-    pub fn feed(&self, data: &[u8]) {
-        let mut inner = self.inner.lock().unwrap();
-        // Done, or the current step just timed out → nothing more to do.
-        if self.expire_if_due(&mut inner) {
+            self.emit(current, "timeout");
             return;
         }
 
@@ -193,37 +266,10 @@ impl LoginRunner {
         }
 
         let stripped = strip_ansi(&inner.buffer);
-        let step = &self.steps[inner.index];
-        // Literal or regex match per the step's `is_regex` (precompiled).
         if self.matchers[inner.index].is_match(&stripped) {
-            // Auto-press Enter unless the user already ended the line, so a step
-            // like send "enable" actually executes. Previously the text was
-            // typed but left un-submitted, so the NEXT step's expect never
-            // appeared and the script stalled.
-            let mut bytes = step.send.as_bytes().to_vec();
-            if !bytes.is_empty() && !bytes.ends_with(b"\n") && !bytes.ends_with(b"\r") {
-                bytes.push(b'\r');
-            }
-            let _ = self.cmd_tx.send(SessionCmd::Data(bytes));
+            self.fire_send(&self.steps[inner.index]);
             inner.index += 1;
-            inner.buffer.clear();
-            if inner.index < self.steps.len() {
-                inner.deadline =
-                    Instant::now() + Duration::from_millis(self.steps[inner.index].timeout_ms);
-                (self.on_progress)(LoginProgress {
-                    session_id: self.session_id.clone(),
-                    current: inner.index,
-                    total: self.steps.len(),
-                    status: "running",
-                });
-            } else {
-                (self.on_progress)(LoginProgress {
-                    session_id: self.session_id.clone(),
-                    current: inner.index,
-                    total: self.steps.len(),
-                    status: "complete",
-                });
-            }
+            self.arm(&mut inner);
         }
     }
 }
@@ -304,18 +350,32 @@ mod tests {
         assert!(bad.is_match("see (unclosed here"));
     }
 
+    fn step(kind: StepKind, expect: &str, send: &str, timeout_ms: u64) -> LoginStep {
+        LoginStep {
+            kind,
+            expect: expect.into(),
+            is_regex: false,
+            send: send.into(),
+            timeout_ms,
+        }
+    }
+
+    /// Drain the bytes the runner pushed to the session command channel.
+    fn drain(rx: &mut tokio::sync::mpsc::UnboundedReceiver<SessionCmd>) -> Vec<u8> {
+        let mut out = Vec::new();
+        while let Ok(SessionCmd::Data(d)) = rx.try_recv() {
+            out.extend_from_slice(&d);
+        }
+        out
+    }
+
     #[test]
     fn silent_server_times_out_via_check_timeout() {
         use std::sync::{Arc, Mutex as StdMutex};
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let statuses: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
         let sink = Arc::clone(&statuses);
-        let steps = vec![LoginStep {
-            expect: "prompt-that-never-comes".into(),
-            is_regex: false,
-            send: "x".into(),
-            timeout_ms: 1,
-        }];
+        let steps = vec![step(StepKind::Expect, "prompt-that-never-comes", "x", 1)];
         let runner = LoginRunner::new(
             "s".into(),
             steps,
@@ -332,5 +392,64 @@ mod tests {
         let s = statuses.lock().unwrap();
         assert_eq!(s.first().map(String::as_str), Some("running"));
         assert!(s.iter().any(|x| x == "timeout"), "expected a timeout event");
+    }
+
+    #[test]
+    fn send_steps_fire_immediately_in_order() {
+        // Two `send` steps with no expect: both go out the moment the runner is
+        // built, in order, each with a trailing Enter.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let runner = LoginRunner::new(
+            "s".into(),
+            vec![
+                step(StepKind::Send, "", "term len 0", 0),
+                step(StepKind::Send, "", "show ver", 0),
+            ],
+            tx,
+            Box::new(|_| {}),
+        );
+        assert_eq!(drain(&mut rx), b"term len 0\rshow ver\r");
+        assert!(
+            runner.check_timeout(),
+            "all-send script finishes immediately"
+        );
+    }
+
+    #[test]
+    fn wait_step_advances_after_its_delay() {
+        // A `wait` step pauses, then the following `send` fires once elapsed.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let runner = LoginRunner::new(
+            "s".into(),
+            vec![
+                step(StepKind::Wait, "", "", 1),
+                step(StepKind::Send, "", "go", 0),
+            ],
+            tx,
+            Box::new(|_| {}),
+        );
+        // Before the delay elapses, nothing sent and not finished.
+        assert!(drain(&mut rx).is_empty());
+        assert!(!runner.check_timeout());
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(runner.check_timeout(), "finished after the wait + send");
+        assert_eq!(drain(&mut rx), b"go\r");
+    }
+
+    #[test]
+    fn expect_then_send_chain() {
+        // Classic: wait for a prompt, then send. Feeding the prompt advances and
+        // fires the send (with auto-Enter).
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let runner = LoginRunner::new(
+            "s".into(),
+            vec![step(StepKind::Expect, "Password:", "hunter2", 1000)],
+            tx,
+            Box::new(|_| {}),
+        );
+        assert!(drain(&mut rx).is_empty(), "nothing sent before the match");
+        runner.feed(b"\r\nEnter Password: ");
+        assert_eq!(drain(&mut rx), b"hunter2\r");
+        assert!(runner.check_timeout(), "finished after the expect matched");
     }
 }
