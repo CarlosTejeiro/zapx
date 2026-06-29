@@ -41,7 +41,10 @@
   const groups = $derived.by<OutputGroup[]>(() => {
     const map = new Map<string, OutputGroup>()
     for (const h of hosts) {
-      if (h.state === 'timeout') continue
+      // Only a genuine non-responder — timed out with nothing captured — is
+      // excluded. A host that captured output is grouped even if we never
+      // confirmed completion (prompt unrecognised), so its output isn't lost.
+      if (h.state === 'timeout' && normalize(h.buffer) === '') continue
       const text = normalize(h.buffer)
       const g = map.get(text)
       if (g) g.hosts.push(h)
@@ -50,7 +53,7 @@
     return [...map.values()].sort((a, b) => b.hosts.length - a.hosts.length)
   })
 
-  const timedOut = $derived(hosts.filter((h) => h.state === 'timeout'))
+  const timedOut = $derived(hosts.filter((h) => h.state === 'timeout' && normalize(h.buffer) === ''))
   const allSame = $derived(!running && groups.length === 1 && timedOut.length === 0)
 
   // Expand/collapse a group's output.

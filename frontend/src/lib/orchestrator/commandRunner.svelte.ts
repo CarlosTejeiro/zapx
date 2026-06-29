@@ -38,6 +38,12 @@ export interface RunnerHost {
 }
 
 const QUIET_MS = 150
+// Fallback completion: once a host has echoed the command and then gone quiet
+// for this long with no recognised prompt, treat it as done anyway. This is
+// what makes capture work for unknown platforms and for known platforms whose
+// prompt we fail to match — without it those hosts only ever hit the global
+// timeout and their (captured) output was being discarded.
+const SETTLE_MS = 900
 const DEFAULT_TIMEOUT_MS = 10_000
 
 function stripAnsi(s: string): string {
@@ -63,6 +69,7 @@ export class CommandRunner {
   #unlisten: UnlistenFn | null = null
   #decoders = new Map<string, TextDecoder>()
   #quietTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  #settleTimers = new Map<string, ReturnType<typeof setTimeout>>()
   #globalTimer: ReturnType<typeof setTimeout> | null = null
   #timeoutMs: number
 
@@ -103,13 +110,33 @@ export class CommandRunner {
     if (!decoder) return
     host.buffer += stripAnsi(decoder.decode(new Uint8Array(data), { stream: true }))
 
-    // Reset the per-host quiet timer; evaluate completion when it fires.
+    // Reset the per-host quiet timer; evaluate prompt completion when it fires.
     const existing = this.#quietTimers.get(sessionId)
     if (existing) clearTimeout(existing)
     this.#quietTimers.set(
       sessionId,
       setTimeout(() => this.#maybeComplete(sessionId), QUIET_MS),
     )
+
+    // Reset the longer settle timer — fallback completion when no prompt is
+    // recognised (unknown platform, or a prompt we don't match).
+    const settle = this.#settleTimers.get(sessionId)
+    if (settle) clearTimeout(settle)
+    this.#settleTimers.set(
+      sessionId,
+      setTimeout(() => this.#settleComplete(sessionId), SETTLE_MS),
+    )
+  }
+
+  #settleComplete(sessionId: string) {
+    const host = this.hosts.find((h) => h.sessionId === sessionId)
+    if (!host || host.state !== 'running') return
+    // Only settle once the command echo has come back, so we don't complete on
+    // a pre-command burst. A host that never echoes (truly silent) keeps
+    // running and is caught by the global timeout = a genuine no-reply.
+    if (this.command && !host.buffer.includes(this.command)) return
+    host.state = 'done'
+    this.#settleCheck()
   }
 
   async #maybeComplete(sessionId: string) {
@@ -154,6 +181,8 @@ export class CommandRunner {
     }
     for (const t of this.#quietTimers.values()) clearTimeout(t)
     this.#quietTimers.clear()
+    for (const t of this.#settleTimers.values()) clearTimeout(t)
+    this.#settleTimers.clear()
     if (this.#globalTimer) {
       clearTimeout(this.#globalTimer)
       this.#globalTimer = null
