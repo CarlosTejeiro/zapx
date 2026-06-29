@@ -63,7 +63,8 @@
       showToast({
         kind: 'success',
         title: 'Data folder',
-        detail: 'The default location will be used from the next launch. Current data is not moved.',
+        detail:
+          'The default location will be used from the next launch. Current data is not moved.',
       })
       await promptRestart()
     } catch (e) {
@@ -78,9 +79,9 @@
   <section>
     <h3>Data folder</h3>
     <p class="hint">
-      Where ZAPX keeps the sessions database (<code>zapx.db</code>), session
-      logs and the snippet/hint catalogs. Handy for moving it to a synced
-      folder (Drive, OneDrive) or a network share.
+      Where ZAPX keeps the sessions database (<code>zapx.db</code>), session logs and the
+      snippet/hint catalogs. Handy for moving it to a synced folder (Drive, OneDrive) or a network
+      share.
     </p>
 
     {#if !info}
@@ -96,15 +97,13 @@
 
       {#if info.portable}
         <p class="notice">
-          You're in <strong>portable mode</strong>: data lives next to the
-          executable and credentials are stored encrypted (AES-256-GCM) in the
-          database instead of the OS keyring. Anyone with access to the folder
-          can use them — treat it like a physical key.
+          You're in <strong>portable mode</strong>: data lives next to the executable and
+          credentials are stored encrypted (AES-256-GCM) in the database instead of the OS keyring.
+          Anyone with access to the folder can use them — treat it like a physical key.
         </p>
       {:else if !info.changeable}
         <p class="notice">
-          The location is forced by {SOURCE_LABELS[info.source]} and can't be
-          changed here.
+          The location is forced by {SOURCE_LABELS[info.source]} and can't be changed here.
         </p>
       {:else}
         <div class="actions">
@@ -118,9 +117,10 @@
           {/if}
         </div>
         <p class="hint">
-          Changing it copies the database, logs and catalogs to the new folder
-          (if it already holds ZAPX data, that's adopted as-is). The change
-          takes effect after a restart. Default: <code>{info.default_path}</code>
+          Changing it copies the database, logs and catalogs to the new folder (if it already holds
+          ZAPX data, that's adopted as-is). The change takes effect after a restart. Default: <code
+            >{info.default_path}</code
+          >
         </p>
       {/if}
     {/if}
@@ -129,8 +129,8 @@
   <section>
     <h3>Portable mode (Windows)</h3>
     <p class="hint">
-      Download <code>ZAPX_x64_portable.exe</code> from the release, put it in
-      any folder or USB stick and create an empty file named
+      Download <code>ZAPX_x64_portable.exe</code> from the release, put it in any folder or USB
+      stick and create an empty file named
       <code>portable</code> next to it. All data then lives in <code>data/</code>
       beside the executable and travels with it.
     </p>
@@ -146,7 +146,11 @@
     color: var(--zx-text);
     font-family: var(--zx-font-ui);
   }
-  section { display: flex; flex-direction: column; gap: 0.5rem; }
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
   h3 {
     font-size: 0.78rem;
     font-weight: 600;
@@ -205,8 +209,13 @@
     padding: 0.35rem 0.85rem;
     cursor: pointer;
   }
-  .ok-btn:hover { filter: brightness(1.1); }
-  .ok-btn:disabled { opacity: 0.5; cursor: default; }
+  .ok-btn:hover {
+    filter: brightness(1.1);
+  }
+  .ok-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   .ghost-btn {
     background: transparent;
     color: var(--zx-text-muted);
@@ -217,6 +226,12 @@
     padding: 0.35rem 0.85rem;
     cursor: pointer;
   }
-  .ghost-btn:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
-  .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+  .ghost-btn:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
+  .ghost-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 </style>

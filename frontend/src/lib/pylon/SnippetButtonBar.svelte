@@ -200,16 +200,24 @@
       style:color={theme.textDim}
       onclick={() => (collapsed = false)}
       title="Show button bar"
-    >▴ Buttons ({visibleSnippets.length}){recents.length ? ` · ${recents.length} recent` : ''}</button>
+      >▴ Buttons ({visibleSnippets.length}){recents.length
+        ? ` · ${recents.length} recent`
+        : ''}</button
+    >
   </div>
 {:else}
-  <div class="bar" style:background={theme.tabBarBg} style:border-color={theme.border} style:--accent={theme.accent}>
+  <div
+    class="bar"
+    style:background={theme.tabBarBg}
+    style:border-color={theme.border}
+    style:--accent={theme.accent}
+  >
     <button
       class="collapse-toggle"
       style:color={theme.textDim}
       onclick={() => (collapsed = true)}
-      title="Hide button bar"
-    >▾</button>
+      title="Hide button bar">▾</button
+    >
 
     <div class="snippets">
       {#each visibleSnippets as s, i (s.id)}
@@ -220,16 +228,31 @@
           class="btn-wrap"
           class:dragging={dragIndex === i}
           class:drop-target={dropIndex === i && dragIndex !== i}
-          ondragover={(e) => { if (dragIndex !== null) { e.preventDefault(); dropIndex = i } }}
-          ondrop={(e) => { e.preventDefault(); reorderTo(i) }}
+          ondragover={(e) => {
+            if (dragIndex !== null) {
+              e.preventDefault()
+              dropIndex = i
+            }
+          }}
+          ondrop={(e) => {
+            e.preventDefault()
+            reorderTo(i)
+          }}
         >
           <button
             class="snippet-btn"
             draggable="true"
-            ondragstart={() => { dragIndex = i }}
-            ondragend={() => { dragIndex = null; dropIndex = null }}
+            ondragstart={() => {
+              dragIndex = i
+            }}
+            ondragend={() => {
+              dragIndex = null
+              dropIndex = null
+            }}
             style:color={theme.textPrimary}
-            style:background={s.color ? `color-mix(in srgb, ${s.color} 18%, transparent)` : theme.itemActiveBg}
+            style:background={s.color
+              ? `color-mix(in srgb, ${s.color} 18%, transparent)`
+              : theme.itemActiveBg}
             style:border-color={s.color ?? theme.border}
             style:border-left={s.color ? `3px solid ${s.color}` : `1px solid ${theme.border}`}
             onclick={() => fireSnippet(s)}
@@ -251,8 +274,11 @@
             style:background={theme.tabBarBg}
             title="Edit button"
             aria-label="Edit button"
-            onclick={(e) => { e.stopPropagation(); editing = s }}
-          ><Icon name="pencil" size={10} /></button>
+            onclick={(e) => {
+              e.stopPropagation()
+              editing = s
+            }}><Icon name="pencil" size={10} /></button
+          >
         </span>
       {/each}
 
@@ -263,8 +289,8 @@
         style:border-color={theme.border}
         onclick={() => (editing = 'new')}
         title="New button"
-        aria-label="New button"
-      ><Icon name="plus" size={12} /></button>
+        aria-label="New button"><Icon name="plus" size={12} /></button
+      >
 
       {#if recents.length > 0}
         <span class="divider" style:background={theme.border}></span>
@@ -340,12 +366,24 @@
     padding: 0;
     z-index: 2;
   }
-  .btn-wrap:hover .edit-dot { display: inline-flex; }
-  .btn-wrap.dragging { opacity: 0.45; }
-  .btn-wrap.drop-target { box-shadow: -2px 0 0 0 var(--accent, #5eb3b2); }
-  .snippet-btn[draggable='true'] { cursor: grab; }
-  .snippet-btn[draggable='true']:active { cursor: grabbing; }
-  .edit-dot:hover { filter: brightness(1.3); }
+  .btn-wrap:hover .edit-dot {
+    display: inline-flex;
+  }
+  .btn-wrap.dragging {
+    opacity: 0.45;
+  }
+  .btn-wrap.drop-target {
+    box-shadow: -2px 0 0 0 var(--accent, #5eb3b2);
+  }
+  .snippet-btn[draggable='true'] {
+    cursor: grab;
+  }
+  .snippet-btn[draggable='true']:active {
+    cursor: grabbing;
+  }
+  .edit-dot:hover {
+    filter: brightness(1.3);
+  }
 
   .add-btn {
     display: inline-flex;
@@ -360,7 +398,9 @@
     flex-shrink: 0;
     transition: filter 0.1s;
   }
-  .add-btn:hover { filter: brightness(1.3); }
+  .add-btn:hover {
+    filter: brightness(1.3);
+  }
 
   .bar.collapsed {
     padding: 2px 8px;
@@ -417,7 +457,9 @@
     line-height: 1.3;
     white-space: nowrap;
     flex-shrink: 0;
-    transition: border-color 0.1s, background 0.1s;
+    transition:
+      border-color 0.1s,
+      background 0.1s;
   }
 
   .snippet-btn:hover {

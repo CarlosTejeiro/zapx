@@ -21,7 +21,10 @@ function readCellDims(term: Terminal): XtermCellDims {
   const el = term.element
   if (el) {
     const rect = el.getBoundingClientRect()
-    return { width: rect.width / Math.max(term.cols, 1), height: rect.height / Math.max(term.rows, 1) }
+    return {
+      width: rect.width / Math.max(term.cols, 1),
+      height: rect.height / Math.max(term.rows, 1),
+    }
   }
   return { width: 8, height: 16 }
 }
@@ -181,9 +184,12 @@ export class HintController {
       this.hints = hints
       this.selected = 0
       const best = hints[0]
-      if (best && this.opts.ghostEnabled() &&
-          best.text.length > prefix.length &&
-          best.text.toLowerCase().startsWith(prefix.toLowerCase())) {
+      if (
+        best &&
+        this.opts.ghostEnabled() &&
+        best.text.length > prefix.length &&
+        best.text.toLowerCase().startsWith(prefix.toLowerCase())
+      ) {
         this.ghost = best.text.slice(prefix.length)
       } else {
         this.ghost = ''

@@ -125,7 +125,9 @@
   aria-modal="true"
   aria-label="Command Palette"
   tabindex="-1"
-  onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
+  onclick={(e) => {
+    if (e.target === e.currentTarget) onClose()
+  }}
   onkeydown={onKeydown}
 >
   <div class="palette">
@@ -198,8 +200,12 @@
   }
 
   @keyframes overlay-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .palette {
@@ -219,8 +225,14 @@
   }
 
   @keyframes palette-in {
-    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0)    scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-12px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .search {
@@ -248,7 +260,9 @@
     font-family: inherit;
   }
 
-  .search input::placeholder { color: var(--zx-text-dim); }
+  .search input::placeholder {
+    color: var(--zx-text-dim);
+  }
 
   kbd {
     background: var(--zx-hover-bg);

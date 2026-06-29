@@ -21,7 +21,15 @@
     getSessionTriggers,
     setSessionTriggers,
   } from '$lib/bridge/commands'
-  import type { Folder, AuthMethod, SavedSession, LoginStep, Trigger, PlatformInfo, SavedForward } from '$lib/bridge/types'
+  import type {
+    Folder,
+    AuthMethod,
+    SavedSession,
+    LoginStep,
+    Trigger,
+    PlatformInfo,
+    SavedForward,
+  } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
 
@@ -160,7 +168,13 @@
   let showForwards = $state(false)
   let forwards = $state<SavedForward[]>([])
   function addForward() {
-    forwards.push({ kind: 'local', bind_addr: '127.0.0.1', bind_port: 0, target_host: '', target_port: 0 })
+    forwards.push({
+      kind: 'local',
+      bind_addr: '127.0.0.1',
+      bind_port: 0,
+      target_host: '',
+      target_port: 0,
+    })
   }
   function removeForward(idx: number) {
     forwards.splice(idx, 1)
@@ -320,19 +334,33 @@
         for (let i = 0; i < s.length; i += 1) {
           if (s[i] === '\\' && i + 1 < s.length) {
             const next = s[i + 1]
-            if (next === 'n')  { out += '\n'; i += 1; continue }
-            if (next === 'r')  { out += '\r'; i += 1; continue }
-            if (next === 't')  { out += '\t'; i += 1; continue }
-            if (next === '\\') { out += '\\'; i += 1; continue }
+            if (next === 'n') {
+              out += '\n'
+              i += 1
+              continue
+            }
+            if (next === 'r') {
+              out += '\r'
+              i += 1
+              continue
+            }
+            if (next === 't') {
+              out += '\t'
+              i += 1
+              continue
+            }
+            if (next === '\\') {
+              out += '\\'
+              i += 1
+              continue
+            }
           }
           out += s[i]
         }
         return out
       }
       const cleanSteps = loginSteps
-        .filter((s) =>
-          s.kind === 'wait' ? s.timeout_ms > 0 : s.expect.trim() || s.send,
-        )
+        .filter((s) => (s.kind === 'wait' ? s.timeout_ms > 0 : s.expect.trim() || s.send))
         .map((s) => ({ ...s, send: unescape(s.send) }))
       // In edit mode push unconditionally so clearing all steps takes effect.
       if (existing || cleanSteps.length > 0) {
@@ -351,10 +379,16 @@
       // clearing them takes effect.
       if (protocol === 'ssh') {
         const cleanForwards = forwards
-          .filter((f) => f.bind_port > 0 && (f.kind === 'dynamic' || (f.target_host?.trim() && (f.target_port ?? 0) > 0)))
-          .map((f) => f.kind === 'dynamic'
-            ? { ...f, target_host: null, target_port: null }
-            : { ...f, target_host: f.target_host!.trim() })
+          .filter(
+            (f) =>
+              f.bind_port > 0 &&
+              (f.kind === 'dynamic' || (f.target_host?.trim() && (f.target_port ?? 0) > 0)),
+          )
+          .map((f) =>
+            f.kind === 'dynamic'
+              ? { ...f, target_host: null, target_port: null }
+              : { ...f, target_host: f.target_host!.trim() },
+          )
         if (existing || cleanForwards.length > 0) {
           await setSessionForwards(id, cleanForwards)
         }
@@ -383,12 +417,15 @@
   aria-modal="true"
   aria-label="New session"
   tabindex="-1"
-  onkeydown={onkeydown}
+  {onkeydown}
   transition:fade={{ duration: 140 }}
 >
   <form
     class="dialog"
-    onsubmit={(e) => { e.preventDefault(); submit() }}
+    onsubmit={(e) => {
+      e.preventDefault()
+      submit()
+    }}
     transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}
   >
     <h2>{isEdit ? 'Edit Session' : 'New Session'}</h2>
@@ -452,8 +489,8 @@
       </label>
       {#if isEdit}
         <p class="hint">
-          Credentials stay frozen on edit. To rotate password / passphrase /
-          switch auth method, delete and recreate the session.
+          Credentials stay frozen on edit. To rotate password / passphrase / switch auth method,
+          delete and recreate the session.
         </p>
       {/if}
       {#if !isEdit && authType === 'password'}
@@ -564,12 +601,15 @@
     {/if}
 
     <details class="login-script" bind:open={showLoginScript}>
-      <summary>Login automation ({loginSteps.length} step{loginSteps.length === 1 ? '' : 's'})</summary>
+      <summary
+        >Login automation ({loginSteps.length} step{loginSteps.length === 1 ? '' : 's'})</summary
+      >
       <p class="hint">
-        Runs on connect, step by step. <strong>expect</strong> waits for a pattern then
-        sends text; <strong>send</strong> sends immediately; <strong>wait</strong> pauses
-        for N ms. <strong>Enter is added automatically</strong> — use <code>\r</code> for a
-        bare Enter, <code>\n</code> for extra newlines.
+        Runs on connect, step by step. <strong>expect</strong> waits for a pattern then sends text;
+        <strong>send</strong>
+        sends immediately; <strong>wait</strong> pauses for N ms.
+        <strong>Enter is added automatically</strong>
+        — use <code>\r</code> for a bare Enter, <code>\n</code> for extra newlines.
       </p>
       {#each loginSteps as step, idx (idx)}
         <div class="step">
@@ -586,12 +626,7 @@
               bind:value={step.expect}
               spellcheck="false"
             />
-            <input
-              class="step-send"
-              placeholder="send"
-              bind:value={step.send}
-              spellcheck="false"
-            />
+            <input class="step-send" placeholder="send" bind:value={step.send} spellcheck="false" />
             <input
               class="step-timeout"
               type="number"
@@ -622,7 +657,9 @@
             />
             <span class="step-waithint">ms pause</span>
           {/if}
-          <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step"><Icon name="x" size={12} /></button>
+          <button type="button" class="step-rm" onclick={() => removeStep(idx)} title="Remove step"
+            ><Icon name="x" size={12} /></button
+          >
         </div>
       {/each}
       <button type="button" class="add-step" onclick={addStep}>+ Add step</button>
@@ -632,8 +669,8 @@
       <summary>Triggers ({triggers.length})</summary>
       <p class="hint">
         When a <strong>pattern</strong> matches a line of output, fire an action:
-        <strong>notify</strong> (toast), <strong>send</strong> (type the text + Enter
-        back), or <strong>bell</strong>. Use <code>\n</code> for a newline in send.
+        <strong>notify</strong> (toast), <strong>send</strong> (type the text + Enter back), or
+        <strong>bell</strong>. Use <code>\n</code> for a newline in send.
       </p>
       {#each triggers as trig, idx (idx)}
         <div class="step">
@@ -661,7 +698,12 @@
             <input type="checkbox" bind:checked={trig.is_regex} />
             .*
           </label>
-          <button type="button" class="step-rm" onclick={() => removeTrigger(idx)} title="Remove trigger"><Icon name="x" size={12} /></button>
+          <button
+            type="button"
+            class="step-rm"
+            onclick={() => removeTrigger(idx)}
+            title="Remove trigger"><Icon name="x" size={12} /></button
+          >
         </div>
       {/each}
       <button type="button" class="add-step" onclick={addTrigger}>+ Add trigger</button>
@@ -683,16 +725,47 @@
               <option value="dynamic">Dynamic -D</option>
               <option value="remote">Remote -R</option>
             </select>
-            <input class="fwd-bind" placeholder="bind (127.0.0.1)" bind:value={f.bind_addr} spellcheck="false" />
-            <input class="fwd-port" type="number" min={0} max={65535} placeholder="port" bind:value={f.bind_port} title="bind port (0 = auto)" />
+            <input
+              class="fwd-bind"
+              placeholder="bind (127.0.0.1)"
+              bind:value={f.bind_addr}
+              spellcheck="false"
+            />
+            <input
+              class="fwd-port"
+              type="number"
+              min={0}
+              max={65535}
+              placeholder="port"
+              bind:value={f.bind_port}
+              title="bind port (0 = auto)"
+            />
             {#if f.kind !== 'dynamic'}
               <span class="fwd-arrow" aria-hidden="true">→</span>
-              <input class="fwd-target" placeholder="target host" bind:value={f.target_host} spellcheck="false" />
-              <input class="fwd-port" type="number" min={1} max={65535} placeholder="port" bind:value={f.target_port} title="target port" />
+              <input
+                class="fwd-target"
+                placeholder="target host"
+                bind:value={f.target_host}
+                spellcheck="false"
+              />
+              <input
+                class="fwd-port"
+                type="number"
+                min={1}
+                max={65535}
+                placeholder="port"
+                bind:value={f.target_port}
+                title="target port"
+              />
             {:else}
               <span class="fwd-socks">SOCKS5 proxy</span>
             {/if}
-            <button type="button" class="step-rm" onclick={() => removeForward(idx)} title="Remove forward"><Icon name="x" size={12} /></button>
+            <button
+              type="button"
+              class="step-rm"
+              onclick={() => removeForward(idx)}
+              title="Remove forward"><Icon name="x" size={12} /></button
+            >
           </div>
         {/each}
         <button type="button" class="add-step" onclick={addForward}>+ Add forward</button>
@@ -779,7 +852,9 @@
     }
   }
 
-  .dialog::-webkit-scrollbar { width: 8px; }
+  .dialog::-webkit-scrollbar {
+    width: 8px;
+  }
   .dialog::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--zx-text) 22%, transparent);
     border-radius: 4px;
@@ -1009,7 +1084,9 @@
     flex-shrink: 0;
     cursor: pointer;
   }
-  .step-rx input { accent-color: var(--zx-accent); }
+  .step-rx input {
+    accent-color: var(--zx-accent);
+  }
 
   .step-rm {
     background: transparent;

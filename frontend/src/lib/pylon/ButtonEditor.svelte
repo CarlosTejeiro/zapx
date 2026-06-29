@@ -41,9 +41,7 @@
   // Existing snippet keeps its scope; new buttons default to the current
   // platform when there is one (that's what the bar is showing).
   // svelte-ignore state_referenced_locally
-  let platformScoped = $state(
-    snippet ? snippet.platform !== null : hasPlatform,
-  )
+  let platformScoped = $state(snippet ? snippet.platform !== null : hasPlatform)
 
   // Macro mode: an expect/send/wait step list instead of plain text.
   // svelte-ignore state_referenced_locally
@@ -70,9 +68,7 @@
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
-  const canSave = $derived(
-    !!name.trim() && (isMacro ? steps.length > 0 : !!content.trim()),
-  )
+  const canSave = $derived(!!name.trim() && (isMacro ? steps.length > 0 : !!content.trim()))
 
   function save() {
     if (!canSave) return
@@ -86,9 +82,15 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      onClose()
+    }
     // Ctrl/Cmd+Enter saves (the textarea owns plain Enter for newlines).
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save() }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      save()
+    }
   }
 </script>
 
@@ -119,8 +121,8 @@
         title="No color (theme default)"
         style:border-color={theme.border}
         style:color={theme.textDim}
-        onclick={() => (color = null)}
-      >✕</button>
+        onclick={() => (color = null)}>✕</button
+      >
       {#each SWATCHES as c (c)}
         <button
           class="swatch"
@@ -142,16 +144,19 @@
       class:active={!isMacro}
       style:color={!isMacro ? theme.accent : theme.textDim}
       style:border-color={!isMacro ? theme.accent : theme.border}
-      onclick={() => (isMacro = false)}
-    >Text</button>
+      onclick={() => (isMacro = false)}>Text</button
+    >
     <button
       type="button"
       class="mode-btn"
       class:active={isMacro}
       style:color={isMacro ? theme.accent : theme.textDim}
       style:border-color={isMacro ? theme.accent : theme.border}
-      onclick={() => { isMacro = true; if (steps.length === 0) addStep() }}
-    >Macro</button>
+      onclick={() => {
+        isMacro = true
+        if (steps.length === 0) addStep()
+      }}>Macro</button
+    >
   </div>
 
   {#if !isMacro}
@@ -169,39 +174,100 @@
     <div class="steps">
       {#each steps as step, i (i)}
         <div class="mstep">
-          <select class="m-kind" bind:value={step.kind} title="Step type"
-            style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}">
+          <select
+            class="m-kind"
+            bind:value={step.kind}
+            title="Step type"
+            style:background={theme.bodyBg}
+            style:color={theme.textPrimary}
+            style:border="1px solid {theme.border}"
+          >
             <option value="expect">expect</option>
             <option value="send">send</option>
             <option value="wait">wait</option>
           </select>
           {#if step.kind === 'expect'}
-            <input class="m-in" placeholder="expect" bind:value={step.expect} spellcheck="false"
-              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
-            <input class="m-in" placeholder="send" bind:value={step.send} spellcheck="false"
-              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
-            <input class="m-ms" type="number" min={500} step={500} bind:value={step.timeout_ms} title="timeout (ms)"
-              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <input
+              class="m-in"
+              placeholder="expect"
+              bind:value={step.expect}
+              spellcheck="false"
+              style:background={theme.bodyBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            />
+            <input
+              class="m-in"
+              placeholder="send"
+              bind:value={step.send}
+              spellcheck="false"
+              style:background={theme.bodyBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            />
+            <input
+              class="m-ms"
+              type="number"
+              min={500}
+              step={500}
+              bind:value={step.timeout_ms}
+              title="timeout (ms)"
+              style:background={theme.bodyBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            />
           {:else if step.kind === 'send'}
-            <input class="m-in m-wide" placeholder={'send (\\r for bare Enter)'} bind:value={step.send} spellcheck="false"
-              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <input
+              class="m-in m-wide"
+              placeholder={'send (\\r for bare Enter)'}
+              bind:value={step.send}
+              spellcheck="false"
+              style:background={theme.bodyBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            />
           {:else}
-            <input class="m-ms m-waitms" type="number" min={100} step={100} bind:value={step.timeout_ms} title="pause (ms)"
-              style:background={theme.bodyBg} style:color={theme.textPrimary} style:border="1px solid {theme.border}" />
+            <input
+              class="m-ms m-waitms"
+              type="number"
+              min={100}
+              step={100}
+              bind:value={step.timeout_ms}
+              title="pause (ms)"
+              style:background={theme.bodyBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            />
             <span class="m-hint" style:color={theme.textDim}>ms pause</span>
           {/if}
-          <button type="button" class="m-rm" style:color={theme.textDim} title="Remove step" onclick={() => removeStep(i)}>
+          <button
+            type="button"
+            class="m-rm"
+            style:color={theme.textDim}
+            title="Remove step"
+            onclick={() => removeStep(i)}
+          >
             <Icon name="x" size={11} />
           </button>
         </div>
       {/each}
-      <button type="button" class="m-add" style:color={theme.textDim} style:border="1px solid {theme.border}" onclick={addStep}>+ Add step</button>
+      <button
+        type="button"
+        class="m-add"
+        style:color={theme.textDim}
+        style:border="1px solid {theme.border}"
+        onclick={addStep}>+ Add step</button
+      >
     </div>
   {/if}
 
   <div class="footer">
     {#if hasPlatform}
-      <label class="scope" style:color={theme.textMuted} title="Show only in sessions of this platform">
+      <label
+        class="scope"
+        style:color={theme.textMuted}
+        title="Show only in sessions of this platform"
+      >
         <input type="checkbox" bind:checked={platformScoped} />
         {platform} only
       </label>
@@ -212,14 +278,19 @@
     {#if onDelete}
       <button class="btn danger" style:color={theme.err} onclick={onDelete}>Delete</button>
     {/if}
-    <button class="btn" style:color={theme.textMuted} style:border="1px solid {theme.border}" onclick={onClose}>Cancel</button>
+    <button
+      class="btn"
+      style:color={theme.textMuted}
+      style:border="1px solid {theme.border}"
+      onclick={onClose}>Cancel</button
+    >
     <button
       class="btn primary"
       disabled={!canSave}
       style:background={theme.accent}
       style:color={theme.onAccent}
-      onclick={save}
-    >Save</button>
+      onclick={save}>Save</button
+    >
   </div>
 </div>
 
@@ -271,7 +342,9 @@
     flex-shrink: 0;
     transition: transform 0.1s;
   }
-  .swatch:hover { transform: scale(1.15); }
+  .swatch:hover {
+    transform: scale(1.15);
+  }
   .swatch.none {
     background: transparent;
     border: 1px solid;
@@ -281,7 +354,9 @@
     align-items: center;
     justify-content: center;
   }
-  .swatch.none.sel { font-weight: 700; }
+  .swatch.none.sel {
+    font-weight: 700;
+  }
 
   .content {
     min-height: 56px;
@@ -380,9 +455,13 @@
     cursor: pointer;
     user-select: none;
   }
-  .scope input { accent-color: var(--zx-accent); }
+  .scope input {
+    accent-color: var(--zx-accent);
+  }
 
-  .spacer { flex: 1; }
+  .spacer {
+    flex: 1;
+  }
 
   .btn {
     background: transparent;
@@ -393,8 +472,18 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .btn:hover { filter: brightness(1.1); }
-  .btn.danger { margin-right: auto; }
-  .btn.primary { font-weight: 600; }
-  .btn.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
+  .btn:hover {
+    filter: brightness(1.1);
+  }
+  .btn.danger {
+    margin-right: auto;
+  }
+  .btn.primary {
+    font-weight: 600;
+  }
+  .btn.primary:disabled {
+    opacity: 0.45;
+    cursor: default;
+    filter: none;
+  }
 </style>

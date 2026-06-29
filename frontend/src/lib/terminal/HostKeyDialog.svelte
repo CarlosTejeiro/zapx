@@ -22,8 +22,8 @@
       <h2 class="title danger-text">⚠ Host key changed</h2>
       <p class="msg">
         The host key for <strong>{host}:{port}</strong> does not match the one recorded in
-        <code>known_hosts</code>. This could indicate a man-in-the-middle attack, or the server
-        was legitimately reinstalled.
+        <code>known_hosts</code>. This could indicate a man-in-the-middle attack, or the server was
+        legitimately reinstalled.
       </p>
       <p class="msg">
         For safety, the connection is refused. If you trust this change, remove the old key first:
@@ -32,8 +32,8 @@
     {:else}
       <h2 class="title">First connection to {host}:{port}</h2>
       <p class="msg">
-        This host is not yet in your <code>known_hosts</code>. Verify the fingerprint below
-        through a trusted channel before continuing.
+        This host is not yet in your <code>known_hosts</code>. Verify the fingerprint below through
+        a trusted channel before continuing.
       </p>
     {/if}
 

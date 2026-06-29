@@ -114,7 +114,13 @@
       A group opens N sessions in a grid with a master bar that drives them all at once.
     </p>
 
-    <form class="newform" onsubmit={(e) => { e.preventDefault(); create() }}>
+    <form
+      class="newform"
+      onsubmit={(e) => {
+        e.preventDefault()
+        create()
+      }}
+    >
       <input bind:value={newName} placeholder="New group name (e.g. core-switches)" />
       <button class="btn primary" type="submit">+ Create</button>
     </form>
@@ -161,10 +167,14 @@
                   class="btn primary"
                   disabled={g.session_ids.length === 0}
                   onclick={() => onOpenGrid(g)}
-                  title="Open as grid"
-                >▦ Open</button>
-                <button class="btn" onclick={() => startEdit(g)} title="Edit members"><Icon name="pencil" size={12} /></button>
-                <button class="btn danger" onclick={() => destroy(g)} title="Delete"><Icon name="x" size={12} /></button>
+                  title="Open as grid">▦ Open</button
+                >
+                <button class="btn" onclick={() => startEdit(g)} title="Edit members"
+                  ><Icon name="pencil" size={12} /></button
+                >
+                <button class="btn danger" onclick={() => destroy(g)} title="Delete"
+                  ><Icon name="x" size={12} /></button
+                >
               </div>
             </div>
           {/if}

@@ -43,17 +43,34 @@
   import { save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 
   const DEFAULT_PALETTE: ColorPalette = {
-    background: '#282c34', foreground: '#abb2bf', cursor: '#528bff',
-    black: '#282c34', red: '#e06c75', green: '#98c379', yellow: '#e5c07b',
-    blue: '#61afef', magenta: '#c678dd', cyan: '#56b6c2', white: '#abb2bf',
-    brightBlack: '#5c6370', brightRed: '#e06c75', brightGreen: '#98c379',
-    brightYellow: '#e5c07b', brightBlue: '#61afef', brightMagenta: '#c678dd',
-    brightCyan: '#56b6c2', brightWhite: '#ffffff',
+    background: '#282c34',
+    foreground: '#abb2bf',
+    cursor: '#528bff',
+    black: '#282c34',
+    red: '#e06c75',
+    green: '#98c379',
+    yellow: '#e5c07b',
+    blue: '#61afef',
+    magenta: '#c678dd',
+    cyan: '#56b6c2',
+    white: '#abb2bf',
+    brightBlack: '#5c6370',
+    brightRed: '#e06c75',
+    brightGreen: '#98c379',
+    brightYellow: '#e5c07b',
+    brightBlue: '#61afef',
+    brightMagenta: '#c678dd',
+    brightCyan: '#56b6c2',
+    brightWhite: '#ffffff',
   }
 
   function parsePalette(json: string | null): ColorPalette {
     if (!json) return DEFAULT_PALETTE
-    try { return JSON.parse(json) as ColorPalette } catch { return DEFAULT_PALETTE }
+    try {
+      return JSON.parse(json) as ColorPalette
+    } catch {
+      return DEFAULT_PALETTE
+    }
   }
 
   /// Per-session color-scheme override stored in `savedSession.options_json`
@@ -71,9 +88,7 @@
   const activeSchemeName = $derived(sessionColorScheme ?? terminalSettings.activeColorScheme)
 
   const activePalette = $derived<ColorPalette>(
-    parsePalette(
-      colorSchemes.find((s) => s.name === activeSchemeName)?.palette_json ?? null,
-    ),
+    parsePalette(colorSchemes.find((s) => s.name === activeSchemeName)?.palette_json ?? null),
   )
 
   // Host-key (known_hosts) confirmation prompt state.
@@ -145,10 +160,33 @@
     onNeedPassword?: () => void
   }
 
-  let { ssh, telnet, savedSession, paneId, hideToolbar = false, pylonPalette, onGlobalShortcut, onSessionOpen, onSessionError, onSessionClose, onNeedPassword }: Props = $props()
+  let {
+    ssh,
+    telnet,
+    savedSession,
+    paneId,
+    hideToolbar = false,
+    pylonPalette,
+    onGlobalShortcut,
+    onSessionOpen,
+    onSessionError,
+    onSessionClose,
+    onNeedPassword,
+  }: Props = $props()
 
   function isKeyringMissing(e: unknown): boolean {
-    const raw = typeof e === 'string' ? e : (e instanceof Error ? e.message : (() => { try { return JSON.stringify(e) } catch { return '' } })())
+    const raw =
+      typeof e === 'string'
+        ? e
+        : e instanceof Error
+          ? e.message
+          : (() => {
+              try {
+                return JSON.stringify(e)
+              } catch {
+                return ''
+              }
+            })()
     try {
       const obj = JSON.parse(raw) as Record<string, unknown>
       const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
@@ -300,16 +338,30 @@
 
   function fmtError(e: unknown): string {
     // Tauri errors arrive as JSON strings like {"Internal":"keyring error: ..."}
-    const raw = typeof e === 'string' ? e : (e instanceof Error ? e.message : (() => { try { return JSON.stringify(e) } catch { return 'Unknown error' } })())
+    const raw =
+      typeof e === 'string'
+        ? e
+        : e instanceof Error
+          ? e.message
+          : (() => {
+              try {
+                return JSON.stringify(e)
+              } catch {
+                return 'Unknown error'
+              }
+            })()
     try {
       const obj = JSON.parse(raw) as Record<string, unknown>
       const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
       if (inner.includes('keyring') && inner.includes('No matching entry')) {
         return 'Saved credentials not found in keyring.\n\nFix: delete this session and recreate it — you will be prompted to re-enter your password.\n\nIf running in WSL, ensure gnome-keyring is running:\n  eval $(gnome-keyring-daemon --start --components=secrets)'
       }
-      if (inner.includes('Connection refused')) return 'Connection refused — check the host and port.'
-      if (inner.includes('timeout') || inner.includes('timed out')) return 'Connection timed out — the host is unreachable.'
-      if (inner.includes('Authentication') || inner.includes('authentication')) return 'Authentication failed — check your username and password.'
+      if (inner.includes('Connection refused'))
+        return 'Connection refused — check the host and port.'
+      if (inner.includes('timeout') || inner.includes('timed out'))
+        return 'Connection timed out — the host is unreachable.'
+      if (inner.includes('Authentication') || inner.includes('authentication'))
+        return 'Authentication failed — check your username and password.'
       return inner
     } catch {
       return raw
@@ -380,7 +432,8 @@
   async function doOpen(): Promise<string> {
     if (!term) throw new Error('terminal not ready')
     if (savedSession) return await openSavedSession(savedSession.id, term.cols, term.rows)
-    if (ssh) return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
+    if (ssh)
+      return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
     if (telnet) return await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
     return await invoke<string>('open_local_session')
   }
@@ -531,9 +584,7 @@
       if (term?.hasSelection()) {
         const sel = term.getSelection()
         if (sel) {
-          clipboardWriteText(sel).catch(() =>
-            navigator.clipboard.writeText(sel).catch(() => {}),
-          )
+          clipboardWriteText(sel).catch(() => navigator.clipboard.writeText(sel).catch(() => {}))
         }
       }
     })
@@ -556,9 +607,18 @@
       const hc = hintController
       if (hc) {
         if (hc.popupOpen) {
-          if (e.key === 'ArrowDown') { hc.movePopup(1); return false }
-          if (e.key === 'ArrowUp')   { hc.movePopup(-1); return false }
-          if (e.key === 'Escape')    { hc.closePopup(); return false }
+          if (e.key === 'ArrowDown') {
+            hc.movePopup(1)
+            return false
+          }
+          if (e.key === 'ArrowUp') {
+            hc.movePopup(-1)
+            return false
+          }
+          if (e.key === 'Escape') {
+            hc.closePopup()
+            return false
+          }
           if (e.key === 'Tab' || e.key === 'Enter') {
             hc.acceptIndex(hc.selected)
             return false
@@ -675,17 +735,17 @@
         total: number
         status: string
       }>('login-script-progress', (event) => {
-      if (event.payload.session_id !== sessionId) return
-      loginProgress = {
-        current: event.payload.current,
-        total: event.payload.total,
-        status: event.payload.status,
-      }
-      if (event.payload.status === 'complete') {
-        setTimeout(() => {
-          if (loginProgress?.status === 'complete') loginProgress = null
-        }, 2500)
-      }
+        if (event.payload.session_id !== sessionId) return
+        loginProgress = {
+          current: event.payload.current,
+          total: event.payload.total,
+          status: event.payload.status,
+        }
+        if (event.payload.status === 'complete') {
+          setTimeout(() => {
+            if (loginProgress?.status === 'complete') loginProgress = null
+          }, 2500)
+        }
       }),
     )
 
@@ -817,16 +877,10 @@
     />
   {/if}
   {#if showTunnels && sessionId}
-    <TunnelsDialog
-      sessionId={sessionId}
-      onClose={() => (showTunnels = false)}
-    />
+    <TunnelsDialog {sessionId} onClose={() => (showTunnels = false)} />
   {/if}
   {#if showSftp && sessionId}
-    <SftpDialog
-      sessionId={sessionId}
-      onClose={() => (showSftp = false)}
-    />
+    <SftpDialog {sessionId} onClose={() => (showSftp = false)} />
   {/if}
   {#if pastePending != null}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -835,17 +889,19 @@
       role="dialog"
       aria-modal="true"
       tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) pastePending = null }}
+      onclick={(e) => {
+        if (e.target === e.currentTarget) pastePending = null
+      }}
     >
       <div class="paste-confirm">
         <h3>Paste {pastePending.split(/\r?\n/).length} lines?</h3>
         <p class="paste-confirm-hint">
-          The clipboard contains line breaks. Each line will be sent — that may
-          execute multiple commands on the remote side.
+          The clipboard contains line breaks. Each line will be sent — that may execute multiple
+          commands on the remote side.
         </p>
         <pre class="paste-confirm-preview">{pastePending.length > 1500
-          ? pastePending.slice(0, 1500) + `\n… (${pastePending.length - 1500} more chars)`
-          : pastePending}</pre>
+            ? pastePending.slice(0, 1500) + `\n… (${pastePending.length - 1500} more chars)`
+            : pastePending}</pre>
         <div class="paste-confirm-actions">
           <button class="btn" type="button" onclick={() => (pastePending = null)}>Cancel</button>
           <button
@@ -855,97 +911,96 @@
               const text = pastePending ?? ''
               pastePending = null
               term?.paste(text)
-            }}
-          >Send {pastePending.split(/\r?\n/).length} lines</button>
+            }}>Send {pastePending.split(/\r?\n/).length} lines</button
+          >
         </div>
       </div>
     </div>
   {/if}
   <!-- toolbar -->
   {#if !hideToolbar}
-  <div class="toolbar">
-    <!-- logging button -->
-    <button
-      class="toolbar-btn"
-      class:recording={isLogging}
-      onclick={toggleLogging}
-      disabled={!sessionId}
-      title={isLogging ? `Logging to ${logPath}` : 'Start logging'}
-    >
-      {#if isLogging}
-        <span class="rec-dot"></span> Stop log
-      {:else}
-        ● Log
-      {/if}
-    </button>
-
-    {#if savedSession}
-      <button class="toolbar-btn" onclick={toggleLogs} title="Session log history">
-        Logs {showLogs ? '▲' : '▼'}
-      </button>
-    {/if}
-
-    {#if isSsh}
+    <div class="toolbar">
+      <!-- logging button -->
       <button
         class="toolbar-btn"
-        onclick={() => (showSftp = true)}
+        class:recording={isLogging}
+        onclick={toggleLogging}
         disabled={!sessionId}
-        title="SFTP file browser"
+        title={isLogging ? `Logging to ${logPath}` : 'Start logging'}
       >
-        📁 SFTP
-      </button>
-      <button
-        class="toolbar-btn"
-        onclick={() => (showTunnels = true)}
-        disabled={!sessionId}
-        title="Port forwards (-L / -D)"
-      >
-        ⇆ Tunnels
-      </button>
-    {/if}
-
-    {#if logError}
-      <span class="toolbar-error">{logError}</span>
-    {/if}
-
-    {#if loginProgress}
-      <span class="login-badge" class:err={loginProgress.status === 'timeout'}>
-        {#if loginProgress.status === 'complete'}
-          ✓ Login complete
-        {:else if loginProgress.status === 'timeout'}
-          ⏱ Login timeout (step {loginProgress.current + 1})
+        {#if isLogging}
+          <span class="rec-dot"></span> Stop log
         {:else}
-          ⟳ Login {loginProgress.current}/{loginProgress.total}
+          ● Log
         {/if}
-      </span>
-    {/if}
+      </button>
 
-    <span class="flex-1"></span>
+      {#if savedSession}
+        <button class="toolbar-btn" onclick={toggleLogs} title="Session log history">
+          Logs {showLogs ? '▲' : '▼'}
+        </button>
+      {/if}
 
-    <button
-      class="toolbar-btn"
-      onclick={manualReconnect}
-      disabled={reconnecting}
-      title="Reconnect this session"
-    >
-      ⟳
-    </button>
-    <button class="toolbar-btn" onclick={clearScrollback} title="Clear scrollback">
-      ⌫
-    </button>
-    <button class="toolbar-btn" onclick={saveBuffer} title="Save output to file…">
-      ⭳
-    </button>
+      {#if isSsh}
+        <button
+          class="toolbar-btn"
+          onclick={() => (showSftp = true)}
+          disabled={!sessionId}
+          title="SFTP file browser"
+        >
+          📁 SFTP
+        </button>
+        <button
+          class="toolbar-btn"
+          onclick={() => (showTunnels = true)}
+          disabled={!sessionId}
+          title="Port forwards (-L / -D)"
+        >
+          ⇆ Tunnels
+        </button>
+      {/if}
 
-    <!-- search toggle -->
-    <button
-      class="toolbar-btn"
-      onclick={() => { if (showSearch) closeSearch(); else showSearch = true }}
-      title="Search (Ctrl+F)"
-    >
-      🔍
-    </button>
-  </div>
+      {#if logError}
+        <span class="toolbar-error">{logError}</span>
+      {/if}
+
+      {#if loginProgress}
+        <span class="login-badge" class:err={loginProgress.status === 'timeout'}>
+          {#if loginProgress.status === 'complete'}
+            ✓ Login complete
+          {:else if loginProgress.status === 'timeout'}
+            ⏱ Login timeout (step {loginProgress.current + 1})
+          {:else}
+            ⟳ Login {loginProgress.current}/{loginProgress.total}
+          {/if}
+        </span>
+      {/if}
+
+      <span class="flex-1"></span>
+
+      <button
+        class="toolbar-btn"
+        onclick={manualReconnect}
+        disabled={reconnecting}
+        title="Reconnect this session"
+      >
+        ⟳
+      </button>
+      <button class="toolbar-btn" onclick={clearScrollback} title="Clear scrollback"> ⌫ </button>
+      <button class="toolbar-btn" onclick={saveBuffer} title="Save output to file…"> ⭳ </button>
+
+      <!-- search toggle -->
+      <button
+        class="toolbar-btn"
+        onclick={() => {
+          if (showSearch) closeSearch()
+          else showSearch = true
+        }}
+        title="Search (Ctrl+F)"
+      >
+        🔍
+      </button>
+    </div>
   {/if}
 
   <!-- search bar -->
@@ -958,7 +1013,10 @@
         bind:value={searchQuery}
         placeholder="Search…"
         onkeydown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); navigate(e.shiftKey ? 'prev' : 'next') }
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            navigate(e.shiftKey ? 'prev' : 'next')
+          }
           if (e.key === 'Escape') closeSearch()
         }}
       />
@@ -967,12 +1025,35 @@
           {matchCount === 0 ? 'No results' : `${activeMatch || 1}/${matchCount}`}
         {/if}
       </span>
-      <button class="search-toggle" class:active={searchCaseSensitive} title="Match case" onclick={() => (searchCaseSensitive = !searchCaseSensitive)}>Aa</button>
-      <button class="search-toggle" class:active={searchWholeWord} title="Whole word" onclick={() => (searchWholeWord = !searchWholeWord)}>W</button>
-      <button class="search-toggle" class:active={searchRegex} title="Regular expression" onclick={() => (searchRegex = !searchRegex)}>.*</button>
-      <button class="search-nav" title="Previous match (Shift+Enter)" onclick={() => navigate('prev')}>▲</button>
-      <button class="search-nav" title="Next match (Enter)" onclick={() => navigate('next')}>▼</button>
-      <button class="search-nav" title="Close (Esc)" onclick={closeSearch}><Icon name="x" size={11} /></button>
+      <button
+        class="search-toggle"
+        class:active={searchCaseSensitive}
+        title="Match case"
+        onclick={() => (searchCaseSensitive = !searchCaseSensitive)}>Aa</button
+      >
+      <button
+        class="search-toggle"
+        class:active={searchWholeWord}
+        title="Whole word"
+        onclick={() => (searchWholeWord = !searchWholeWord)}>W</button
+      >
+      <button
+        class="search-toggle"
+        class:active={searchRegex}
+        title="Regular expression"
+        onclick={() => (searchRegex = !searchRegex)}>.*</button
+      >
+      <button
+        class="search-nav"
+        title="Previous match (Shift+Enter)"
+        onclick={() => navigate('prev')}>▲</button
+      >
+      <button class="search-nav" title="Next match (Enter)" onclick={() => navigate('next')}
+        >▼</button
+      >
+      <button class="search-nav" title="Close (Esc)" onclick={closeSearch}
+        ><Icon name="x" size={11} /></button
+      >
     </div>
   {/if}
 
@@ -1008,7 +1089,9 @@
             <li class="log-entry">
               <span class="log-date">{formatDate(log.started_at)}</span>
               <span class="log-size">{formatBytes(log.bytes)}</span>
-              <span class="log-path" title={log.file_path}>{log.file_path.split(/[\\/]/).at(-1)}</span>
+              <span class="log-path" title={log.file_path}
+                >{log.file_path.split(/[\\/]/).at(-1)}</span
+              >
               {#if log.ended_at === null}
                 <span class="log-active">active</span>
               {/if}
@@ -1095,11 +1178,18 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
   }
 
-  .flex-1 { flex: 1; }
+  .flex-1 {
+    flex: 1;
+  }
 
   .toolbar-error {
     font-size: 0.7rem;
@@ -1307,10 +1397,26 @@
     background: #27272a;
   }
 
-  .log-date { color: #71717a; flex-shrink: 0; }
-  .log-size { color: #52525b; flex-shrink: 0; }
-  .log-path { flex: 1; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .log-active { color: #22c55e; font-size: 0.65rem; flex-shrink: 0; }
+  .log-date {
+    color: #71717a;
+    flex-shrink: 0;
+  }
+  .log-size {
+    color: #52525b;
+    flex-shrink: 0;
+  }
+  .log-path {
+    flex: 1;
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .log-active {
+    color: #22c55e;
+    font-size: 0.65rem;
+    flex-shrink: 0;
+  }
 
   .terminal-stage {
     position: relative;
@@ -1407,7 +1513,7 @@
     gap: 0.75rem;
     padding: 1rem 1.25rem;
     color: #ef4444;
-    font-family: var(--zx-font-mono, "JetBrains Mono", ui-monospace, monospace);
+    font-family: var(--zx-font-mono, 'JetBrains Mono', ui-monospace, monospace);
     font-size: 0.8rem;
     background: rgba(239, 68, 68, 0.07);
     border-left: 3px solid #ef4444;

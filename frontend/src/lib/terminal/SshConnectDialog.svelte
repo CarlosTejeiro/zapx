@@ -28,14 +28,23 @@
     if (authType === 'password') return { type: 'password', password }
     if (authType === 'agent') return { type: 'agent' }
     if (authType === 'keyboard-interactive') return { type: 'keyboard-interactive' }
-    if (!keyPath.trim()) { error = 'Key file path is required'; return null }
+    if (!keyPath.trim()) {
+      error = 'Key file path is required'
+      return null
+    }
     return { type: 'key', keyPath: keyPath.trim(), passphrase: passphrase || null }
   }
 
   function submit() {
     error = ''
-    if (!host.trim()) { error = 'Host is required'; return }
-    if (!user.trim()) { error = 'Username is required'; return }
+    if (!host.trim()) {
+      error = 'Host is required'
+      return
+    }
+    if (!user.trim()) {
+      error = 'Username is required'
+      return
+    }
     const auth = buildAuth()
     if (!auth) return
     onConnect({ host: host.trim(), port, user: user.trim(), auth })
@@ -85,7 +94,12 @@
     {:else if authType === 'key'}
       <label class="field">
         <span>Key file</span>
-        <input bind:value={keyPath} placeholder="~/.ssh/id_ed25519" autocomplete="off" spellcheck="false" />
+        <input
+          bind:value={keyPath}
+          placeholder="~/.ssh/id_ed25519"
+          autocomplete="off"
+          spellcheck="false"
+        />
       </label>
       <label class="field">
         <span>Passphrase (if any)</span>
@@ -206,12 +220,17 @@
     border: 1px solid var(--zx-border);
   }
 
-  .btn-cancel:hover { background: var(--zx-hover-bg); color: var(--zx-text); }
+  .btn-cancel:hover {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
+  }
 
   .btn-connect {
     background: var(--zx-accent);
     color: var(--zx-on-accent);
   }
 
-  .btn-connect:hover { filter: brightness(1.1); }
+  .btn-connect:hover {
+    filter: brightness(1.1);
+  }
 </style>

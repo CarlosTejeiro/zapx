@@ -105,8 +105,8 @@
       style:border="1px solid {theme.accent}"
       style:color={theme.accent}
       onclick={runCompare}
-      title="Run on all and compare the output"
-    >▶ Run &amp; compare</button>
+      title="Run on all and compare the output">▶ Run &amp; compare</button
+    >
   {/if}
   <label class="mb-live" style:color={theme.textMuted} title="Stream every keystroke as you type">
     <input type="checkbox" bind:checked={live} />

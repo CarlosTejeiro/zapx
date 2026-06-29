@@ -77,7 +77,11 @@
   async function cancelTransfer() {
     if (!transfer || transfer.cancelling) return
     transfer.cancelling = true
-    try { await sftpCancelTransfer(transfer.id) } catch { /* best-effort */ }
+    try {
+      await sftpCancelTransfer(transfer.id)
+    } catch {
+      /* best-effort */
+    }
   }
 
   onMount(async () => {
@@ -278,12 +282,7 @@
       cancelling: false,
     }
     try {
-      const n = await sftpUploadFile(
-        sessionId,
-        uploadFrom.trim(),
-        joinPath(path, remoteName),
-        id,
-      )
+      const n = await sftpUploadFile(sessionId, uploadFrom.trim(), joinPath(path, remoteName), id)
       showUpload = false
       uploadFrom = ''
       uploadAs = ''
@@ -385,29 +384,70 @@
       <input
         class="path"
         bind:value={path}
-        onkeydown={(e) => { if (e.key === 'Enter') refresh() }}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') refresh()
+        }}
         spellcheck="false"
       />
       <button class="btn primary" onclick={refresh} disabled={loading}>Go</button>
     </div>
 
     <div class="actions">
-      <button class="btn" onclick={() => { showMkdir = true; showRename = false; showDownload = false; showUpload = false }}>
+      <button
+        class="btn"
+        onclick={() => {
+          showMkdir = true
+          showRename = false
+          showDownload = false
+          showUpload = false
+        }}
+      >
         + Folder
       </button>
-      <button class="btn" onclick={() => { showUpload = true; showMkdir = false; showRename = false; showDownload = false; uploadAs = '' }}>
+      <button
+        class="btn"
+        onclick={() => {
+          showUpload = true
+          showMkdir = false
+          showRename = false
+          showDownload = false
+          uploadAs = ''
+        }}
+      >
         ⬆ Upload
       </button>
       {#if selectedEntry}
         {#if selectedEntry.kind === 'file' || selectedEntry.kind === 'symlink'}
-          <button class="btn" onclick={() => { showDownload = true; showMkdir = false; showRename = false; showUpload = false; downloadTo = '' }}>
+          <button
+            class="btn"
+            onclick={() => {
+              showDownload = true
+              showMkdir = false
+              showRename = false
+              showUpload = false
+              downloadTo = ''
+            }}
+          >
             ⬇ Download
           </button>
-          <button class="btn" onclick={editSelected} title="Open in your editor; saves upload back automatically">
+          <button
+            class="btn"
+            onclick={editSelected}
+            title="Open in your editor; saves upload back automatically"
+          >
             <Icon name="pencil" size={12} /> Edit
           </button>
         {/if}
-        <button class="btn" onclick={() => { showRename = true; showMkdir = false; showDownload = false; showUpload = false; renameTo = selectedEntry?.name ?? '' }}>
+        <button
+          class="btn"
+          onclick={() => {
+            showRename = true
+            showMkdir = false
+            showDownload = false
+            showUpload = false
+            renameTo = selectedEntry?.name ?? ''
+          }}
+        >
           <Icon name="pencil" size={12} /> Rename
         </button>
         <button class="btn danger" onclick={doDelete} disabled={busy === 'delete'}>
@@ -417,45 +457,95 @@
     </div>
 
     {#if showMkdir}
-      <form class="inline-form" onsubmit={(e) => { e.preventDefault(); doMkdir() }}>
+      <form
+        class="inline-form"
+        onsubmit={(e) => {
+          e.preventDefault()
+          doMkdir()
+        }}
+      >
         <!-- svelte-ignore a11y_autofocus -->
         <input bind:value={mkdirName} placeholder="New folder name" spellcheck="false" autofocus />
-        <button class="btn primary" type="submit" disabled={!mkdirName.trim() || busy === 'mkdir'}>Create</button>
+        <button class="btn primary" type="submit" disabled={!mkdirName.trim() || busy === 'mkdir'}
+          >Create</button
+        >
         <button class="btn" type="button" onclick={() => (showMkdir = false)}>Cancel</button>
       </form>
     {/if}
     {#if showRename && selectedEntry}
-      <form class="inline-form" onsubmit={(e) => { e.preventDefault(); doRename() }}>
+      <form
+        class="inline-form"
+        onsubmit={(e) => {
+          e.preventDefault()
+          doRename()
+        }}
+      >
         <!-- svelte-ignore a11y_autofocus -->
         <input bind:value={renameTo} placeholder="New name" spellcheck="false" autofocus />
-        <button class="btn primary" type="submit" disabled={!renameTo.trim() || busy === 'rename'}>Rename</button>
+        <button class="btn primary" type="submit" disabled={!renameTo.trim() || busy === 'rename'}
+          >Rename</button
+        >
         <button class="btn" type="button" onclick={() => (showRename = false)}>Cancel</button>
       </form>
     {/if}
     {#if showDownload && selectedEntry}
-      <form class="inline-form" onsubmit={(e) => { e.preventDefault(); doDownload() }}>
+      <form
+        class="inline-form"
+        onsubmit={(e) => {
+          e.preventDefault()
+          doDownload()
+        }}
+      >
         <span class="form-label">Local path:</span>
         <!-- svelte-ignore a11y_autofocus -->
-        <input bind:value={downloadTo} placeholder="/abs/path/to/save/{selectedEntry.name}" spellcheck="false" autofocus />
+        <input
+          bind:value={downloadTo}
+          placeholder="/abs/path/to/save/{selectedEntry.name}"
+          spellcheck="false"
+          autofocus
+        />
         <button class="btn" type="button" onclick={pickDownloadDestination}>Browse…</button>
-        <button class="btn primary" type="submit" disabled={!downloadTo.trim() || busy === 'download'}>
+        <button
+          class="btn primary"
+          type="submit"
+          disabled={!downloadTo.trim() || busy === 'download'}
+        >
           {busy === 'download' ? 'Downloading…' : 'Download'}
         </button>
         <button class="btn" type="button" onclick={() => (showDownload = false)}>Cancel</button>
       </form>
     {/if}
     {#if showUpload}
-      <form class="inline-form col" onsubmit={(e) => { e.preventDefault(); doUpload() }}>
+      <form
+        class="inline-form col"
+        onsubmit={(e) => {
+          e.preventDefault()
+          doUpload()
+        }}
+      >
         <div class="form-row">
           <span class="form-label">Local file:</span>
           <!-- svelte-ignore a11y_autofocus -->
-          <input bind:value={uploadFrom} placeholder="/abs/path/to/local/file" spellcheck="false" autofocus />
+          <input
+            bind:value={uploadFrom}
+            placeholder="/abs/path/to/local/file"
+            spellcheck="false"
+            autofocus
+          />
           <button class="btn" type="button" onclick={pickUploadSource}>Browse…</button>
         </div>
         <div class="form-row">
           <span class="form-label">Save as:</span>
-          <input bind:value={uploadAs} placeholder="(defaults to local file name)" spellcheck="false" />
-          <button class="btn primary" type="submit" disabled={!uploadFrom.trim() || busy === 'upload'}>
+          <input
+            bind:value={uploadAs}
+            placeholder="(defaults to local file name)"
+            spellcheck="false"
+          />
+          <button
+            class="btn primary"
+            type="submit"
+            disabled={!uploadFrom.trim() || busy === 'upload'}
+          >
             {busy === 'upload' ? 'Uploading…' : 'Upload'}
           </button>
           <button class="btn" type="button" onclick={() => (showUpload = false)}>Cancel</button>
@@ -473,7 +563,8 @@
           </span>
           <span class="xfer-name" title={transfer.name}>{transfer.name}</span>
           <span class="xfer-stats">
-            {fmtBytes(transfer.done)}{#if transfer.total} / {fmtBytes(transfer.total)}{/if}
+            {fmtBytes(transfer.done)}{#if transfer.total}
+              / {fmtBytes(transfer.total)}{/if}
           </span>
           <button
             class="xfer-cancel"
@@ -521,7 +612,13 @@
               >
                 <td class="col-name">
                   <span class="icon">
-                    {#if e.kind === 'dir'}<Icon name="folder" size={13} />{:else if e.kind === 'symlink'}<Icon name="link" size={13} />{:else}<Icon name="file" size={13} />{/if}
+                    {#if e.kind === 'dir'}<Icon
+                        name="folder"
+                        size={13}
+                      />{:else if e.kind === 'symlink'}<Icon name="link" size={13} />{:else}<Icon
+                        name="file"
+                        size={13}
+                      />{/if}
                   </span>
                   {e.name}
                 </td>
@@ -859,18 +956,17 @@
 
   .xfer-bar-fill.indeterminate {
     animation: xfer-indet 1.3s linear infinite;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--zx-accent) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, var(--zx-accent) 50%, transparent 100%);
     background-size: 40% 100%;
     background-repeat: no-repeat;
   }
 
   @keyframes xfer-indet {
-    0%   { background-position:  -40% 0; }
-    100% { background-position:  140% 0; }
+    0% {
+      background-position: -40% 0;
+    }
+    100% {
+      background-position: 140% 0;
+    }
   }
 </style>

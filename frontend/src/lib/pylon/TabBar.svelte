@@ -45,8 +45,8 @@
 
   function statusColor(status: TabEntry['status']): string {
     if (status === 'connected') return theme.ok
-    if (status === 'error')     return theme.err
-    if (status === 'closed')    return theme.textDim
+    if (status === 'error') return theme.err
+    if (status === 'closed') return theme.textDim
     return theme.warn
   }
 
@@ -54,8 +54,14 @@
 
   // Swatch palette for the per-tab colour (right-click → colour).
   const TAB_COLORS = [
-    '#ef4444', '#f59e0b', '#eab308', '#22c55e',
-    '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+    '#ef4444',
+    '#f59e0b',
+    '#eab308',
+    '#22c55e',
+    '#06b6d4',
+    '#3b82f6',
+    '#8b5cf6',
+    '#ec4899',
   ]
 
   // Inline rename (double-click the label).
@@ -96,7 +102,6 @@
   style:--text-primary={theme.textPrimary}
   style:--err={theme.err}
 >
-
   <!-- Tabs strip -->
   <div class="tab-strip">
     {#each tabs as tab (tab.id)}
@@ -115,8 +120,8 @@
         onclick={() => onActivate(tab.id)}
         ondblclick={() => startRename(tab)}
         oncontextmenu={(e) => openMenu(e, tab)}
-        onmouseenter={() => hoveredTab = tab.id}
-        onmouseleave={() => hoveredTab = null}
+        onmouseenter={() => (hoveredTab = tab.id)}
+        onmouseleave={() => (hoveredTab = null)}
         role="button"
         tabindex="0"
         onkeydown={(e) => e.key === 'Enter' && onActivate(tab.id)}
@@ -135,15 +140,17 @@
             onclick={(e) => e.stopPropagation()}
             onblur={commitRename}
             onkeydown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); commitRename() }
-              if (e.key === 'Escape') { editingTab = null }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitRename()
+              }
+              if (e.key === 'Escape') {
+                editingTab = null
+              }
             }}
           />
         {:else}
-          <span
-            class="tab-label"
-            style:color={active ? theme.textPrimary : theme.textMuted}
-          >
+          <span class="tab-label" style:color={active ? theme.textPrimary : theme.textMuted}>
             {tab.label}
           </span>
         {/if}
@@ -151,9 +158,12 @@
           <button
             class="tab-close"
             style:color={theme.textDim}
-            onclick={(e) => { e.stopPropagation(); onClose(tab.id) }}
-            title="Close tab"
-          ><Icon name="x" size={11} /></button>
+            onclick={(e) => {
+              e.stopPropagation()
+              onClose(tab.id)
+            }}
+            title="Close tab"><Icon name="x" size={11} /></button
+          >
         {/if}
       </div>
     {/each}
@@ -164,8 +174,8 @@
       style:color={theme.textDim}
       style:border-radius={theme.radius}
       onclick={onAdd}
-      title="New tab"
-    ><Icon name="plus" size={14} /></button>
+      title="New tab"><Icon name="plus" size={14} /></button
+    >
   </div>
 
   <!-- Right controls: Split + Multi -->
@@ -197,7 +207,6 @@
       Multi
     </button>
   </div>
-
 </div>
 
 {#if menuTab !== null}
@@ -205,7 +214,10 @@
     class="menu-backdrop"
     aria-label="Close menu"
     onclick={closeMenu}
-    oncontextmenu={(e) => { e.preventDefault(); closeMenu() }}
+    oncontextmenu={(e) => {
+      e.preventDefault()
+      closeMenu()
+    }}
   ></button>
   <div
     class="tab-menu"
@@ -221,12 +233,15 @@
         const t = tabs.find((x) => x.id === menuTab)
         if (t) startRename(t)
         closeMenu()
-      }}
-    >Rename</button>
+      }}>Rename</button
+    >
     <button
       class="menu-item"
-      onclick={() => { if (menuTab != null) onDuplicate?.(menuTab); closeMenu() }}
-    >Duplicate</button>
+      onclick={() => {
+        if (menuTab != null) onDuplicate?.(menuTab)
+        closeMenu()
+      }}>Duplicate</button
+    >
     <div class="menu-colors">
       {#each TAB_COLORS as c (c)}
         <button
@@ -234,7 +249,10 @@
           style:background={c}
           title="Set tab colour"
           aria-label="Set tab colour"
-          onclick={() => { if (menuTab != null) onSetColor?.(menuTab, c); closeMenu() }}
+          onclick={() => {
+            if (menuTab != null) onSetColor?.(menuTab, c)
+            closeMenu()
+          }}
         ></button>
       {/each}
     </div>
@@ -262,7 +280,9 @@
     scrollbar-width: none;
   }
 
-  .tab-strip::-webkit-scrollbar { display: none; }
+  .tab-strip::-webkit-scrollbar {
+    display: none;
+  }
 
   .tab {
     display: flex;
@@ -331,7 +351,9 @@
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
   }
 
   .tab-close:hover {
@@ -349,12 +371,14 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     color: inherit;
   }
 
   .tab-add:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.06));
     color: var(--text-primary, #2c2924);
   }
 
@@ -376,18 +400,21 @@
     padding: 0 10px;
     height: 28px;
     font-family: inherit;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s,
+      border-color 0.1s;
     color: inherit;
   }
 
   .tab-action-btn:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.06));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.06));
   }
 
   .tab-rename {
     flex: 1;
     min-width: 0;
-    background: var(--item-hover-bg, rgba(255,255,255,0.1));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.1));
     border: 1px solid var(--text-primary, #888);
     border-radius: 3px;
     color: var(--text-primary, #2c2924);
@@ -432,7 +459,7 @@
   }
 
   .menu-item:hover {
-    background: var(--item-hover-bg, rgba(255,255,255,0.08));
+    background: var(--item-hover-bg, rgba(255, 255, 255, 0.08));
   }
 
   .menu-colors {
@@ -446,7 +473,7 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    border: 1px solid rgba(0,0,0,0.3);
+    border: 1px solid rgba(0, 0, 0, 0.3);
     cursor: pointer;
     padding: 0;
   }

@@ -76,7 +76,9 @@
   <div class="modal" transition:scale={{ start: 0.96, duration: 180, easing: cubicOut }}>
     <div class="modal-header">
       <h2 class="modal-title">Settings</h2>
-      <button class="close-btn" onclick={onClose} aria-label="Close"><Icon name="x" size={13} /></button>
+      <button class="close-btn" onclick={onClose} aria-label="Close"
+        ><Icon name="x" size={13} /></button
+      >
     </div>
 
     <div class="modal-body">
@@ -163,8 +165,8 @@
                 <button
                   class="reset-btn"
                   title="Reset to default ({a.default})"
-                  onclick={() => resetBinding(a.id)}
-                >↺</button>
+                  onclick={() => resetBinding(a.id)}>↺</button
+                >
               </div>
             {/each}
           </div>
@@ -337,8 +339,13 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
   }
 
   .reset-btn {

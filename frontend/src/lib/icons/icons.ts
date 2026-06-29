@@ -11,8 +11,10 @@ export const ICON_PATHS = {
   chevron: '<path d="M6 3.5 L10.5 8 L6 12.5" />',
   pencil: '<path d="M3 13l.8-3L11 2.8a1.2 1.2 0 0 1 1.7 0l.5.5a1.2 1.2 0 0 1 0 1.7L6 12.2z" />',
   x: '<path d="M4 4l8 8M12 4l-8 8" />',
-  split: '<rect x="2" y="2.5" width="5" height="11" rx="1.2" /><rect x="9" y="2.5" width="5" height="11" rx="1.2" />',
-  splitV: '<rect x="2.5" y="2" width="11" height="5" rx="1.2" /><rect x="2.5" y="9" width="11" height="5" rx="1.2" />',
+  split:
+    '<rect x="2" y="2.5" width="5" height="11" rx="1.2" /><rect x="9" y="2.5" width="5" height="11" rx="1.2" />',
+  splitV:
+    '<rect x="2.5" y="2" width="11" height="5" rx="1.2" /><rect x="2.5" y="9" width="11" height="5" rx="1.2" />',
   cast: '<circle cx="8" cy="8" r="1.4" /><path d="M4.8 11.2a4.5 4.5 0 0 1 0-6.4M11.2 4.8a4.5 4.5 0 0 1 0 6.4" /><path d="M2.8 13.2a7.2 7.2 0 0 1 0-10.4M13.2 2.8a7.2 7.2 0 0 1 0 10.4" />',
   gear: '<circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" />',
   term: '<path d="M3 5l3.5 3L3 11" /><path d="M8.5 12H13" />',
@@ -26,14 +28,17 @@ export const ICON_PATHS = {
   /** Duplicate — a front document with a second peeking out behind it. */
   copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 5.5V3.6A1.1 1.1 0 0 0 9.4 2.5H3.6A1.1 1.1 0 0 0 2.5 3.6v5.8a1.1 1.1 0 0 0 1.1 1.1h1.9" />',
   /** SFTP / file transfer — up+down arrows between two endpoints. */
-  transfer: '<path d="M5 2.5v9M5 11.5 2.8 9.3M5 11.5 7.2 9.3" /><path d="M11 13.5v-9M11 4.5 8.8 6.7M11 4.5 13.2 6.7" />',
+  transfer:
+    '<path d="M5 2.5v9M5 11.5 2.8 9.3M5 11.5 7.2 9.3" /><path d="M11 13.5v-9M11 4.5 8.8 6.7M11 4.5 13.2 6.7" />',
   /** Tunnel / port forward — two brackets linked by a routed line. */
-  tunnel: '<path d="M4.5 3.5h-2v9h2" /><path d="M11.5 3.5h2v9h-2" /><path d="M5.5 8h5" /><path d="M8.5 6 10.5 8 8.5 10" />',
+  tunnel:
+    '<path d="M4.5 3.5h-2v9h2" /><path d="M11.5 3.5h2v9h-2" /><path d="M5.5 8h5" /><path d="M8.5 6 10.5 8 8.5 10" />',
   link: '<path d="M6.5 9.5 9.5 6.5" /><path d="M7.5 4.5 9 3a2.5 2.5 0 0 1 3.5 3.5L11 8" /><path d="M8.5 11.5 7 13a2.5 2.5 0 0 1-3.5-3.5L5 8" />',
   /** Filled record dot — `fill-current`, no stroke (session logging toggle). */
   record: '<circle cx="8" cy="8" r="4" fill="currentColor" stroke="none" />',
   /** Half-filled circle — theme cycle toggle. */
-  contrast: '<circle cx="8" cy="8" r="5.8" /><path d="M8 2.2v11.6A5.8 5.8 0 0 0 8 2.2z" fill="currentColor" stroke="none" />',
+  contrast:
+    '<circle cx="8" cy="8" r="5.8" /><path d="M8 2.2v11.6A5.8 5.8 0 0 0 8 2.2z" fill="currentColor" stroke="none" />',
 } as const
 
 export type IconName = keyof typeof ICON_PATHS

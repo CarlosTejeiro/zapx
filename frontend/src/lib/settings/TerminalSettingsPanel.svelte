@@ -62,7 +62,7 @@
   <section>
     <h3 class="section-title">Cursor</h3>
     <div class="cursor-row">
-      {#each (['block', 'underline', 'bar'] as const) as style}
+      {#each ['block', 'underline', 'bar'] as const as style}
         <button
           class="cursor-btn"
           class:active={terminalSettings.cursorStyle === style}

@@ -20,7 +20,7 @@
     style:height="{controller.cursor.cellHeight}px"
     style:color
     style:font-family={fontFamily}
-    style:font-size="{fontSize ? `${fontSize}px` : undefined}"
+    style:font-size={fontSize ? `${fontSize}px` : undefined}
   >
     {controller.ghost}
   </div>
@@ -40,7 +40,13 @@
   }
 
   @keyframes ghost-in {
-    from { opacity: 0; transform: translateX(-2px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from {
+      opacity: 0;
+      transform: translateX(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 </style>

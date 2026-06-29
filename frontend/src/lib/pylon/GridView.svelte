@@ -35,9 +35,7 @@
   // Live session UUIDs of the panes currently in this grid. Recomputed as
   // panes connect/disconnect (paneToSession is reactive).
   const liveSessionIds = $derived(
-    panes
-      .map((p) => paneToSession.get(p.id))
-      .filter((id): id is string => typeof id === 'string'),
+    panes.map((p) => paneToSession.get(p.id)).filter((id): id is string => typeof id === 'string'),
   )
 
   // While this grid is mounted, scope all broadcast fan-out (master bar,
@@ -102,7 +100,10 @@
     command={runner.command}
     hosts={runner.hosts}
     running={runner.running}
-    onClose={() => { showPanel = false; runner.reset() }}
+    onClose={() => {
+      showPanel = false
+      runner.reset()
+    }}
   />
 {/if}
 

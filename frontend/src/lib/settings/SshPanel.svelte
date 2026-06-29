@@ -17,7 +17,7 @@
     {
       value: 'auto',
       label: 'Auto (OpenSSH → Pageant)',
-      help: 'Default. Try Windows OpenSSH first; fall back to Pageant if it isn\'t reachable or holds no usable identity.',
+      help: "Default. Try Windows OpenSSH first; fall back to Pageant if it isn't reachable or holds no usable identity.",
     },
     {
       value: 'pageant-first',
@@ -55,18 +55,16 @@
     }
   }
 
-  const selectedHelp = $derived(
-    OPTIONS.find((o) => o.value === current)?.help ?? '',
-  )
+  const selectedHelp = $derived(OPTIONS.find((o) => o.value === current)?.help ?? '')
 </script>
 
 <div class="panel">
   <section>
     <h3>Connection reliability</h3>
     <p class="hint-help">
-      Keepalive sends a periodic probe so idle SSH sessions aren't dropped by
-      firewalls or servers; it also lets ZAPX notice a dead link quickly.
-      Auto-reconnect re-opens a session when the link drops.
+      Keepalive sends a periodic probe so idle SSH sessions aren't dropped by firewalls or servers;
+      it also lets ZAPX notice a dead link quickly. Auto-reconnect re-opens a session when the link
+      drops.
     </p>
 
     <label class="row">
@@ -101,8 +99,8 @@
     <h3>SSH agent priority (Windows)</h3>
     <p class="hint-help">
       Which agent backend ZAPX tries when a session uses
-      <code>Agent</code> authentication. <strong>macOS and Linux ignore this</strong> —
-      they always use <code>$SSH_AUTH_SOCK</code>.
+      <code>Agent</code> authentication. <strong>macOS and Linux ignore this</strong> — they always
+      use <code>$SSH_AUTH_SOCK</code>.
     </p>
 
     <select

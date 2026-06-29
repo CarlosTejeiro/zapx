@@ -104,13 +104,21 @@
             {:else}
               <span class="target socks">SOCKS5</span>
             {/if}
-            <button class="rm" onclick={() => remove(f.id)} title="Remove forward"><Icon name="x" size={12} /></button>
+            <button class="rm" onclick={() => remove(f.id)} title="Remove forward"
+              ><Icon name="x" size={12} /></button
+            >
           </li>
         {/each}
       </ul>
     {/if}
 
-    <form class="add" onsubmit={(e) => { e.preventDefault(); add() }}>
+    <form
+      class="add"
+      onsubmit={(e) => {
+        e.preventDefault()
+        add()
+      }}
+    >
       <h3>Add forward</h3>
 
       <label>
@@ -124,10 +132,10 @@
 
       {#if kind === 'remote'}
         <p class="hint">
-          The SSH server listens on <code>{bindAddr || '?'}:{bindPort ?? '?'}</code>; every
-          inbound connection there is tunnelled to <code>{targetHost || '?'}:{targetPort ?? '?'}</code> on
-          this machine. Set bind address to <code>0.0.0.0</code> to expose on every
-          interface of the remote host (server's GatewayPorts must allow it).
+          The SSH server listens on <code>{bindAddr || '?'}:{bindPort ?? '?'}</code>; every inbound
+          connection there is tunnelled to <code>{targetHost || '?'}:{targetPort ?? '?'}</code> on
+          this machine. Set bind address to <code>0.0.0.0</code> to expose on every interface of the remote
+          host (server's GatewayPorts must allow it).
         </p>
       {/if}
 
@@ -149,7 +157,10 @@
         <div class="row">
           <label class="grow">
             {kind === 'remote' ? 'Local target host' : 'Target host'}
-            <input bind:value={targetHost} placeholder={kind === 'remote' ? 'localhost' : 'db.internal'} />
+            <input
+              bind:value={targetHost}
+              placeholder={kind === 'remote' ? 'localhost' : 'db.internal'}
+            />
           </label>
           <label class="port">
             {kind === 'remote' ? 'Local target port' : 'Target port'}
@@ -280,7 +291,8 @@
     color: var(--zx-warn);
   }
 
-  .bind, .target {
+  .bind,
+  .target {
     color: var(--zx-text);
   }
 
