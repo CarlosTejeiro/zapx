@@ -58,6 +58,55 @@ fn default_timeout_ms() -> u64 {
     10_000
 }
 
+/// Decode C-style backslash escapes in a `send` payload into raw bytes:
+/// `\r` `\n` `\t` `\b` (backspace) `\e` (ESC) `\0` (NUL) `\\` and `\xHH`.
+/// An unknown or malformed escape is kept verbatim (backslash included), so
+/// ordinary text with stray backslashes is never silently dropped. This lets a
+/// step typed as `cmd\r` press Enter instead of sending the two characters.
+fn decode_escapes(s: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut buf = [0u8; 4];
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            continue;
+        }
+        match chars.next() {
+            Some('r') => out.push(b'\r'),
+            Some('n') => out.push(b'\n'),
+            Some('t') => out.push(b'\t'),
+            Some('b') => out.push(0x08),
+            Some('e') => out.push(0x1b),
+            Some('0') => out.push(0x00),
+            Some('\\') => out.push(b'\\'),
+            Some('x') => {
+                let h1 = chars.peek().copied().filter(char::is_ascii_hexdigit);
+                let hex = h1.and_then(|a| {
+                    chars.next();
+                    let b = chars.peek().copied().filter(char::is_ascii_hexdigit)?;
+                    chars.next();
+                    Some((a, b))
+                });
+                match hex {
+                    Some((a, b)) => {
+                        // Both are validated hex digits.
+                        let v = (a.to_digit(16).unwrap() * 16 + b.to_digit(16).unwrap()) as u8;
+                        out.push(v);
+                    }
+                    None => out.extend_from_slice(b"\\x"),
+                }
+            }
+            Some(other) => {
+                out.push(b'\\');
+                out.extend_from_slice(other.encode_utf8(&mut buf).as_bytes());
+            }
+            None => out.push(b'\\'),
+        }
+    }
+    out
+}
+
 /// Status broadcast to the frontend so the terminal toolbar can show progress.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LoginProgress {
@@ -181,10 +230,12 @@ impl LoginRunner {
     }
 
     /// Send a step's `send` payload, appending a trailing Enter when the user
-    /// didn't end the line themselves (so `enable` actually executes). Empty
-    /// payloads send nothing.
+    /// didn't end the line themselves (so `enable` actually executes). Backslash
+    /// escapes (`\r`, `\n`, `\t`, …) are decoded first, so a step written as
+    /// `cmd\r` presses Enter instead of typing the two literal characters.
+    /// Empty payloads send nothing.
     fn fire_send(&self, step: &LoginStep) {
-        let mut bytes = step.send.as_bytes().to_vec();
+        let mut bytes = decode_escapes(&step.send);
         if !bytes.is_empty() && !bytes.ends_with(b"\n") && !bytes.ends_with(b"\r") {
             bytes.push(b'\r');
         }
@@ -451,5 +502,31 @@ mod tests {
         runner.feed(b"\r\nEnter Password: ");
         assert_eq!(drain(&mut rx), b"hunter2\r");
         assert!(runner.check_timeout(), "finished after the expect matched");
+    }
+
+    #[test]
+    fn send_decodes_backslash_escapes() {
+        // A send written with `\r` presses Enter (one CR, not the literal two
+        // chars and not a doubled CR); other escapes decode too; stray
+        // backslashes survive.
+        assert_eq!(decode_escapes("ssh host\\r"), b"ssh host\r");
+        assert_eq!(decode_escapes("a\\tb"), b"a\tb");
+        assert_eq!(decode_escapes("\\x1b[A"), b"\x1b[A");
+        assert_eq!(decode_escapes("C:\\\\tmp"), b"C:\\tmp");
+        assert_eq!(decode_escapes("no escapes"), b"no escapes");
+    }
+
+    #[test]
+    fn send_with_explicit_cr_is_not_doubled() {
+        // `cmd\r` → exactly one trailing CR (fire_send must not append a second).
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let runner = LoginRunner::new(
+            "s".into(),
+            vec![step(StepKind::Send, "", "cmd\\r", 0)],
+            tx,
+            Box::new(|_| {}),
+        );
+        assert_eq!(drain(&mut rx), b"cmd\r");
+        assert!(runner.check_timeout());
     }
 }

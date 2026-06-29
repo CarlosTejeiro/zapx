@@ -77,7 +77,8 @@ export interface PylonTheme {
 }
 
 /* ---------------------------------------------------------------------------
- * The 7 themes from the redesign handoff. Each maps the design tokens
+ * The 7 themes from the redesign handoff (plus Onyx, added later). Each maps
+ * the design tokens
  * (`paper`, `paper2`, `ink`, `inkMuted`, `inkDim`, `line`, `hover`) onto the
  * PylonTheme fields: paper → appBg/bodyBg/tabBarBg, paper2 → sidebarBg/
  * titlebarBg/statusbarBg/tabActiveBg, line → border/tabBorder, hover →
@@ -558,6 +559,72 @@ export const amber: PylonTheme = {
   windowShadow: '0 24px 70px rgba(0,0,0,.6)',
 }
 
+// ── 8 · Onyx — true black, white text, vivid ANSI ───────────────────────────
+export const onyx: PylonTheme = {
+  name: 'onyx',
+  fontUi,
+  fontMono,
+
+  appBg: '#000000',
+  bodyBg: '#000000',
+  sidebarBg: '#0a0a0a',
+  titlebarBg: '#0a0a0a',
+  statusbarBg: '#0a0a0a',
+  tabBarBg: '#000000',
+
+  tabActiveBg: '#0a0a0a',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(255,255,255,0.12)',
+  tabRadius: '7px',
+
+  accent: '#4aa3ff',
+  accent2: '#ff7a59',
+  onAccent: '#000000',
+  itemHoverBg: 'rgba(255,255,255,0.06)',
+  itemActiveBg: activeMix('#4aa3ff'),
+  itemActiveBorder: '#4aa3ff',
+
+  textPrimary: '#ffffff',
+  textMuted: '#b3b3b3',
+  textDim: '#6e6e6e',
+
+  border: 'rgba(255,255,255,0.12)',
+  radius: '7px',
+
+  ok: '#3ddc84',
+  warn: '#e5c07b',
+  err: '#ff5c5c',
+
+  terminal: {
+    bg: '#000000',
+    fg: '#ffffff',
+    cursor: '#4aa3ff',
+    dim: '#6e6e6e',
+    ok: '#5af78e',
+    warn: '#f3f99d',
+    err: '#ff5f56',
+    black: '#000000',
+    red: '#ff5f56',
+    green: '#5af78e',
+    yellow: '#f3f99d',
+    blue: '#57c7ff',
+    magenta: '#ff6ac1',
+    cyan: '#9aedfe',
+    white: '#f1f1f1',
+    brightBlack: '#686868',
+    brightRed: '#ff6e67',
+    brightGreen: '#5af78e',
+    brightYellow: '#f3f99d',
+    brightBlue: '#57c7ff',
+    brightMagenta: '#ff6ac1',
+    brightCyan: '#9aedfe',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.7)',
+}
+
 export const themes: Record<string, PylonTheme> = {
   parchment,
   oxide,
@@ -566,6 +633,7 @@ export const themes: Record<string, PylonTheme> = {
   porcelain,
   phosphor,
   amber,
+  onyx,
 }
 
 /** Display labels for menus / palette / about, keyed like `themes`. */
@@ -577,4 +645,5 @@ export const themeLabels: Record<string, string> = {
   porcelain: 'Porcelain',
   phosphor: 'Phosphor',
   amber: 'Amber',
+  onyx: 'Onyx',
 }

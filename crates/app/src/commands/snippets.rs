@@ -126,6 +126,21 @@ pub async fn set_snippet_steps(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Set (`Some`) or clear (`None`) a snippet's folder (the sidebar Macros
+/// library groups by this). Separate from `update_snippet`, mirroring
+/// [`set_snippet_steps`].
+#[tauri::command]
+pub async fn set_snippet_folder(
+    state: State<'_, AppState>,
+    id: i64,
+    folder: Option<String>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_snippet_folder(id, folder.as_deref())
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Top recently-typed commands for the focused saved session. Drives the
 /// "Recents" zone of the bottom button bar. Trailing newline is appended so
 /// dispatching the snippet executes the command exactly like the original

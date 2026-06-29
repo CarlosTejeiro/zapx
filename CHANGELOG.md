@@ -5,6 +5,41 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-06-29
+
+### Added
+- **Macros library in the sidebar** — a "Macros" section below the sessions
+  lists your saved macros; click one to run it on the focused session, edit it
+  in a dialog, or organise them into folders.
+- **Import a MobaXterm macro** — paste the lines from MobaXterm's macro editor
+  (text, `RETURN`, `SLEEP=ms`, `BACK`…) and ZAPX turns them into runnable
+  expect/send/wait steps.
+- **Reorder macro steps** — the step editor gained ▲/▼ controls to move a step
+  up or down.
+- **Onyx theme** — a true-black background with white text and vivid ANSI
+  colours.
+
+### Changed
+- **Removed the user chip** from the sidebar footer (single-user app); the
+  theme and settings buttons remain.
+
+### Fixed
+- **Suggestions popup no longer gets clipped** — the command-hint popup was
+  anchored below the cursor inside the terminal's `overflow:hidden` stage, so it
+  was cut off when the cursor sat near the bottom. It now flips above the line
+  when there's no room below, clamps to the terminal's width, and caps its
+  height to the available space (scrolling if needed).
+- **Macro / login-script `send` now decodes escapes** — a step written as
+  `cmd\r` presses Enter instead of typing the two literal characters `\` and
+  `r`. `\r` `\n` `\t` `\b` `\e` `\0` `\\` and `\xHH` are all decoded (and an
+  explicit trailing `\r` is no longer doubled); unknown escapes are left
+  verbatim. Applies to both on-demand macros and connect-time login scripts.
+- **MobaXterm import no longer defaults SSH to agent auth** — imported SSH
+  sessions default to password (ZAPX prompts on connect) instead of failing on
+  Windows hosts that have no OpenSSH agent / Pageant running. Connecting a
+  credential-less password session now shows the inline re-auth prompt instead
+  of erroring with "missing credential".
+
 ## [0.11.0] - 2026-06-29
 
 ### Added

@@ -104,6 +104,8 @@ export interface Snippet {
   /** When set, this snippet is a macro: a JSON expect/send/wait step array run
    *  on the focused session instead of sending `content`. null = plain text. */
   steps_json: string | null
+  /** Optional folder name for the sidebar Macros library; null = ungrouped. */
+  folder: string | null
 }
 
 /** Item in the "Recents" zone of the snippet bar — a frequently-typed command

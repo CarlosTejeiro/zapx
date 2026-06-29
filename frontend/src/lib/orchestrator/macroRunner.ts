@@ -9,7 +9,9 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { onTerminalData } from '$lib/bridge/events'
-import type { LoginStep } from '$lib/bridge/types'
+import { getFocusedSessionId, focusSession } from '$lib/stores/sessionRuntime.svelte'
+import { showToast, type ToastKind } from '$lib/ui/toast-store.svelte'
+import type { LoginStep, Snippet } from '$lib/bridge/types'
 
 function stripAnsi(s: string): string {
   return s
@@ -32,6 +34,65 @@ function stepMatches(step: LoginStep, haystack: string): boolean {
   return haystack.includes(step.expect)
 }
 
+/**
+ * Decode C-style backslash escapes (`\r` `\n` `\t` `\b` `\e` `\0` `\\` `\xHH`)
+ * so a step typed as `cmd\r` presses Enter instead of sending the two literal
+ * characters. Unknown/malformed escapes are kept verbatim (backslash included).
+ */
+function decodeEscapes(s: string): string {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '\\') {
+      out += s[i]
+      continue
+    }
+    const n = s[i + 1]
+    switch (n) {
+      case 'r':
+        out += '\r'
+        i++
+        break
+      case 'n':
+        out += '\n'
+        i++
+        break
+      case 't':
+        out += '\t'
+        i++
+        break
+      case 'b':
+        out += '\b'
+        i++
+        break
+      case 'e':
+        out += '\x1b'
+        i++
+        break
+      case '0':
+        out += '\0'
+        i++
+        break
+      case '\\':
+        out += '\\'
+        i++
+        break
+      case 'x': {
+        const hex = s.slice(i + 2, i + 4)
+        if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16))
+          i += 3
+        } else {
+          out += '\\' // not a valid \xHH — keep the backslash literally
+        }
+        break
+      }
+      default:
+        out += '\\' // unknown escape — keep backslash; next iteration emits the char
+    }
+  }
+  return out
+}
+
 /** Encode `text` for the PTY, appending Enter unless the user ended the line. */
 function withEnter(text: string): number[] {
   let t = text
@@ -40,8 +101,9 @@ function withEnter(text: string): number[] {
 }
 
 async function send(sessionId: string, text: string): Promise<void> {
-  if (text.length === 0) return
-  await invoke('send_input', { sessionId, data: withEnter(text) }).catch(() => {})
+  const decoded = decodeEscapes(text)
+  if (decoded.length === 0) return
+  await invoke('send_input', { sessionId, data: withEnter(decoded) }).catch(() => {})
 }
 
 export interface MacroResult {
@@ -92,5 +154,43 @@ export async function runMacro(sessionId: string, steps: LoginStep[]): Promise<M
     return { ok: true }
   } finally {
     unlisten()
+  }
+}
+
+/** Status sink for {@link runMacroOnFocused}. Defaults to toasts; the button
+ *  bar passes its own so feedback shows inline next to the bar instead. */
+export type MacroNotify = (level: ToastKind, message: string) => void
+
+const toastNotify: MacroNotify = (level, message) => showToast({ kind: level, title: message })
+
+/**
+ * Run a macro snippet against the currently-focused session. Shared by the
+ * snippet button bar and the sidebar Macros section: resolves the focused
+ * session, parses the snippet's steps, runs them, hands focus back to the
+ * terminal, and reports progress through `notify`.
+ */
+export async function runMacroOnFocused(
+  snippet: Snippet,
+  notify: MacroNotify = toastNotify,
+): Promise<void> {
+  const focused = getFocusedSessionId()
+  if (!focused) {
+    notify('warning', 'No session focused — click a terminal first.')
+    return
+  }
+  let steps: LoginStep[]
+  try {
+    steps = JSON.parse(snippet.steps_json ?? '[]')
+  } catch {
+    notify('error', `Macro "${snippet.name}" is corrupt`)
+    return
+  }
+  notify('info', `Running macro "${snippet.name}"…`)
+  const res = await runMacro(focused, steps)
+  focusSession(focused)
+  if (res.ok) {
+    notify('success', `Macro "${snippet.name}" done`)
+  } else {
+    notify('error', `Macro "${snippet.name}" timed out at step ${(res.failedStep ?? 0) + 1}`)
   }
 }

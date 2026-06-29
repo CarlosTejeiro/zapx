@@ -174,7 +174,12 @@
     onNeedPassword,
   }: Props = $props()
 
-  function isKeyringMissing(e: unknown): boolean {
+  // True when a connect failed because we have no usable credential and the
+  // user should be offered the inline password form. Two shapes:
+  //   • keyring entry gone ("keyring … No matching entry") — was cached then lost;
+  //   • "missing credential" — a password/imported session with no stored secret
+  //     (e.g. a MobaXterm import, which carries no exported password).
+  function needsPasswordReentry(e: unknown): boolean {
     const raw =
       typeof e === 'string'
         ? e
@@ -187,13 +192,17 @@
                 return ''
               }
             })()
+    let inner = raw
     try {
       const obj = JSON.parse(raw) as Record<string, unknown>
-      const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
-      return inner.includes('keyring') && inner.includes('No matching entry')
+      if (typeof obj.Internal === 'string') inner = obj.Internal
     } catch {
-      return raw.includes('keyring') && raw.includes('No matching entry')
+      // not JSON — fall through with the raw string
     }
+    return (
+      (inner.includes('keyring') && inner.includes('No matching entry')) ||
+      inner.includes('missing credential')
+    )
   }
 
   // When a pylon theme palette is provided it takes precedence over user color scheme settings
@@ -679,7 +688,7 @@
 
       sessionId = await doOpen()
     } catch (e) {
-      if (isKeyringMissing(e)) {
+      if (needsPasswordReentry(e)) {
         onNeedPassword?.()
         term.dispose()
         return
