@@ -6,7 +6,8 @@
   import { fade, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import type { PylonTheme } from '$lib/themes/index'
-  import type { Snippet, LoginStep } from '$lib/bridge/types'
+  import type { Snippet, LoginStep, VaultEntry } from '$lib/bridge/types'
+  import { listVaultEntries } from '$lib/bridge/commands'
   import MacroStepEditor from './MacroStepEditor.svelte'
 
   interface Props {
@@ -51,6 +52,15 @@
     }
     return [{ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 }]
   }
+
+  // Vault entries available to reference from a `send` step. Loaded lazily;
+  // an empty list simply hides the "Insert vault reference" affordance.
+  let vaultEntries = $state<VaultEntry[]>([])
+  $effect(() => {
+    listVaultEntries()
+      .then((v) => (vaultEntries = v))
+      .catch(() => {})
+  })
 
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
@@ -138,7 +148,7 @@
       {/each}
     </datalist>
 
-    <MacroStepEditor {theme} bind:steps />
+    <MacroStepEditor {theme} bind:steps {vaultEntries} />
 
     <div class="footer">
       {#if onDelete}

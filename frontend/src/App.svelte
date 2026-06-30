@@ -88,10 +88,13 @@
     deleteSnippet,
     setSnippetSteps,
     setSnippetFolder,
+    exportMacros,
+    importMacros,
   } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
   import MacroDialog from '$lib/pylon/MacroDialog.svelte'
   import MacroImportDialog from '$lib/pylon/MacroImportDialog.svelte'
+  import VaultDialog from '$lib/sessions/VaultDialog.svelte'
   import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -290,6 +293,7 @@
   // Macro library (sidebar Macros section): macros are snippets carrying steps.
   let editingMacro = $state<Snippet | 'new' | null>(null)
   let showMacroImport = $state(false)
+  let showVault = $state(false)
   const macros = $derived(snippets.filter((s) => s.steps_json))
   // Distinct, sorted folder names across macros — autocomplete in the dialog.
   const macroFolders = $derived(
@@ -335,17 +339,21 @@
     }
   }
 
-  async function importMacro(name: string, steps: LoginStep[]) {
+  async function importMacro(macros: { name: string; steps: LoginStep[] }[]) {
     try {
-      const id = await createSnippet(name, '', null, null)
-      await setSnippetSteps(id, JSON.stringify(steps))
+      let totalSteps = 0
+      for (const m of macros) {
+        const id = await createSnippet(m.name, '', null, null)
+        await setSnippetSteps(id, JSON.stringify(m.steps))
+        totalSteps += m.steps.length
+      }
       showMacroImport = false
       await refreshSnippets()
-      showToast({
-        kind: 'success',
-        title: 'Macro imported',
-        detail: `${name} (${steps.length} steps)`,
-      })
+      const label =
+        macros.length === 1
+          ? `${macros[0]!.name} (${totalSteps} steps)`
+          : `${macros.length} macros (${totalSteps} steps)`
+      showToast({ kind: 'success', title: 'Macro imported', detail: label })
     } catch (e) {
       showToast({
         kind: 'error',
@@ -367,6 +375,49 @@
       showToast({
         kind: 'error',
         title: 'Delete macro failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /// Export macros to a JSON file. `ids = null` exports all macros.
+  async function exportMacrosToFile(ids: number[] | null, label: string) {
+    try {
+      const path = await saveFileDialog({
+        defaultPath: 'zapx-macros.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (!path) return
+      await exportMacros(path, ids)
+      showToast({ kind: 'success', title: 'Macros exported', detail: label })
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Export failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /// Import macros from a JSON file (skip-by-name idempotent).
+  async function importMacrosFromFile() {
+    try {
+      const path = await openFileDialog({
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (!path || typeof path !== 'string') return
+      const summary = await importMacros(path)
+      await refreshSnippets()
+      showToast({
+        kind: 'success',
+        title: 'Macros imported',
+        detail: `${summary.added} added, ${summary.skipped} skipped`,
+      })
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Import failed',
         detail: e instanceof Error ? e.message : String(e),
       })
     }
@@ -1456,6 +1507,10 @@
       onEditMacro={(m) => (editingMacro = m)}
       onNewMacro={() => (editingMacro = 'new')}
       onImportMacro={() => (showMacroImport = true)}
+      onImportMacrosJson={importMacrosFromFile}
+      onExportMacros={() => exportMacrosToFile(null, `${macros.length} macros`)}
+      onExportMacro={(m) => exportMacrosToFile([m.id], m.name)}
+      onOpenVault={() => (showVault = true)}
     />
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>
@@ -1576,6 +1631,10 @@
 
 {#if showMacroImport}
   <MacroImportDialog {theme} onImport={importMacro} onClose={() => (showMacroImport = false)} />
+{/if}
+
+{#if showVault}
+  <VaultDialog {theme} onClose={() => (showVault = false)} />
 {/if}
 
 {#if showQuickConnect}

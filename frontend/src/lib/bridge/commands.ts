@@ -15,6 +15,7 @@ import type {
   RecentCommand,
   LoginStep,
   Trigger,
+  VaultEntry,
 } from './types'
 
 export async function listSessions(): Promise<SavedSession[]> {
@@ -320,6 +321,64 @@ export async function setSnippetFolder(id: number, folder: string | null): Promi
 // Persist a new display order (sort_order) for the listed snippet ids.
 export async function setSnippetsOrder(orderedIds: number[]): Promise<void> {
   return invoke<void>('set_snippets_order', { orderedIds })
+}
+
+/** Summary returned by importMacros. */
+export interface MacroImportSummary {
+  added: number
+  skipped: number
+}
+
+/** Export macros to a JSON file. `ids = null` exports all macros. */
+export async function exportMacros(path: string, ids: number[] | null = null): Promise<void> {
+  return invoke<void>('export_macros', { path, ids })
+}
+
+/** Import macros from a JSON file (skip-by-name idempotent). */
+export async function importMacros(path: string): Promise<MacroImportSummary> {
+  return invoke<MacroImportSummary>('import_macros', { path })
+}
+
+// ── Credential vault ─────────────────────────────────────────────────────────
+
+/** Create a reusable vault entry. The password goes to the OS keyring; the
+ *  returned id is the credential reference. */
+export async function createVaultEntry(
+  name: string,
+  username: string | null,
+  password: string,
+): Promise<number> {
+  return invoke<number>('create_vault_entry', { name, username, password })
+}
+
+/** List all vault entries (no secrets). */
+export async function listVaultEntries(): Promise<VaultEntry[]> {
+  return invoke<VaultEntry[]>('list_vault_entries')
+}
+
+/** Update a vault entry's metadata, optionally rotating its secret. */
+export async function updateVaultEntry(
+  id: number,
+  name: string,
+  username: string | null,
+  password: string | null = null,
+): Promise<void> {
+  return invoke<void>('update_vault_entry', { id, name, username, password })
+}
+
+/** Delete a vault entry (keyring secret + credential row). */
+export async function deleteVaultEntry(id: number): Promise<void> {
+  return invoke<void>('delete_vault_entry', { id })
+}
+
+/** Security-critical: send a vault entry's secret straight to a session's PTY.
+ *  The plaintext never crosses back over the bridge. */
+export async function sendVaultSecret(
+  sessionId: string,
+  vaultEntryId: number,
+  enter: boolean,
+): Promise<void> {
+  return invoke<void>('send_vault_secret', { sessionId, vaultEntryId, enter })
 }
 
 export async function deleteSnippet(id: number): Promise<void> {

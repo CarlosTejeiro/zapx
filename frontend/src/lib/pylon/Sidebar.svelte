@@ -35,6 +35,14 @@
     onEditMacro?: (macro: Snippet) => void
     onNewMacro?: () => void
     onImportMacro?: () => void
+    /** Import macros from a ZAPX JSON file. */
+    onImportMacrosJson?: () => void
+    /** Export all macros to a ZAPX JSON file. */
+    onExportMacros?: () => void
+    /** Export a single macro to a ZAPX JSON file. */
+    onExportMacro?: (macro: Snippet) => void
+    /** Open the credential vault manager. */
+    onOpenVault?: () => void
   }
 
   const {
@@ -60,6 +68,10 @@
     onEditMacro,
     onNewMacro,
     onImportMacro,
+    onImportMacrosJson,
+    onExportMacros,
+    onExportMacro,
+    onOpenVault,
   }: Props = $props()
 
   const macroList = $derived(macros ?? [])
@@ -686,6 +698,19 @@
           <Icon name="bolt" size={13} />
         </span>
         <span class="sb-name" style:color={theme.textMuted}>{m.name}</span>
+        {#if onExportMacro}
+          <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+          <span
+            class="sb-edit"
+            role="button"
+            title="Export macro (JSON)"
+            style:color={theme.textDim}
+            onclick={(e) => {
+              e.stopPropagation()
+              onExportMacro?.(m)
+            }}><Icon name="file" size={12} /></span
+          >
+        {/if}
         {#if onEditMacro}
           <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
           <span
@@ -716,6 +741,22 @@
             MACROS
             <span class="sb-count" style:color={theme.textDim}>{macroList.length}</span>
           </button>
+          {#if onExportMacros && macroList.length > 0}
+            <button
+              class="sb-add-btn"
+              title="Export all macros (JSON)"
+              style:color={theme.textDim}
+              onclick={onExportMacros}><Icon name="file" size={13} /></button
+            >
+          {/if}
+          {#if onImportMacrosJson}
+            <button
+              class="sb-add-btn"
+              title="Import macros (JSON)"
+              style:color={theme.textDim}
+              onclick={onImportMacrosJson}><Icon name="copy" size={13} /></button
+            >
+          {/if}
           {#if onImportMacro}
             <button
               class="sb-add-btn"
@@ -771,6 +812,16 @@
   <!-- Footer: user chip + theme + settings -->
   <div class="sb-footer" style:border-top="1px solid {theme.border}">
     <span class="sb-footer-spacer"></span>
+    {#if onOpenVault}
+      <button
+        class="sb-settings-btn"
+        title="Credential vault"
+        onclick={onOpenVault}
+        style:color={theme.textDim}
+      >
+        <Icon name="key" size={14} />
+      </button>
+    {/if}
     <button
       class="sb-settings-btn"
       title="Cycle theme"

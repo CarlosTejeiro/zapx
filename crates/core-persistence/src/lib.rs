@@ -76,6 +76,9 @@ pub struct Credential {
     pub kind: String,
     pub username: Option<String>,
     pub keyring_key: String,
+    /// `true` for a reusable "vault" entry that can be referenced by many
+    /// sessions and isn't deleted alongside any single session.
+    pub reusable: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -248,6 +251,9 @@ impl Database {
         }
         if version < 19 {
             conn.execute_batch(include_str!("migrations/019_snippet_folder.sql"))?;
+        }
+        if version < 20 {
+            conn.execute_batch(include_str!("migrations/020_vault_entries.sql"))?;
         }
         Ok(())
     }
@@ -797,7 +803,7 @@ impl Database {
     pub fn get_credential(&self, id: i64) -> Result<Credential, Error> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, name, kind, username, keyring_key FROM credentials WHERE id=?1",
+            "SELECT id, name, kind, username, keyring_key, reusable FROM credentials WHERE id=?1",
             rusqlite::params![id],
             |row| {
                 Ok(Credential {
@@ -806,6 +812,7 @@ impl Database {
                     kind: row.get(2)?,
                     username: row.get(3)?,
                     keyring_key: row.get(4)?,
+                    reusable: row.get::<_, i64>(5)? != 0,
                 })
             },
         )
@@ -813,6 +820,59 @@ impl Database {
             rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
             e => Error::Rusqlite(e),
         })
+    }
+
+    /// All reusable "vault" credential entries (metadata + keyring key only).
+    pub fn list_vault_entries(&self) -> Result<Vec<Credential>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, kind, username, keyring_key, reusable
+             FROM credentials WHERE reusable=1 ORDER BY name, id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Credential {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                kind: row.get(2)?,
+                username: row.get(3)?,
+                keyring_key: row.get(4)?,
+                reusable: row.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Create a reusable vault credential entry. The secret itself lives in the
+    /// keyring under `keyring_key`; only the reference is stored here.
+    pub fn create_vault_entry(
+        &self,
+        name: &str,
+        username: Option<&str>,
+        keyring_key: &str,
+    ) -> Result<i64, Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO credentials (name, kind, username, keyring_key, reusable)
+             VALUES (?1, 'vault', ?2, ?3, 1)",
+            rusqlite::params![name, username, keyring_key],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Update the editable metadata (name + username) of a credential row.
+    /// The secret and keyring reference are left untouched.
+    pub fn update_credential_meta(
+        &self,
+        id: i64,
+        name: &str,
+        username: Option<&str>,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE credentials SET name=?2, username=?3 WHERE id=?1",
+            rusqlite::params![id, name, username],
+        )?;
+        Ok(())
     }
 
     pub fn get_credential_keyring_key(&self, id: i64) -> Result<String, Error> {

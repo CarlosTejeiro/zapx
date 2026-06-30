@@ -8,6 +8,7 @@
 // user-triggered, so the frontend drives it.
 
 import { invoke } from '@tauri-apps/api/core'
+import { sendVaultSecret } from '$lib/bridge/commands'
 import { onTerminalData } from '$lib/bridge/events'
 import { getFocusedSessionId, focusSession } from '$lib/stores/sessionRuntime.svelte'
 import { showToast, type ToastKind } from '$lib/ui/toast-store.svelte'
@@ -100,7 +101,21 @@ function withEnter(text: string): number[] {
   return Array.from(new TextEncoder().encode(t))
 }
 
+/** A send that is exactly a vault reference `{{vault:<id>}}` optionally followed
+ *  by a trailing `\r`. Matched before any escape decoding so the secret is never
+ *  materialised in JS. */
+const VAULT_REF_RE = /^\{\{vault:(\d+)\}\}(\\r)?$/
+
 async function send(sessionId: string, text: string): Promise<void> {
+  const vault = VAULT_REF_RE.exec(text)
+  if (vault) {
+    // The plaintext stays backend-side: ask the host to write the secret to the
+    // PTY directly. `enter` is true when the step had a trailing `\r`.
+    const id = parseInt(vault[1]!, 10)
+    const enter = vault[2] !== undefined
+    await sendVaultSecret(sessionId, id, enter).catch(() => {})
+    return
+  }
   const decoded = decodeEscapes(text)
   if (decoded.length === 0) return
   await invoke('send_input', { sessionId, data: withEnter(decoded) }).catch(() => {})
