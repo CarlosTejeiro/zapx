@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-06-30
+
+### Added
+- **Linux ARM (aarch64) release builds** — the Release workflow now also builds
+  on a native arm64 Linux runner and publishes an `aarch64-unknown-linux-gnu`
+  AppImage/deb alongside the x86_64 ones, so ARM Linux users get an official
+  binary (including the 0.14.1 DMABUF/ARM terminal fix) instead of having to
+  build from source.
+
 ## [0.14.1] - 2026-06-30
 
 ### Fixed
