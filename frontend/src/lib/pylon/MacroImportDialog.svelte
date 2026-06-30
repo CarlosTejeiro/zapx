@@ -142,16 +142,15 @@
 
     if (saveToVault && chosen) {
       try {
-        const id = await createVaultEntry(
-          vaultName.trim() || 'Imported credential',
-          vaultUser.trim() || null,
-          chosen.plaintext,
-        )
-        // Replace the chosen step's send with a vault reference. Preserve a
-        // trailing Enter if the original had one.
+        const entryName = vaultName.trim() || 'Imported credential'
+        await createVaultEntry(entryName, vaultUser.trim() || null, chosen.plaintext)
+        // Replace the chosen step's send with a name+field vault reference (so
+        // the plaintext never lands in steps_json). Preserve a trailing Enter
+        // if the original had one.
         const orig = parsed[chosen.macroIndex]!.steps[chosen.stepIndex]!
         const enter = /\\r$/.test(orig.send) ? '\\r' : ''
-        macros[chosen.macroIndex]!.steps[chosen.stepIndex]!.send = `{{vault:${id}}}${enter}`
+        macros[chosen.macroIndex]!.steps[chosen.stepIndex]!.send =
+          `{{vault:${entryName}.Password}}${enter}`
       } catch {
         // If vaulting fails, fall through and import the macro as-is rather
         // than blocking the whole import.

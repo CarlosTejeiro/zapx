@@ -2,9 +2,7 @@
   /// Inline editor popover for a button-bar button (a snippet). Used by
   /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
   import type { PylonTheme } from '$lib/themes/index'
-  import type { Snippet, LoginStep, VaultEntry } from '$lib/bridge/types'
-  import { listVaultEntries } from '$lib/bridge/commands'
-  import MacroStepEditor from './MacroStepEditor.svelte'
+  import type { Snippet, LoginStep } from '$lib/bridge/types'
 
   interface Props {
     theme: PylonTheme
@@ -44,43 +42,21 @@
   // svelte-ignore state_referenced_locally
   let platformScoped = $state(snippet ? snippet.platform !== null : hasPlatform)
 
-  // Macro mode: an expect/send/wait step list instead of plain text.
-  // svelte-ignore state_referenced_locally
-  let isMacro = $state(!!snippet?.steps_json)
-  // svelte-ignore state_referenced_locally
-  let steps = $state<LoginStep[]>(parseSteps(snippet?.steps_json ?? null))
-
-  function parseSteps(json: string | null): LoginStep[] {
-    if (!json) return []
-    try {
-      const v = JSON.parse(json)
-      return Array.isArray(v) ? v : []
-    } catch {
-      return []
-    }
-  }
-  // Vault entries available to reference from a `send` step (parity with
-  // MacroDialog). An empty list simply hides the picker.
-  let vaultEntries = $state<VaultEntry[]>([])
-  $effect(() => {
-    listVaultEntries()
-      .then((v) => (vaultEntries = v))
-      .catch(() => {})
-  })
-
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
-  const canSave = $derived(!!name.trim() && (isMacro ? steps.length > 0 : !!content.trim()))
+  const canSave = $derived(!!name.trim() && !!content.trim())
 
   function save() {
     if (!canSave) return
+    // The bottom bar only manages plain-text snippets now — macros live in the
+    // sidebar Macros section, so `steps` is always null here.
     onSave({
       name: name.trim(),
       content,
       color,
       platformScoped: hasPlatform && platformScoped,
-      steps: isMacro ? steps : null,
+      steps: null,
     })
   }
 
@@ -140,43 +116,16 @@
     </div>
   </div>
 
-  <div class="mode" style:color={theme.textMuted}>
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={!isMacro}
-      style:color={!isMacro ? theme.accent : theme.textDim}
-      style:border-color={!isMacro ? theme.accent : theme.border}
-      onclick={() => (isMacro = false)}>Text</button
-    >
-    <button
-      type="button"
-      class="mode-btn"
-      class:active={isMacro}
-      style:color={isMacro ? theme.accent : theme.textDim}
-      style:border-color={isMacro ? theme.accent : theme.border}
-      onclick={() => {
-        isMacro = true
-        if (steps.length === 0)
-          steps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
-      }}>Macro</button
-    >
-  </div>
-
-  {#if !isMacro}
-    <textarea
-      class="content"
-      placeholder="Command(s) to send"
-      bind:value={content}
-      spellcheck="false"
-      style:background={theme.bodyBg}
-      style:color={theme.textPrimary}
-      style:border="1px solid {theme.border}"
-      style:font-family={theme.fontMono}
-    ></textarea>
-  {:else}
-    <MacroStepEditor {theme} bind:steps {vaultEntries} />
-  {/if}
+  <textarea
+    class="content"
+    placeholder="Command(s) to send"
+    bind:value={content}
+    spellcheck="false"
+    style:background={theme.bodyBg}
+    style:color={theme.textPrimary}
+    style:border="1px solid {theme.border}"
+    style:font-family={theme.fontMono}
+  ></textarea>
 
   <div class="footer">
     {#if hasPlatform}
@@ -284,20 +233,6 @@
     font-size: 12px;
     line-height: 1.5;
     outline: none;
-  }
-
-  .mode {
-    display: flex;
-    gap: 4px;
-  }
-  .mode-btn {
-    background: transparent;
-    border: 1px solid;
-    border-radius: 5px;
-    padding: 2px 10px;
-    font-size: 11.5px;
-    font-family: inherit;
-    cursor: pointer;
   }
 
   .footer {

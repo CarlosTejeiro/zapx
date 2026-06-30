@@ -34,6 +34,8 @@
   } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
+  import { listSnippets } from '$lib/bridge/commands'
+  import type { Snippet } from '$lib/bridge/types'
 
   type Protocol = 'ssh' | 'telnet' | 'serial'
 
@@ -72,6 +74,12 @@
     } catch {
       platforms = []
     }
+    try {
+      // Only macros (snippets with steps) can run on connect.
+      macroSnippets = (await listSnippets()).filter((s) => s.steps_json)
+    } catch {
+      macroSnippets = []
+    }
     if (existing) {
       try {
         platform = await getSessionPlatform(existing.id)
@@ -105,6 +113,9 @@
           if (typeof opts.anti_idle.send === 'string') antiIdleSend = opts.anti_idle.send
         }
         autoReconnect = opts.auto_reconnect !== false
+        if (typeof opts.on_connect_macro_id === 'number') {
+          onConnectMacroId = opts.on_connect_macro_id
+        }
       } catch {
         // ignore malformed options_json
       }
@@ -147,6 +158,15 @@
   let vaultCredentialId = $state<number | null>(null)
   let keyPath = $state('')
   let passphrase = $state('')
+
+  /// When a vault credential is chosen, prefill the Username field with that
+  /// entry's username (empty when it has none). Done on the select's change
+  /// rather than a broad $effect so it doesn't clobber manual edits.
+  function onVaultCredentialChange() {
+    if (vaultCredentialId === null) return
+    const entry = vaultEntries.find((v) => v.id === vaultCredentialId)
+    username = entry?.username ?? ''
+  }
   let device = $state('')
   let baudRate = $state(9600)
   let folderId = $state<number | null>(null)
@@ -168,6 +188,11 @@
   /// always works regardless). Default on; stored in options_json only when
   /// disabled, so it falls back to the global default otherwise.
   let autoReconnect = $state(true)
+  /// Optional macro run automatically when the session reaches `connected`
+  /// (frontend-driven, so `{{vault:…}}` steps resolve). Stored in options_json
+  /// as `on_connect_macro_id`. `null` = none.
+  let macroSnippets = $state<Snippet[]>([])
+  let onConnectMacroId = $state<number | null>(null)
   let error = $state('')
 
   // Optional login automation: list of expect/send pairs run after connect.
@@ -293,6 +318,7 @@
         }
         // Only persisted when disabled; absent = follow the global default.
         if (!autoReconnect) opts.auto_reconnect = false
+        if (onConnectMacroId !== null) opts.on_connect_macro_id = onConnectMacroId
         return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
       }
       if (existing) {
@@ -352,7 +378,8 @@
           notes.trim() ||
           tagsInput.trim() ||
           (parseInt(antiIdleSec, 10) > 0 && antiIdleSend.length > 0) ||
-          !autoReconnect)
+          !autoReconnect ||
+          onConnectMacroId !== null)
       ) {
         await updateSavedSession(
           id,
@@ -538,7 +565,7 @@
         {#if vaultEntries.length > 0}
           <label>
             Use a saved credential (vault)
-            <select bind:value={vaultCredentialId}>
+            <select bind:value={vaultCredentialId} onchange={onVaultCredentialChange}>
               <option value={null}>— type a password —</option>
               {#each vaultEntries as v (v.id)}
                 <option value={v.id}>{v.name}{v.username ? ` (${v.username})` : ''}</option>
@@ -668,6 +695,18 @@
           <option value={null}>— Use global default —</option>
           {#each platforms as p (p.id)}
             <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+
+    {#if macroSnippets.length > 0}
+      <label>
+        Run a macro on connect <span class="hint-pill">automation</span>
+        <select bind:value={onConnectMacroId}>
+          <option value={null}>— None —</option>
+          {#each macroSnippets as m (m.id)}
+            <option value={m.id}>{m.name}</option>
           {/each}
         </select>
       </label>

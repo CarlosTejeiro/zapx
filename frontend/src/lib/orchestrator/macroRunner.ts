@@ -8,7 +8,7 @@
 // user-triggered, so the frontend drives it.
 
 import { invoke } from '@tauri-apps/api/core'
-import { sendVaultSecret } from '$lib/bridge/commands'
+import { sendVaultSecret, sendVaultField } from '$lib/bridge/commands'
 import { onTerminalData } from '$lib/bridge/events'
 import { getFocusedSessionId, focusSession } from '$lib/stores/sessionRuntime.svelte'
 import { showToast, type ToastKind } from '$lib/ui/toast-store.svelte'
@@ -101,19 +101,41 @@ function withEnter(text: string): number[] {
   return Array.from(new TextEncoder().encode(t))
 }
 
-/** A send that is exactly a vault reference `{{vault:<id>}}` optionally followed
- *  by a trailing `\r`. Matched before any escape decoding so the secret is never
+/** A send that is exactly a vault reference `{{vault:<inner>}}` optionally
+ *  followed by a trailing `\r`. The inner is either a legacy numeric id (→
+ *  password) or `<Name>.<Field>` where Field is Username/Password. Matched
+ *  before any escape decoding so neither the secret NOR the username is ever
  *  materialised in JS. */
-const VAULT_REF_RE = /^\{\{vault:(\d+)\}\}(\\r)?$/
+const VAULT_REF_RE = /^\{\{vault:([^}]+)\}\}(\\r)?$/
 
 async function send(sessionId: string, text: string): Promise<void> {
   const vault = VAULT_REF_RE.exec(text)
   if (vault) {
-    // The plaintext stays backend-side: ask the host to write the secret to the
-    // PTY directly. `enter` is true when the step had a trailing `\r`.
-    const id = parseInt(vault[1]!, 10)
+    // The plaintext / username stays backend-side: ask the host to write it to
+    // the PTY directly. `enter` is true when the step had a trailing `\r`.
+    const inner = vault[1]!
     const enter = vault[2] !== undefined
-    await sendVaultSecret(sessionId, id, enter).catch(() => {})
+    if (/^\d+$/.test(inner)) {
+      // Legacy id reference → always the password.
+      await sendVaultSecret(sessionId, parseInt(inner, 10), enter).catch(() => {})
+      return
+    }
+    // Name+field: split on the LAST dot. A recognised Username/Password suffix
+    // selects the field; otherwise the whole inner is the name and we default
+    // to the password. A vault name literally ending in `.username`/`.password`
+    // would misparse here — the backend forbids creating such names (see
+    // `reserved_name_error` in commands/vault.rs), so this stays unambiguous.
+    const dot = inner.lastIndexOf('.')
+    let name = inner
+    let field = 'password'
+    if (dot > 0) {
+      const suffix = inner.slice(dot + 1).toLowerCase()
+      if (suffix === 'username' || suffix === 'password') {
+        name = inner.slice(0, dot)
+        field = suffix
+      }
+    }
+    await sendVaultField(sessionId, name, field, enter).catch(() => {})
     return
   }
   const decoded = decodeEscapes(text)

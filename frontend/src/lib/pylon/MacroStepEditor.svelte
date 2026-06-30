@@ -15,18 +15,20 @@
 
   let { theme, steps = $bindable(), vaultEntries = [] }: Props = $props()
 
-  /** A send that is exactly `{{vault:<id>}}` (optionally ending in `\r`). */
-  const VAULT_REF_RE = /^\{\{vault:(\d+)\}\}(\\r)?$/
+  /** A send that is exactly a vault reference — either the legacy `{{vault:<id>}}`
+   *  form or the name+field `{{vault:<Name>.<Field>}}` form (optionally `\r`). */
+  const VAULT_REF_RE = /^\{\{vault:([^}]+)\}\}(\\r)?$/
   function isVaultRef(send: string): boolean {
     return VAULT_REF_RE.test(send)
   }
-  /// Set a send step to reference a vault entry. We append `\r` so the secret is
-  /// submitted (the common case: a password prompt). The stored value stays the
-  /// placeholder — the plaintext is resolved backend-side at run time.
-  function insertVaultRef(i: number, id: number) {
+  /// Set a send step to reference a vault entry by NAME + field. We append `\r`
+  /// so the value is submitted (the common case: a password prompt). The stored
+  /// value stays the placeholder — the secret / username is resolved
+  /// backend-side at run time and never enters this editor.
+  function insertVaultRef(i: number, name: string, field: 'Password' | 'Username') {
     const step = steps[i]
     if (!step) return
-    step.send = `{{vault:${id}}}\\r`
+    step.send = `{{vault:${name}.${field}}}\\r`
   }
 
   export function addStep() {
@@ -128,13 +130,17 @@
         {#if vaultEntries.length > 0}
           <select
             class="m-vault"
-            title="Insert vault reference"
+            title="Insert vault reference (by name + field)"
             aria-label="Insert vault reference"
             value=""
             onchange={(e) => {
-              const v = (e.currentTarget as HTMLSelectElement).value
-              if (v) insertVaultRef(i, parseInt(v, 10))
-              ;(e.currentTarget as HTMLSelectElement).value = ''
+              const sel = e.currentTarget as HTMLSelectElement
+              const idx = sel.selectedIndex
+              const opt = sel.options[idx]
+              const name = opt?.dataset.name
+              const field = opt?.dataset.field as 'Password' | 'Username' | undefined
+              if (name && field) insertVaultRef(i, name, field)
+              sel.value = ''
             }}
             style:background={theme.bodyBg}
             style:color={theme.textPrimary}
@@ -142,7 +148,12 @@
           >
             <option value="">🔒 vault…</option>
             {#each vaultEntries as v (v.id)}
-              <option value={v.id}>{v.name}{v.username ? ` (${v.username})` : ''}</option>
+              <option value={`${v.id}:pw`} data-name={v.name} data-field="Password"
+                >{v.name} · password</option
+              >
+              <option value={`${v.id}:un`} data-name={v.name} data-field="Username"
+                >{v.name} · username{v.username ? ` (${v.username})` : ''}</option
+              >
             {/each}
           </select>
         {/if}

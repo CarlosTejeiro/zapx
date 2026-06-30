@@ -11,7 +11,9 @@
   import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import { invoke } from '@tauri-apps/api/core'
-  import { decodeEscapes } from '$lib/orchestrator/macroRunner'
+  import { decodeEscapes, runMacro } from '$lib/orchestrator/macroRunner'
+  import { snippets } from '$lib/stores/snippets.svelte'
+  import type { LoginStep } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
   import SftpDialog from '$lib/terminal/SftpDialog.svelte'
   import TunnelsDialog from '$lib/terminal/TunnelsDialog.svelte'
@@ -224,6 +226,42 @@
       invoke('send_input', { sessionId: sid, data: bytes }).catch(() => {})
     }, antiIdle.intervalSec * 1000)
     return () => clearInterval(timer)
+  })
+
+  // On-connect macro: when the saved session names an `on_connect_macro_id`,
+  // run that macro once each time the session reaches `connected`. Driven from
+  // the frontend (like the snippet macro runner) so `{{vault:…}}` steps resolve.
+  // The guard resets on disconnect so a reconnect re-runs it.
+  const onConnectMacroId = $derived.by<number | null>(() => {
+    const raw = pane.savedSession?.options_json
+    if (!raw) return null
+    try {
+      const id = (JSON.parse(raw) as { on_connect_macro_id?: unknown }).on_connect_macro_id
+      return typeof id === 'number' ? id : null
+    } catch {
+      return null
+    }
+  })
+
+  let onConnectRan = $state(false)
+  $effect(() => {
+    if (status !== 'connected') {
+      // Allow a re-run after a reconnect.
+      if (status === 'closed' || status === 'error') onConnectRan = false
+      return
+    }
+    if (onConnectRan || onConnectMacroId === null || !runtimeSid) return
+    const macro = snippets.find((s) => s.id === onConnectMacroId)
+    if (!macro?.steps_json) return
+    let steps: LoginStep[]
+    try {
+      steps = JSON.parse(macro.steps_json)
+    } catch {
+      return
+    }
+    onConnectRan = true
+    const sid = runtimeSid
+    runMacro(sid, steps).catch(() => {})
   })
 
   // Map PylonTheme terminal tokens → xterm ColorPalette
