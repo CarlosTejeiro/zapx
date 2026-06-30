@@ -5,6 +5,27 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-06-30
+
+### Added
+- **Credential vault** — create reusable named credentials (name + username +
+  password, stored in the OS keyring). Attach one to a saved session, or
+  reference it from a macro with a `{{vault:<id>}}` step. The secret is resolved
+  in the backend at run time and written straight to the session — it never
+  enters the macro JSON, exports, logs, or the frontend. Managed from a new
+  Vault dialog.
+- **Export / import macros as JSON** — export a single macro or all of them to a
+  versioned `.json` file, and import them back (idempotent by name). Macros with
+  a vault reference export the placeholder only, never the password.
+
+### Changed
+- **MobaXterm importer handles the real `[Macros]` export** — paste the
+  `name=step|step|…` lines from an exported `MobaXterm.ini` (not just the macro
+  editor's line list). `WAITFOR=`→expect, `SLEEP=`→wait, `RETURN`→Enter; encoded
+  specials (`__DBLDOT__`→`:`, …) are decoded; multiple macros import at once; the
+  format is auto-detected. On import, a password typed after a prompt can be
+  stashed in the vault (you confirm which step) instead of landing in plaintext.
+
 ## [0.12.0] - 2026-06-29
 
 ### Added

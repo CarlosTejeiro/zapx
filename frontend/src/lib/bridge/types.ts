@@ -24,6 +24,8 @@ export type AuthMethod =
   | { type: 'key'; keyPath: string; passphrase: string | null }
   | { type: 'keyboard-interactive' }
   | { type: 'agent' }
+  // Reuse an existing vault credential by id (no secret carried).
+  | { type: 'vaultentry'; credentialId: number }
 
 // One server-driven keyboard-interactive prompt.
 export interface KiPrompt {
@@ -106,6 +108,15 @@ export interface Snippet {
   steps_json: string | null
   /** Optional folder name for the sidebar Macros library; null = ungrouped. */
   folder: string | null
+}
+
+/** A reusable credential ("vault") entry. NEVER carries a secret — only the
+ *  metadata needed to list and reference it. The password lives in the OS
+ *  keyring and is only ever written straight to a session's PTY backend-side. */
+export interface VaultEntry {
+  id: number
+  name: string
+  username: string | null
 }
 
 /** Item in the "Recents" zone of the snippet bar — a frequently-typed command

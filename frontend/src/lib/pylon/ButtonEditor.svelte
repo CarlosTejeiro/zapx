@@ -2,7 +2,8 @@
   /// Inline editor popover for a button-bar button (a snippet). Used by
   /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
   import type { PylonTheme } from '$lib/themes/index'
-  import type { Snippet, LoginStep } from '$lib/bridge/types'
+  import type { Snippet, LoginStep, VaultEntry } from '$lib/bridge/types'
+  import { listVaultEntries } from '$lib/bridge/commands'
   import MacroStepEditor from './MacroStepEditor.svelte'
 
   interface Props {
@@ -58,6 +59,15 @@
       return []
     }
   }
+  // Vault entries available to reference from a `send` step (parity with
+  // MacroDialog). An empty list simply hides the picker.
+  let vaultEntries = $state<VaultEntry[]>([])
+  $effect(() => {
+    listVaultEntries()
+      .then((v) => (vaultEntries = v))
+      .catch(() => {})
+  })
+
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
@@ -165,7 +175,7 @@
       style:font-family={theme.fontMono}
     ></textarea>
   {:else}
-    <MacroStepEditor {theme} bind:steps />
+    <MacroStepEditor {theme} bind:steps {vaultEntries} />
   {/if}
 
   <div class="footer">

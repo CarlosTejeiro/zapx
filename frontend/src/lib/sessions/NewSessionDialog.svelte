@@ -20,6 +20,7 @@
     setSessionForwards,
     getSessionTriggers,
     setSessionTriggers,
+    listVaultEntries,
   } from '$lib/bridge/commands'
   import type {
     Folder,
@@ -29,6 +30,7 @@
     Trigger,
     PlatformInfo,
     SavedForward,
+    VaultEntry,
   } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
@@ -59,6 +61,11 @@
       )
     } catch {
       bastionCandidates = []
+    }
+    try {
+      vaultEntries = await listVaultEntries()
+    } catch {
+      vaultEntries = []
     }
     try {
       platforms = await listPlatforms()
@@ -134,6 +141,10 @@
   let username = $state('')
   let authType = $state<'password' | 'key' | 'keyboard-interactive' | 'agent'>('password')
   let password = $state('')
+  // Reusable vault credentials available for password auth. `vaultCredentialId`
+  // is the chosen entry (null = type a password as usual).
+  let vaultEntries = $state<VaultEntry[]>([])
+  let vaultCredentialId = $state<number | null>(null)
   let keyPath = $state('')
   let passphrase = $state('')
   let device = $state('')
@@ -308,7 +319,9 @@
               ? { type: 'agent' }
               : authType === 'keyboard-interactive'
                 ? { type: 'keyboard-interactive' }
-                : { type: 'password', password }
+                : vaultCredentialId !== null
+                  ? { type: 'vaultentry', credentialId: vaultCredentialId }
+                  : { type: 'password', password }
         id = await createSavedSession(
           name.trim(),
           folderId,
@@ -522,10 +535,23 @@
         </p>
       {/if}
       {#if !isEdit && authType === 'password'}
-        <label>
-          Password
-          <input type="password" bind:value={password} />
-        </label>
+        {#if vaultEntries.length > 0}
+          <label>
+            Use a saved credential (vault)
+            <select bind:value={vaultCredentialId}>
+              <option value={null}>— type a password —</option>
+              {#each vaultEntries as v (v.id)}
+                <option value={v.id}>{v.name}{v.username ? ` (${v.username})` : ''}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        {#if vaultCredentialId === null}
+          <label>
+            Password
+            <input type="password" bind:value={password} />
+          </label>
+        {/if}
       {:else if authType === 'key'}
         <label>
           Key file

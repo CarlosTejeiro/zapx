@@ -1,16 +1,26 @@
 <script lang="ts">
-  /// Paste a MobaXterm macro (the line list from its "Macro edition" dialog)
-  /// and import it as a ZAPX macro. Parsing is live so the user sees how many
-  /// steps will be created before importing.
+  /// Paste a MobaXterm macro and import it as one or more ZAPX macros. Accepts
+  /// both the "Macro edition" line list and the real `[Macros]` ini export
+  /// (auto-detected). Parsing is live so the user sees how many macros/steps
+  /// will be created before importing.
+  ///
+  /// Vault binding: if a parsed macro types a likely password, we offer to stash
+  /// that plaintext in the credential vault and replace the step's `send` with a
+  /// `{{vault:<id>}}` reference — so the plaintext never lands in steps_json.
+  /// Detection is heuristic and broad, so the user confirms WHICH `send` step is
+  /// the password via a masked dropdown (or picks "none").
   import { fade, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import type { PylonTheme } from '$lib/themes/index'
   import type { LoginStep } from '$lib/bridge/types'
-  import { parseMobaMacro } from '$lib/snippets/mobaMacro'
+  import { parseMobaMacros } from '$lib/snippets/mobaMacro'
+  import { createVaultEntry } from '$lib/bridge/commands'
+  import { decodeEscapes } from '$lib/orchestrator/macroRunner'
 
   interface Props {
     theme: PylonTheme
-    onImport: (name: string, steps: LoginStep[]) => void
+    /** Import a batch of parsed macros (steps already vault-substituted). */
+    onImport: (macros: { name: string; steps: LoginStep[] }[]) => void
     onClose: () => void
   }
 
@@ -19,12 +29,145 @@
   let name = $state('Imported macro')
   let text = $state('')
 
-  const steps = $derived(parseMobaMacro(text))
-  const canImport = $derived(!!name.trim() && steps.length > 0)
+  const parsed = $derived(parseMobaMacros(text))
+  const stepCount = $derived(parsed.reduce((n, m) => n + m.steps.length, 0))
+  const canImport = $derived(stepCount > 0)
 
-  function doImport() {
+  // ── Password → vault detection ─────────────────────────────────────────────
+  // A candidate `send` step, addressed by macro+step index. `key` is the stable
+  // `mi:si` selector value; `likely` flags the heuristic-best guess.
+  interface Candidate {
+    key: string
+    macroIndex: number
+    stepIndex: number
+    plaintext: string
+    likely: boolean
+  }
+
+  /// Every `send` step is selectable, but we flag the likely password ones:
+  ///  (a) the send follows an expect matching pass(word|phrase) — covers the
+  ///      [Macros] export format (WAITFOR → expect), OR
+  ///  (b) the send follows a `wait` step AND an earlier `ssh user@host` send
+  ///      exists in the same macro AND the candidate isn't itself an `ssh …` /
+  ///      obvious non-secret (e.g. a "yes" host-key confirmation).
+  function buildCandidates(macros: { name: string; steps: LoginStep[] }[]): Candidate[] {
+    const out: Candidate[] = []
+    for (let mi = 0; mi < macros.length; mi++) {
+      const steps = macros[mi]!.steps
+      const hasSshSend = steps.some(
+        (s) => s.kind === 'send' && /ssh\s+[^@\s]+@[^\s]+/i.test(decodeEscapes(s.send)),
+      )
+      for (let si = 0; si < steps.length; si++) {
+        const cur = steps[si]!
+        if (cur.kind !== 'send') continue
+        const plaintext = cur.send.replace(/\\r$/, '')
+        if (plaintext.length === 0) continue
+        const prev = si > 0 ? steps[si - 1] : null
+        const afterPrompt = prev?.kind === 'expect' && /pass(word|phrase)/i.test(prev.expect)
+        const decoded = decodeEscapes(plaintext)
+        const obviousNonSecret =
+          /^\s*(ssh|telnet|yes|no|y|n)\b/i.test(decoded) || /@[^\s]+/.test(decoded)
+        const afterWait = prev?.kind === 'wait' && hasSshSend && !obviousNonSecret
+        out.push({
+          key: `${mi}:${si}`,
+          macroIndex: mi,
+          stepIndex: si,
+          plaintext,
+          likely: afterPrompt || afterWait,
+        })
+      }
+    }
+    return out
+  }
+
+  const candidates = $derived(buildCandidates(parsed))
+  // The default likely candidate (first flagged), used to seed the selector.
+  const detected = $derived(candidates.find((c) => c.likely) ?? null)
+
+  let saveToVault = $state(true)
+  let vaultName = $state('')
+  let vaultUser = $state('')
+  // The user's chosen candidate `key`, or '' for "none". Re-seeded when the
+  // detected candidate changes.
+  let chosenKey = $state('')
+  let lastSeeded = ''
+  $effect(() => {
+    const seed = detected?.key ?? ''
+    if (seed !== lastSeeded) {
+      lastSeeded = seed
+      chosenKey = seed
+    }
+  })
+
+  const chosen = $derived(candidates.find((c) => c.key === chosenKey) ?? null)
+
+  // Prefill name/username when a candidate is chosen. Username comes from a
+  // preceding `ssh user@host` send if parseable.
+  $effect(() => {
+    if (!chosen) return
+    const steps = parsed[chosen.macroIndex]!.steps
+    const name0 = parsed[chosen.macroIndex]!.name
+    if (!vaultName) vaultName = name0 || 'Imported credential'
+    if (!vaultUser) vaultUser = guessUsername(steps) ?? ''
+  })
+
+  function guessUsername(steps: LoginStep[]): string | null {
+    for (const s of steps) {
+      if (s.kind !== 'send') continue
+      const m = /ssh\s+([^@\s]+)@[^\s]+/i.exec(decodeEscapes(s.send))
+      if (m) return m[1]!
+    }
+    return null
+  }
+
+  /// Mask a candidate's value for the dropdown so the plaintext isn't shown.
+  function mask(s: string): string {
+    const len = s.length
+    return len <= 2 ? '••' : `${'•'.repeat(Math.min(len, 8))} (${len} chars)`
+  }
+
+  function candidateLabel(c: Candidate): string {
+    const macroName = parsed[c.macroIndex]!.name || `macro ${c.macroIndex + 1}`
+    const flag = c.likely ? '🔒 ' : ''
+    return `${flag}${macroName} · step ${c.stepIndex + 1}: ${mask(c.plaintext)}`
+  }
+
+  async function doImport() {
     if (!canImport) return
-    onImport(name.trim(), steps)
+    // Deep-clone parsed steps so the substitution doesn't mutate $derived state.
+    const macros = parsed.map((m) => ({
+      name: m.name,
+      steps: m.steps.map((s) => ({ ...s })),
+    }))
+
+    if (saveToVault && chosen) {
+      try {
+        const id = await createVaultEntry(
+          vaultName.trim() || 'Imported credential',
+          vaultUser.trim() || null,
+          chosen.plaintext,
+        )
+        // Replace the chosen step's send with a vault reference. Preserve a
+        // trailing Enter if the original had one.
+        const orig = parsed[chosen.macroIndex]!.steps[chosen.stepIndex]!
+        const enter = /\\r$/.test(orig.send) ? '\\r' : ''
+        macros[chosen.macroIndex]!.steps[chosen.stepIndex]!.send = `{{vault:${id}}}${enter}`
+      } catch {
+        // If vaulting fails, fall through and import the macro as-is rather
+        // than blocking the whole import.
+      }
+    }
+
+    // For a single unnamed macro (editor format) use the typed name; otherwise
+    // keep each parsed macro's own name.
+    if (macros.length === 1 && !macros[0]!.name) {
+      macros[0]!.name = name.trim() || 'Imported macro'
+    } else {
+      for (const m of macros) {
+        if (!m.name) m.name = name.trim() || 'Imported macro'
+      }
+    }
+    onImport(macros)
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -57,12 +200,13 @@
   >
     <h3 style:color={theme.textPrimary}>Import macro from MobaXterm</h3>
     <p class="hint" style:color={theme.textDim}>
-      Paste the lines from MobaXterm's macro editor (text, RETURN, SLEEP=ms, BACK…).
+      Paste the macro editor lines, or a `[Macros]` export line (name=step|step|…). Multiple export
+      lines import as separate macros.
     </p>
 
     <input
       class="name"
-      placeholder="Macro name"
+      placeholder="Macro name (fallback for unnamed macros)"
       bind:value={name}
       style:background={theme.bodyBg}
       style:color={theme.textPrimary}
@@ -80,10 +224,60 @@
       style:font-family={theme.fontMono}
     ></textarea>
 
+    {#if candidates.length > 0}
+      <div
+        class="vault-box"
+        style:border="1px solid {theme.border}"
+        style:background={theme.bodyBg}
+      >
+        <label class="vault-toggle" style:color={theme.textPrimary}>
+          <input type="checkbox" bind:checked={saveToVault} />
+          🔒 Save a typed password to the vault
+        </label>
+        {#if saveToVault}
+          <label class="vault-pick" style:color={theme.textDim}>
+            Which step is the password?
+            <select
+              bind:value={chosenKey}
+              style:background={theme.sidebarBg}
+              style:color={theme.textPrimary}
+              style:border="1px solid {theme.border}"
+            >
+              <option value="">None — import as-is</option>
+              {#each candidates as c (c.key)}
+                <option value={c.key}>{candidateLabel(c)}</option>
+              {/each}
+            </select>
+          </label>
+          {#if chosen}
+            <div class="vault-fields">
+              <input
+                class="vfield"
+                placeholder="Vault entry name"
+                bind:value={vaultName}
+                style:background={theme.sidebarBg}
+                style:color={theme.textPrimary}
+                style:border="1px solid {theme.border}"
+              />
+              <input
+                class="vfield"
+                placeholder="Username (optional)"
+                bind:value={vaultUser}
+                style:background={theme.sidebarBg}
+                style:color={theme.textPrimary}
+                style:border="1px solid {theme.border}"
+              />
+            </div>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+
     <div class="footer">
       <span class="count" style:color={theme.textMuted}>
-        {steps.length}
-        {steps.length === 1 ? 'step' : 'steps'}
+        {parsed.length}
+        {parsed.length === 1 ? 'macro' : 'macros'}, {stepCount}
+        {stepCount === 1 ? 'step' : 'steps'}
       </span>
       <span class="spacer"></span>
       <button
@@ -149,6 +343,46 @@
     padding: 7px 9px;
     font-size: 12px;
     line-height: 1.5;
+    outline: none;
+  }
+  .vault-box {
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vault-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .vault-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11.5px;
+  }
+  .vault-pick select {
+    border-radius: 5px;
+    padding: 4px 6px;
+    font-size: 11.5px;
+    font-family: inherit;
+    outline: none;
+  }
+  .vault-fields {
+    display: flex;
+    gap: 6px;
+  }
+  .vfield {
+    flex: 1;
+    min-width: 0;
+    border-radius: 5px;
+    padding: 4px 7px;
+    font-size: 12px;
+    font-family: inherit;
     outline: none;
   }
   .footer {

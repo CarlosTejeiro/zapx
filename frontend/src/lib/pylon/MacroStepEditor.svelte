@@ -3,15 +3,31 @@
   /// inline editor (ButtonEditor) and the sidebar macro dialog (MacroDialog).
   /// `steps` is bindable so the parent owns the array.
   import type { PylonTheme } from '$lib/themes/index'
-  import type { LoginStep } from '$lib/bridge/types'
+  import type { LoginStep, VaultEntry } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
 
   interface Props {
     theme: PylonTheme
     steps: LoginStep[]
+    /** Vault entries available to reference from a `send` step. */
+    vaultEntries?: VaultEntry[]
   }
 
-  let { theme, steps = $bindable() }: Props = $props()
+  let { theme, steps = $bindable(), vaultEntries = [] }: Props = $props()
+
+  /** A send that is exactly `{{vault:<id>}}` (optionally ending in `\r`). */
+  const VAULT_REF_RE = /^\{\{vault:(\d+)\}\}(\\r)?$/
+  function isVaultRef(send: string): boolean {
+    return VAULT_REF_RE.test(send)
+  }
+  /// Set a send step to reference a vault entry. We append `\r` so the secret is
+  /// submitted (the common case: a password prompt). The stored value stays the
+  /// placeholder — the plaintext is resolved backend-side at run time.
+  function insertVaultRef(i: number, id: number) {
+    const step = steps[i]
+    if (!step) return
+    step.send = `{{vault:${id}}}\\r`
+  }
 
   export function addStep() {
     steps.push({ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 })
@@ -97,6 +113,9 @@
           style:border="1px solid {theme.border}"
         />
       {:else if step.kind === 'send'}
+        {#if isVaultRef(step.send)}
+          <span class="m-lock" title="Vault reference (secret resolved at run time)">🔒</span>
+        {/if}
         <input
           class="m-in m-wide"
           placeholder={'send (\\r for bare Enter)'}
@@ -106,6 +125,27 @@
           style:color={theme.textPrimary}
           style:border="1px solid {theme.border}"
         />
+        {#if vaultEntries.length > 0}
+          <select
+            class="m-vault"
+            title="Insert vault reference"
+            aria-label="Insert vault reference"
+            value=""
+            onchange={(e) => {
+              const v = (e.currentTarget as HTMLSelectElement).value
+              if (v) insertVaultRef(i, parseInt(v, 10))
+              ;(e.currentTarget as HTMLSelectElement).value = ''
+            }}
+            style:background={theme.bodyBg}
+            style:color={theme.textPrimary}
+            style:border="1px solid {theme.border}"
+          >
+            <option value="">🔒 vault…</option>
+            {#each vaultEntries as v (v.id)}
+              <option value={v.id}>{v.name}{v.username ? ` (${v.username})` : ''}</option>
+            {/each}
+          </select>
+        {/if}
       {:else}
         <input
           class="m-ms m-waitms"
@@ -198,6 +238,20 @@
   .m-hint {
     font-size: 10.5px;
     flex-shrink: 0;
+  }
+  .m-lock {
+    font-size: 11px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .m-vault {
+    width: 5.4rem;
+    flex-shrink: 0;
+    border-radius: 5px;
+    padding: 4px 4px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
   }
   .m-rm {
     background: transparent;

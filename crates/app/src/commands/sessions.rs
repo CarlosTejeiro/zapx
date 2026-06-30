@@ -341,6 +341,13 @@ pub enum AuthMethodArg {
     #[serde(rename = "keyboard-interactive")]
     KeyboardInteractive,
     Agent,
+    /// Reference an existing reusable vault credential by id. No secret is
+    /// carried; the saved session just points at the credential row.
+    #[serde(rename = "vaultentry")]
+    VaultEntry {
+        #[serde(rename = "credentialId")]
+        credential_id: i64,
+    },
 }
 
 /// Event payload for `ssh-ki-prompt`. The frontend renders the prompts and
@@ -399,8 +406,8 @@ fn build_ssh_auth(
     app: &AppHandle,
     ki_pending: &crate::state::KiPending,
     state: &AppState,
-) -> core_transport::SshAuth {
-    match arg {
+) -> Result<core_transport::SshAuth, AppError> {
+    Ok(match arg {
         AuthMethodArg::Password { password } => core_transport::SshAuth::Password(password),
         AuthMethodArg::Key {
             key_path,
@@ -415,7 +422,24 @@ fn build_ssh_auth(
         AuthMethodArg::Agent => core_transport::SshAuth::Agent {
             priority: read_agent_priority(state),
         },
-    }
+        AuthMethodArg::VaultEntry { credential_id } => {
+            // Resolve the reusable credential's secret from the keyring for an
+            // ephemeral connect. Saved sessions take the credential_id path
+            // (resolve_ssh_auth_for_session) instead. A failed lookup is a real
+            // error — don't silently auth with an empty password.
+            let secret = state
+                .db
+                .get_credential_keyring_key(credential_id)
+                .ok()
+                .and_then(|key| core_vault::Vault::retrieve(&key).ok())
+                .ok_or_else(|| {
+                    AppError::Internal(format!(
+                        "vault credential {credential_id} unavailable (keyring locked or entry deleted)"
+                    ))
+                })?;
+            core_transport::SshAuth::Password(secret)
+        }
+    })
 }
 
 /// Read the persisted `ssh.agent_priority` setting and resolve to an enum.
@@ -487,7 +511,7 @@ pub async fn open_ssh_session(
 ) -> Result<String, AppError> {
     let session_id = Uuid::new_v4().to_string();
 
-    let auth = build_ssh_auth(auth, &app, &state.ki_pending, &state);
+    let auth = build_ssh_auth(auth, &app, &state.ki_pending, &state)?;
     let mut transport = core_transport::SshTransport::open_shell(
         host.clone(),
         port,
@@ -814,6 +838,12 @@ pub async fn create_saved_session(
             ("keyboard-interactive", None, "{}".to_string(), None)
         }
         AuthMethodArg::Agent => ("agent", None, "{}".to_string(), None),
+        AuthMethodArg::VaultEntry { credential_id } => {
+            // Reuse an existing vault credential: no keyring write, just point
+            // the session at the reusable row. resolve_ssh_auth_for_session
+            // pulls the secret by credential_id on connect.
+            ("password", Some(credential_id), "{}".to_string(), None)
+        }
     };
 
     let id = state
@@ -949,9 +979,19 @@ pub async fn delete_saved_session(state: State<'_, AppState>, id: i64) -> Result
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     if let Some(cred_id) = session.credential_id {
-        if let Ok(key) = state.db.get_credential_keyring_key(cred_id) {
-            core_vault::Vault::delete(&key).ok();
-            state.db.delete_credential(cred_id).ok();
+        // Reusable vault credentials are shared across sessions — never delete
+        // them here; the FK SET NULL just detaches this session. Only purge a
+        // credential that belongs solely to this session.
+        let reusable = state
+            .db
+            .get_credential(cred_id)
+            .map(|c| c.reusable)
+            .unwrap_or(false);
+        if !reusable {
+            if let Ok(key) = state.db.get_credential_keyring_key(cred_id) {
+                core_vault::Vault::delete(&key).ok();
+                state.db.delete_credential(cred_id).ok();
+            }
         }
     }
 
