@@ -5,6 +5,14 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-06-30
+
+### Removed
+- **"Recent" sessions section in the sidebar** — it duplicated entries already
+  shown in the main sessions list and only took up vertical space, so it has
+  been removed. (The bottom bar's recent-*commands* zone is unrelated and
+  stays.) Sessions are still ordered by last use in the main list.
+
 ## [0.14.2] - 2026-06-30
 
 ### Added
