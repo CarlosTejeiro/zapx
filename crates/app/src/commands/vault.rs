@@ -23,6 +23,22 @@ pub struct VaultEntryDto {
     pub username: Option<String>,
 }
 
+/// Reject vault names that would collide with the `{{vault:<Name>.<Field>}}`
+/// macro placeholder grammar, where the frontend runner splits on the last dot
+/// and treats a `username`/`password` suffix as the field selector. A name
+/// literally ending in `.username` / `.password` would misparse, so we forbid
+/// it at creation/rename time. Returns `Some(msg)` when the name is reserved.
+fn reserved_name_error(name: &str) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".username") || lower.ends_with(".password") {
+        return Some(
+            "vault name can't end in '.username' or '.password' (reserved for macro field references)"
+                .into(),
+        );
+    }
+    None
+}
+
 /// Create a reusable vault entry. The password goes to the OS keyring; only the
 /// keyring reference + metadata are persisted. Returns the new credential id.
 #[tauri::command]
@@ -35,13 +51,36 @@ pub async fn create_vault_entry(
     if name.trim().is_empty() {
         return Err(AppError::Internal("vault entry name is required".into()));
     }
+    if let Some(msg) = reserved_name_error(name.trim()) {
+        return Err(AppError::Internal(msg));
+    }
+    if state
+        .db
+        .vault_name_taken(name.trim(), None)
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        return Err(AppError::Internal(format!(
+            "a vault credential named '{}' already exists",
+            name.trim()
+        )));
+    }
     let keyring_key = format!("vault:{}", Uuid::new_v4());
     core_vault::Vault::store(&keyring_key, &password)
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    state
+    // The pre-check above is racy: two same-name creates can both pass it, and
+    // the partial unique index (migration 021) then rejects the second insert.
+    // Don't leak the just-stored keyring secret on ANY insert failure — delete
+    // it before propagating so no orphaned key lingers in the OS keyring.
+    match state
         .db
         .create_vault_entry(name.trim(), username.as_deref(), &keyring_key)
-        .map_err(|e| AppError::Internal(e.to_string()))
+    {
+        Ok(id) => Ok(id),
+        Err(e) => {
+            core_vault::Vault::delete(&keyring_key).ok();
+            Err(AppError::Internal(e.to_string()))
+        }
+    }
 }
 
 /// List all reusable vault entries (no secrets).
@@ -75,6 +114,19 @@ pub async fn update_vault_entry(
 ) -> Result<(), AppError> {
     if name.trim().is_empty() {
         return Err(AppError::Internal("vault entry name is required".into()));
+    }
+    if let Some(msg) = reserved_name_error(name.trim()) {
+        return Err(AppError::Internal(msg));
+    }
+    if state
+        .db
+        .vault_name_taken(name.trim(), Some(id))
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        return Err(AppError::Internal(format!(
+            "a vault credential named '{}' already exists",
+            name.trim()
+        )));
     }
     state
         .db
@@ -126,11 +178,71 @@ pub async fn send_vault_secret(
     if enter {
         bytes.push(b'\r');
     }
+    write_to_session(&state, &session_id, bytes)
+}
 
+/// Security-critical: send a vault entry's USERNAME or PASSWORD to a live
+/// session's PTY, resolving the entry by its (unique) name.
+///
+/// `field` is case-insensitive: `password` retrieves the keyring secret (never
+/// returned over the bridge), `username` uses the stored metadata (may be
+/// empty, in which case nothing but the optional `\r` is sent). Backs the
+/// `{{vault:<Name>.<Field>}}` macro reference.
+#[tauri::command]
+pub async fn send_vault_field(
+    state: State<'_, AppState>,
+    session_id: String,
+    name: String,
+    field: String,
+    enter: bool,
+) -> Result<(), AppError> {
+    let cred = state
+        .db
+        .get_credential_by_name(&name)
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| AppError::Internal(format!("no vault credential named '{name}'")))?;
+
+    let mut bytes = match field.to_ascii_lowercase().as_str() {
+        "password" => core_vault::Vault::retrieve(&cred.keyring_key)
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .into_bytes(),
+        "username" => cred.username.unwrap_or_default().into_bytes(),
+        other => {
+            return Err(AppError::Internal(format!(
+                "unknown vault field '{other}' (expected Username or Password)"
+            )));
+        }
+    };
+    if enter {
+        bytes.push(b'\r');
+    }
+    write_to_session(&state, &session_id, bytes)
+}
+
+/// Write raw bytes straight to a live session's input channel (the same path
+/// `send_input` uses). Errors with a clear message on an unknown session.
+fn write_to_session(state: &AppState, session_id: &str, bytes: Vec<u8>) -> Result<(), AppError> {
     let sessions = state.sessions.lock().unwrap();
     let session = sessions
-        .get(&session_id)
+        .get(session_id)
         .ok_or_else(|| AppError::Internal(format!("unknown session: {session_id}")))?;
     session.cmd_tx.send(SessionCmd::Data(bytes)).ok();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reserved_names_rejected_case_insensitively() {
+        assert!(reserved_name_error("svc.username").is_some());
+        assert!(reserved_name_error("svc.Password").is_some());
+        assert!(reserved_name_error("SVC.PASSWORD").is_some());
+        // Ordinary names — including a dotted name with a non-field suffix —
+        // are fine.
+        assert!(reserved_name_error("prod-root").is_none());
+        assert!(reserved_name_error("svc.admin").is_none());
+        assert!(reserved_name_error("password").is_none());
+    }
 }

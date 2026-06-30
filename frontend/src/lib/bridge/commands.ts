@@ -318,6 +318,12 @@ export async function setSnippetFolder(id: number, folder: string | null): Promi
   return invoke<void>('set_snippet_folder', { id, folder })
 }
 
+/** Persist a new per-folder ordering for macros (sidebar Macros ▲/▼ reorder).
+ *  Each id's `position` becomes its index in `orderedIds`. */
+export async function setSnippetPositions(orderedIds: number[]): Promise<void> {
+  return invoke<void>('set_snippet_positions', { orderedIds })
+}
+
 // Persist a new display order (sort_order) for the listed snippet ids.
 export async function setSnippetsOrder(orderedIds: number[]): Promise<void> {
   return invoke<void>('set_snippets_order', { orderedIds })
@@ -379,6 +385,19 @@ export async function sendVaultSecret(
   enter: boolean,
 ): Promise<void> {
   return invoke<void>('send_vault_secret', { sessionId, vaultEntryId, enter })
+}
+
+/** Security-critical: send a vault entry's USERNAME or PASSWORD straight to a
+ *  session's PTY, resolving the entry by its (unique) name. The plaintext /
+ *  username never crosses back over the bridge. `field` is case-insensitive
+ *  ("Username" | "Password"). Backs `{{vault:<Name>.<Field>}}`. */
+export async function sendVaultField(
+  sessionId: string,
+  name: string,
+  field: string,
+  enter: boolean,
+): Promise<void> {
+  return invoke<void>('send_vault_field', { sessionId, name, field, enter })
 }
 
 export async function deleteSnippet(id: number): Promise<void> {

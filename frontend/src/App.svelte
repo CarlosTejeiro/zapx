@@ -88,6 +88,7 @@
     deleteSnippet,
     setSnippetSteps,
     setSnippetFolder,
+    setSnippetPositions,
     exportMacros,
     importMacros,
   } from '$lib/bridge/commands'
@@ -375,6 +376,53 @@
       showToast({
         kind: 'error',
         title: 'Delete macro failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /// Duplicate a macro: a fresh snippet named "<name> (copy)" with the same
+  /// content/platform/color, then copy its steps + folder. Mirrors the
+  /// session-clone toast pattern.
+  async function cloneMacro(src: Snippet) {
+    try {
+      const id = await createSnippet(`${src.name} (copy)`, src.content, src.platform, src.color)
+      if (src.steps_json) await setSnippetSteps(id, src.steps_json)
+      if (src.folder) await setSnippetFolder(id, src.folder)
+      await refreshSnippets()
+      showToast({ kind: 'success', title: 'Macro duplicated', detail: `${src.name} (copy)` })
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Duplicate failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /// Move a macro to a folder (`null` = ungrouped) from the sidebar Macros zone.
+  async function setMacroFolder(m: Snippet, folder: string | null) {
+    try {
+      await setSnippetFolder(m.id, folder)
+      await refreshSnippets()
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Move macro failed',
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /// Persist a new order for a macro folder group (ids in their new order).
+  async function reorderMacros(orderedIds: number[]) {
+    try {
+      await setSnippetPositions(orderedIds)
+      await refreshSnippets()
+    } catch (e) {
+      showToast({
+        kind: 'error',
+        title: 'Reorder macros failed',
         detail: e instanceof Error ? e.message : String(e),
       })
     }
@@ -1505,6 +1553,9 @@
       {macros}
       onRunMacro={(m) => runMacroOnFocused(m)}
       onEditMacro={(m) => (editingMacro = m)}
+      onCloneMacro={cloneMacro}
+      onSetMacroFolder={setMacroFolder}
+      onReorderMacros={reorderMacros}
       onNewMacro={() => (editingMacro = 'new')}
       onImportMacro={() => (showMacroImport = true)}
       onImportMacrosJson={importMacrosFromFile}

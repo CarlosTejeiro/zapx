@@ -108,6 +108,9 @@ export interface Snippet {
   steps_json: string | null
   /** Optional folder name for the sidebar Macros library; null = ungrouped. */
   folder: string | null
+  /** Optional rank within the macro's sidebar folder group (nulls last).
+   *  Reordered independently of `sort_order`; null = unranked. */
+  position: number | null
 }
 
 /** A reusable credential ("vault") entry. NEVER carries a secret — only the

@@ -33,6 +33,12 @@
     macros?: Snippet[]
     onRunMacro?: (macro: Snippet) => void
     onEditMacro?: (macro: Snippet) => void
+    /** Duplicate a macro (creates "<name> (copy)"). */
+    onCloneMacro?: (macro: Snippet) => void
+    /** Move a macro to a folder (`null` = ungrouped). */
+    onSetMacroFolder?: (macro: Snippet, folder: string | null) => void
+    /** Persist a new order for a folder group (ids in their new order). */
+    onReorderMacros?: (orderedIds: number[]) => void
     onNewMacro?: () => void
     onImportMacro?: () => void
     /** Import macros from a ZAPX JSON file. */
@@ -66,6 +72,9 @@
     macros,
     onRunMacro,
     onEditMacro,
+    onCloneMacro,
+    onSetMacroFolder,
+    onReorderMacros,
     onNewMacro,
     onImportMacro,
     onImportMacrosJson,
@@ -75,6 +84,18 @@
   }: Props = $props()
 
   const macroList = $derived(macros ?? [])
+
+  /// Order macros within a folder group by `position` (nulls last), then by
+  /// sort_order, then name — matching the backend's stable fallback.
+  function orderGroup(items: Snippet[]): Snippet[] {
+    return [...items].sort((a, b) => {
+      const pa = a.position ?? Number.MAX_SAFE_INTEGER
+      const pb = b.position ?? Number.MAX_SAFE_INTEGER
+      if (pa !== pb) return pa - pb
+      if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+      return a.name.localeCompare(b.name)
+    })
+  }
 
   // Group macros for the sidebar: ungrouped first, then named folders (sorted).
   const macroGroups = $derived.by(() => {
@@ -89,9 +110,30 @@
         ungrouped.push(m)
       }
     }
-    const folders = [...byFolder.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    return { ungrouped, folders }
+    const folders = [...byFolder.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, items]) => [name, orderGroup(items)] as [string, Snippet[]])
+    return { ungrouped: orderGroup(ungrouped), folders }
   })
+
+  /// Distinct folder names across macros, for the per-row "move to folder" menu.
+  const macroFolderNames = $derived(
+    [...new Set(macroList.map((m) => m.folder).filter((f): f is string => !!f))].sort((a, b) =>
+      a.localeCompare(b),
+    ),
+  )
+
+  /// Reorder a macro within its current folder group: swap with its neighbour
+  /// (dir = -1 up, +1 down) and persist the group's new order. No-op at ends.
+  function moveMacro(group: Snippet[], index: number, dir: -1 | 1) {
+    const j = index + dir
+    if (j < 0 || j >= group.length) return
+    const ids = group.map((m) => m.id)
+    const tmp = ids[index]!
+    ids[index] = ids[j]!
+    ids[j] = tmp
+    onReorderMacros?.(ids)
+  }
 
   // Membership = collapsed (folders are expanded by default).
   let collapsedFolders = $state<Set<string>>(new Set())
@@ -685,7 +727,7 @@
       <p class="sb-hint" style:color={theme.textDim}>No sessions yet.</p>
     {/if}
 
-    {#snippet macroRow(m: Snippet)}
+    {#snippet macroRow(m: Snippet, group: Snippet[], index: number)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
         class="sb-row"
@@ -698,6 +740,70 @@
           <Icon name="bolt" size={13} />
         </span>
         <span class="sb-name" style:color={theme.textMuted}>{m.name}</span>
+        {#if onReorderMacros && group.length > 1}
+          <span class="sb-macro-move">
+            <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+            <span
+              class="sb-edit sb-macro-arrow"
+              class:disabled={index === 0}
+              role="button"
+              title="Move up"
+              style:color={theme.textDim}
+              onclick={(e) => {
+                e.stopPropagation()
+                moveMacro(group, index, -1)
+              }}>▲</span
+            >
+            <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+            <span
+              class="sb-edit sb-macro-arrow"
+              class:disabled={index === group.length - 1}
+              role="button"
+              title="Move down"
+              style:color={theme.textDim}
+              onclick={(e) => {
+                e.stopPropagation()
+                moveMacro(group, index, 1)
+              }}>▼</span
+            >
+          </span>
+        {/if}
+        {#if onSetMacroFolder}
+          <!-- Move to folder. A bare select styled as an icon; changing it
+               reparents the macro (empty value = ungrouped). -->
+          <select
+            class="sb-macro-folder"
+            title="Move to folder"
+            aria-label="Move macro to folder"
+            value={m.folder ?? ''}
+            onclick={(e) => e.stopPropagation()}
+            onchange={(e) => {
+              const v = (e.currentTarget as HTMLSelectElement).value
+              onSetMacroFolder?.(m, v || null)
+            }}
+            style:background={theme.sidebarBg}
+            style:color={theme.textDim}
+            style:border="1px solid {theme.border}"
+          >
+            <option value="">(no folder)</option>
+            {#each macroFolderNames as f (f)}
+              <option value={f}>{f}</option>
+            {/each}
+          </select>
+        {/if}
+        {#if onCloneMacro}
+          <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+          <span
+            class="sb-edit"
+            role="button"
+            title="Duplicate macro"
+            style:color={theme.textDim}
+            onclick={(e) => {
+              e.stopPropagation()
+              onCloneMacro?.(m)
+            }}><Icon name="copy" size={12} /></span
+          >
+        {/if}
         {#if onExportMacro}
           <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
           <span
@@ -708,7 +814,7 @@
             onclick={(e) => {
               e.stopPropagation()
               onExportMacro?.(m)
-            }}><Icon name="file" size={12} /></span
+            }}><Icon name="download" size={12} /></span
           >
         {/if}
         {#if onEditMacro}
@@ -744,23 +850,23 @@
           {#if onExportMacros && macroList.length > 0}
             <button
               class="sb-add-btn"
-              title="Export all macros (JSON)"
+              title="Export all macros to a JSON file"
               style:color={theme.textDim}
-              onclick={onExportMacros}><Icon name="file" size={13} /></button
+              onclick={onExportMacros}><Icon name="download" size={13} /></button
             >
           {/if}
           {#if onImportMacrosJson}
             <button
               class="sb-add-btn"
-              title="Import macros (JSON)"
+              title="Import macros from a JSON file"
               style:color={theme.textDim}
-              onclick={onImportMacrosJson}><Icon name="copy" size={13} /></button
+              onclick={onImportMacrosJson}><Icon name="upload" size={13} /></button
             >
           {/if}
           {#if onImportMacro}
             <button
               class="sb-add-btn"
-              title="Import from MobaXterm"
+              title="Import from a MobaXterm macro"
               style:color={theme.textDim}
               onclick={onImportMacro}><Icon name="transfer" size={13} /></button
             >
@@ -776,8 +882,8 @@
         </div>
         {#if expandedSections.has('macros')}
           <div class="sb-droparea">
-            {#each macroGroups.ungrouped as m (m.id)}
-              {@render macroRow(m)}
+            {#each macroGroups.ungrouped as m, i (m.id)}
+              {@render macroRow(m, macroGroups.ungrouped, i)}
             {/each}
             {#each macroGroups.folders as [folderName, items] (folderName)}
               <button
@@ -792,8 +898,8 @@
               </button>
               {#if !collapsedFolders.has(folderName)}
                 <div class="sb-folder-items">
-                  {#each items as m (m.id)}
-                    {@render macroRow(m)}
+                  {#each items as m, i (m.id)}
+                    {@render macroRow(m, items, i)}
                   {/each}
                 </div>
               {/if}
@@ -1150,6 +1256,43 @@
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
+  }
+
+  .sb-macro-move {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.6;
+    flex-shrink: 0;
+  }
+  .sb-macro-arrow {
+    font-size: 8px;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .sb-macro-arrow.disabled {
+    opacity: 0.25 !important;
+    pointer-events: none;
+  }
+
+  /* "Move to folder" picker: hidden until the row is hovered (like the edit
+     icons), kept narrow so the row stays compact. */
+  .sb-macro-folder {
+    flex-shrink: 0;
+    max-width: 5.5rem;
+    border-radius: 4px;
+    padding: 1px 2px;
+    font-size: 10px;
+    font-family: inherit;
+    outline: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .sb-row:hover .sb-macro-folder {
+    opacity: 0.7;
+  }
+  .sb-macro-folder:hover,
+  .sb-macro-folder:focus {
+    opacity: 1;
   }
 
   .sb-folder-row {

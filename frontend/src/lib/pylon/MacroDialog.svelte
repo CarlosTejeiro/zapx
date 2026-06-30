@@ -64,11 +64,97 @@
 
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
 
-  const canSave = $derived(!!name.trim() && steps.length > 0)
+  // ── Steps / JSON edit mode ──────────────────────────────────────────────
+  // The JSON view is seeded from the current `steps` whenever it's entered, and
+  // validated live; the parsed result is committed back to `steps` on toggle to
+  // Steps and on Save. `jsonError` is non-null while the text is invalid.
+  type EditMode = 'steps' | 'json'
+  let editMode = $state<EditMode>('steps')
+  let jsonText = $state('')
+  let jsonError = $state<string | null>(null)
+
+  const STEP_KINDS = ['expect', 'send', 'wait']
+
+  /// Validate + normalize a parsed JSON value into a LoginStep[]. Throws a
+  /// human-readable message on the first problem; coerces missing optional
+  /// fields to their defaults so a terse hand-written array still loads.
+  function parseStepsJson(text: string): LoginStep[] {
+    let v: unknown
+    try {
+      v = JSON.parse(text)
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'invalid JSON')
+    }
+    if (!Array.isArray(v)) throw new Error('expected a JSON array of steps')
+    return v.map((raw, i) => {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new Error(`step ${i + 1}: expected an object`)
+      }
+      const o = raw as Record<string, unknown>
+      const kind = o.kind
+      if (typeof kind !== 'string' || !STEP_KINDS.includes(kind)) {
+        throw new Error(`step ${i + 1}: "kind" must be one of expect | send | wait`)
+      }
+      const tn = o.timeout_ms
+      const timeout_ms = typeof tn === 'number' && Number.isFinite(tn) ? tn : 10000
+      return {
+        kind: kind as LoginStep['kind'],
+        expect: typeof o.expect === 'string' ? o.expect : '',
+        is_regex: o.is_regex === true,
+        send: typeof o.send === 'string' ? o.send : '',
+        timeout_ms,
+      }
+    })
+  }
+
+  function setMode(mode: EditMode) {
+    if (mode === editMode) return
+    if (mode === 'json') {
+      // Seed the textarea from the current visual steps.
+      jsonText = JSON.stringify(steps, null, 2)
+      jsonError = null
+    } else {
+      // Leaving JSON → commit if valid; block the toggle while invalid.
+      try {
+        steps = parseStepsJson(jsonText)
+        jsonError = null
+      } catch (e) {
+        jsonError = e instanceof Error ? e.message : String(e)
+        return
+      }
+    }
+    editMode = mode
+  }
+
+  // Live validation while typing in JSON mode.
+  $effect(() => {
+    if (editMode !== 'json') return
+    try {
+      parseStepsJson(jsonText)
+      jsonError = null
+    } catch (e) {
+      jsonError = e instanceof Error ? e.message : String(e)
+    }
+  })
+
+  const canSave = $derived(
+    !!name.trim() &&
+      (editMode === 'json' ? jsonError === null && jsonText.trim().length > 0 : steps.length > 0),
+  )
 
   function save() {
     if (!canSave) return
-    onSave({ name: name.trim(), color, folder: folder.trim() || null, steps })
+    // In JSON mode, commit the textarea into `steps` first.
+    let finalSteps = steps
+    if (editMode === 'json') {
+      try {
+        finalSteps = parseStepsJson(jsonText)
+      } catch (e) {
+        jsonError = e instanceof Error ? e.message : String(e)
+        return
+      }
+    }
+    onSave({ name: name.trim(), color, folder: folder.trim() || null, steps: finalSteps })
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -133,22 +219,59 @@
       </div>
     </div>
 
-    <input
-      class="folder"
-      placeholder="Folder (optional)"
-      list="macro-folder-list"
-      bind:value={folder}
-      style:background={theme.bodyBg}
-      style:color={theme.textPrimary}
-      style:border="1px solid {theme.border}"
-    />
+    <label class="folder-label" style:color={theme.textMuted}>
+      Folder
+      <input
+        class="folder"
+        placeholder="Folder (optional)"
+        list="macro-folder-list"
+        bind:value={folder}
+        style:background={theme.bodyBg}
+        style:color={theme.textPrimary}
+        style:border="1px solid {theme.border}"
+      />
+    </label>
     <datalist id="macro-folder-list">
       {#each folders as f (f)}
         <option value={f}></option>
       {/each}
     </datalist>
 
-    <MacroStepEditor {theme} bind:steps {vaultEntries} />
+    <div class="mode" style:color={theme.textMuted}>
+      <button
+        type="button"
+        class="mode-btn"
+        class:active={editMode === 'steps'}
+        style:color={editMode === 'steps' ? theme.accent : theme.textDim}
+        style:border-color={editMode === 'steps' ? theme.accent : theme.border}
+        onclick={() => setMode('steps')}>Steps</button
+      >
+      <button
+        type="button"
+        class="mode-btn"
+        class:active={editMode === 'json'}
+        style:color={editMode === 'json' ? theme.accent : theme.textDim}
+        style:border-color={editMode === 'json' ? theme.accent : theme.border}
+        onclick={() => setMode('json')}>JSON</button
+      >
+    </div>
+
+    {#if editMode === 'json'}
+      <textarea
+        class="json"
+        spellcheck="false"
+        bind:value={jsonText}
+        style:background={theme.bodyBg}
+        style:color={theme.textPrimary}
+        style:border="1px solid {jsonError ? theme.err : theme.border}"
+        style:font-family={theme.fontMono}
+      ></textarea>
+      {#if jsonError}
+        <span class="json-err" style:color={theme.err}>{jsonError}</span>
+      {/if}
+    {:else}
+      <MacroStepEditor {theme} bind:steps {vaultEntries} />
+    {/if}
 
     <div class="footer">
       {#if onDelete}
@@ -214,12 +337,45 @@
     font-family: inherit;
     outline: none;
   }
+  .folder-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11.5px;
+  }
   .folder {
     border-radius: 5px;
     padding: 5px 8px;
     font-size: 12px;
     font-family: inherit;
     outline: none;
+  }
+  .mode {
+    display: flex;
+    gap: 4px;
+  }
+  .mode-btn {
+    background: transparent;
+    border: 1px solid;
+    border-radius: 5px;
+    padding: 2px 10px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .json {
+    min-height: 160px;
+    max-height: 320px;
+    resize: vertical;
+    border-radius: 5px;
+    padding: 7px 9px;
+    font-size: 12px;
+    line-height: 1.5;
+    outline: none;
+  }
+  .json-err {
+    font-size: 11px;
+    line-height: 1.4;
   }
   .swatches {
     display: flex;

@@ -100,6 +100,9 @@ pub struct Snippet {
     pub steps_json: Option<String>,
     /// Optional folder name for the sidebar Macros library. `None` = ungrouped.
     pub folder: Option<String>,
+    /// Optional rank within the macro's folder group in the sidebar (NULLs
+    /// last). Reordered independently of `sort_order`. `None` = unranked.
+    pub position: Option<i64>,
 }
 
 /// One row from `command_history`, used by the hint engine for
@@ -254,6 +257,12 @@ impl Database {
         }
         if version < 20 {
             conn.execute_batch(include_str!("migrations/020_vault_entries.sql"))?;
+        }
+        if version < 21 {
+            conn.execute_batch(include_str!("migrations/021_vault_unique_name.sql"))?;
+        }
+        if version < 22 {
+            conn.execute_batch(include_str!("migrations/022_snippet_position.sql"))?;
         }
         Ok(())
     }
@@ -842,6 +851,47 @@ impl Database {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Fetch a reusable vault credential by its (unique) name. Returns
+    /// `Ok(None)` when no reusable entry has that name. Used to resolve
+    /// `{{vault:<Name>.<Field>}}` macro references at send time.
+    pub fn get_credential_by_name(&self, name: &str) -> Result<Option<Credential>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT id, name, kind, username, keyring_key, reusable
+             FROM credentials WHERE reusable=1 AND name=?1",
+            rusqlite::params![name],
+            |row| {
+                Ok(Credential {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    kind: row.get(2)?,
+                    username: row.get(3)?,
+                    keyring_key: row.get(4)?,
+                    reusable: row.get::<_, i64>(5)? != 0,
+                })
+            },
+        );
+        match result {
+            Ok(c) => Ok(Some(c)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// True iff a reusable vault entry named `name` already exists, ignoring
+    /// the row `exclude_id` (used so renaming an entry to its own name passes).
+    /// Backs the friendly duplicate-name pre-check in the vault commands.
+    pub fn vault_name_taken(&self, name: &str, exclude_id: Option<i64>) -> Result<bool, Error> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM credentials
+             WHERE reusable=1 AND name=?1 AND id IS NOT ?2",
+            rusqlite::params![name, exclude_id],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
     /// Create a reusable vault credential entry. The secret itself lives in the
     /// keyring under `keyring_key`; only the reference is stored here.
     pub fn create_vault_entry(
@@ -1178,7 +1228,7 @@ impl Database {
     pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position
              FROM snippets ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1192,6 +1242,7 @@ impl Database {
                 color: row.get(6)?,
                 steps_json: row.get(7)?,
                 folder: row.get(8)?,
+                position: row.get(9)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1203,7 +1254,7 @@ impl Database {
     pub fn list_snippets_for_platform(&self, platform: &str) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position
              FROM snippets
              WHERE platform IS NULL OR platform = ?1
              ORDER BY (platform IS NULL) DESC, sort_order, name",
@@ -1219,6 +1270,7 @@ impl Database {
                 color: row.get(6)?,
                 steps_json: row.get(7)?,
                 folder: row.get(8)?,
+                position: row.get(9)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1297,15 +1349,56 @@ impl Database {
     /// Set (or clear with `None`) a snippet's folder. Kept separate from
     /// `update_snippet` so existing call sites are unchanged (mirrors
     /// [`set_snippet_steps`]).
+    ///
+    /// Moving to a DIFFERENT folder resets `position` to NULL so the macro
+    /// lands at the BOTTOM of the destination group (NULLs sort last) rather
+    /// than carrying its old rank — e.g. an old position 0 jumping it to the
+    /// top of the new folder. Re-setting the same folder leaves `position`
+    /// intact. Safe for the bottom bar, which orders by `sort_order`, not
+    /// `position`.
     pub fn set_snippet_folder(&self, id: i64, folder: Option<&str>) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute(
-            "UPDATE snippets SET folder = ?1 WHERE id = ?2",
-            rusqlite::params![folder, id],
-        )?;
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT folder FROM snippets WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
+                e => Error::Rusqlite(e),
+            })?;
+        let folder_changed = current.as_deref() != folder;
+        let n = if folder_changed {
+            conn.execute(
+                "UPDATE snippets SET folder = ?1, position = NULL WHERE id = ?2",
+                rusqlite::params![folder, id],
+            )?
+        } else {
+            conn.execute(
+                "UPDATE snippets SET folder = ?1 WHERE id = ?2",
+                rusqlite::params![folder, id],
+            )?
+        };
         if n == 0 {
             return Err(Error::NotFound);
         }
+        Ok(())
+    }
+
+    /// Persist a new per-folder ordering for macros: each id's `position`
+    /// becomes its index in `ordered_ids`. Used by the sidebar Macros zone's
+    /// ▲/▼ reorder. Ids not listed keep their position (NULL or prior rank).
+    pub fn set_snippet_positions(&self, ordered_ids: &[i64]) -> Result<(), Error> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        for (idx, id) in ordered_ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE snippets SET position = ?1 WHERE id = ?2",
+                rusqlite::params![idx as i64, id],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -1603,6 +1696,76 @@ mod tests {
         // Deleting the group removes it (and members cascade).
         db.delete_broadcast_group(gid).unwrap();
         assert!(db.list_broadcast_groups().unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn vault_entry_by_name_and_unique() {
+        let (db, path) = temp_db();
+
+        let id = db
+            .create_vault_entry("prod-root", Some("root"), "vault:key-1")
+            .unwrap();
+
+        // Resolve by name returns the reusable row.
+        let found = db.get_credential_by_name("prod-root").unwrap().unwrap();
+        assert_eq!(found.id, id);
+        assert_eq!(found.username.as_deref(), Some("root"));
+
+        // Unknown name → None.
+        assert!(db.get_credential_by_name("nope").unwrap().is_none());
+
+        // A non-reusable credential of the same name is invisible to the lookup.
+        db.create_credential("prod-root", "session", None, "k2")
+            .unwrap();
+        assert_eq!(
+            db.get_credential_by_name("prod-root").unwrap().unwrap().id,
+            id
+        );
+
+        // Duplicate-name pre-check: taken for others, free for itself.
+        assert!(db.vault_name_taken("prod-root", None).unwrap());
+        assert!(!db.vault_name_taken("prod-root", Some(id)).unwrap());
+        assert!(!db.vault_name_taken("fresh", None).unwrap());
+
+        // The partial unique index rejects a second reusable row with that name.
+        assert!(db
+            .create_vault_entry("prod-root", None, "vault:key-3")
+            .is_err());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn moving_macro_to_new_folder_resets_position() {
+        let (db, path) = temp_db();
+
+        let find = |db: &Database, id: i64| -> Snippet {
+            db.list_snippets()
+                .unwrap()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+        };
+
+        let id = db.create_snippet("m", "", None, None).unwrap();
+        db.set_snippet_steps(id, Some("[]")).unwrap();
+        db.set_snippet_folder(id, Some("A")).unwrap();
+        // Rank it at the top of folder A.
+        db.set_snippet_positions(&[id]).unwrap();
+        assert_eq!(find(&db, id).position, Some(0));
+
+        // Moving to a different folder clears the stale rank (NULLs sort last).
+        db.set_snippet_folder(id, Some("B")).unwrap();
+        let moved = find(&db, id);
+        assert_eq!(moved.folder.as_deref(), Some("B"));
+        assert_eq!(moved.position, None);
+
+        // Re-ranking, then re-setting the SAME folder leaves position intact.
+        db.set_snippet_positions(&[id]).unwrap();
+        db.set_snippet_folder(id, Some("B")).unwrap();
+        assert_eq!(find(&db, id).position, Some(0));
 
         let _ = std::fs::remove_file(&path);
     }

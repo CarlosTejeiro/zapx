@@ -27,6 +27,10 @@ export const ICON_PATHS = {
   file: '<path d="M4 1.5h5.5L12 4v10.5H4z" /><path d="M9.5 1.5V4H12" />',
   /** Duplicate — a front document with a second peeking out behind it. */
   copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 5.5V3.6A1.1 1.1 0 0 0 9.4 2.5H3.6A1.1 1.1 0 0 0 2.5 3.6v5.8a1.1 1.1 0 0 0 1.1 1.1h1.9" />',
+  /** Export / save-to-file — a tray with an arrow pointing down into it. */
+  download: '<path d="M8 2.5v7" /><path d="M5 6.5 8 9.5 11 6.5" /><path d="M3 11.5v1.5h10v-1.5" />',
+  /** Import / load-from-file — a tray with an arrow pointing up out of it. */
+  upload: '<path d="M8 9.5v-7" /><path d="M5 5.5 8 2.5 11 5.5" /><path d="M3 11.5v1.5h10v-1.5" />',
   /** SFTP / file transfer — up+down arrows between two endpoints. */
   transfer:
     '<path d="M5 2.5v9M5 11.5 2.8 9.3M5 11.5 7.2 9.3" /><path d="M11 13.5v-9M11 4.5 8.8 6.7M11 4.5 13.2 6.7" />',

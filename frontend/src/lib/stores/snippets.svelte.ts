@@ -60,7 +60,9 @@ export async function loadVisibleSnippets(): Promise<void> {
     // NOT fall back to `listSnippets()` here — that returns every vendor's
     // snippets at once, which is why Cisco commands leaked into local and
     // Linux sessions.
-    const fresh = await listSnippetsForPlatform(platform)
+    // Macros (snippets with steps) live in the sidebar Macros section, not the
+    // bottom bar — filter them out before the visible-count slice.
+    const fresh = (await listSnippetsForPlatform(platform)).filter((s) => !s.steps_json)
     visibleSnippets.length = 0
     visibleSnippets.push(...fresh.slice(0, SNIPPET_BAR_LIMIT))
   } catch {

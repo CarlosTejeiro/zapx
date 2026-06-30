@@ -142,6 +142,20 @@ pub async fn set_snippet_folder(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Persist a new per-folder ordering for macros (the sidebar Macros zone's
+/// ▲/▼ reorder). `ordered_ids` lists the macro ids in their new order; each
+/// id's `position` becomes its index.
+#[tauri::command]
+pub async fn set_snippet_positions(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<i64>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_snippet_positions(&ordered_ids)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Top recently-typed commands for the focused saved session. Drives the
 /// "Recents" zone of the bottom button bar. Trailing newline is appended so
 /// dispatching the snippet executes the command exactly like the original

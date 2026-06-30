@@ -5,6 +5,36 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-06-30
+
+### Added
+- **Reference vault credentials by name** — macros and the New/Edit Session
+  dialog can now use `{{vault:<Name>.Username}}` / `{{vault:<Name>.Password}}`
+  (e.g. `admin.Password`) instead of a numeric id, so you only ever pass vault
+  *variables* — never the secret itself. The value is resolved in the backend at
+  run time and written straight to the session; it never enters the macro JSON,
+  exports, logs, or the frontend. Vault names are unique, and names ending in
+  `.username`/`.password` are rejected to keep references unambiguous. The
+  legacy `{{vault:<id>}}` form still works.
+- **Edit a macro as raw JSON** — the macro dialog has a Steps / JSON toggle so
+  you can paste or hand-edit the step list directly, with live validation.
+- **Run a macro automatically on connect** — attach an already-defined macro to
+  a saved session ("automatismo"); it runs once each time the session reaches
+  connected.
+- **Clone a macro** — duplicate any macro (steps, color and folder) from the
+  Macros sidebar zone.
+- **Organise the Macros zone** — move a macro between folders, and reorder
+  macros within a folder with ▲/▼ controls (order persists).
+
+### Changed
+- **Vault picker fills the Username** — choosing a saved credential in the
+  New/Edit Session dialog now sets the Username field (left empty if the entry
+  has none); the password stays in the vault and is never shown.
+- **Macros no longer appear in the bottom snippet bar** — they live in the
+  Macros sidebar zone instead, keeping the bottom bar to plain snippets.
+- **Clearer Macros-section icons** — import and export now use distinct,
+  action-specific icons (no more reused "copy" glyph) with tooltips.
+
 ## [0.13.0] - 2026-06-30
 
 ### Added
