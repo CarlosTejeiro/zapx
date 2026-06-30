@@ -5,6 +5,22 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-06-30
+
+### Changed
+- **Macros sidebar matches the sessions design** — macro rows are now visually
+  homogeneous with session rows: a leading glyph + the full-width name + a
+  hover-revealed action cluster (clone, export, edit), so names are no longer
+  crushed to an ellipsis. The inline "move to folder" dropdown and the ▲▼
+  reorder arrows are gone.
+- **Organise macros by drag-and-drop** — drag a macro to reorder it within its
+  group, or drop it on a folder header (or the ungrouped area) to move it
+  between folders, mirroring how saved sessions already work. Folder is also
+  still editable in the macro dialog.
+- **Macros section icons** — import/export now follow the usual convention
+  (import = arrow down, export = arrow up), drawn from the same icon set as the
+  rest of the sidebar; the clone action keeps the duplicate icon.
+
 ## [0.15.0] - 2026-06-30
 
 ### Removed

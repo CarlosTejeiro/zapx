@@ -116,25 +116,6 @@
     return { ungrouped: orderGroup(ungrouped), folders }
   })
 
-  /// Distinct folder names across macros, for the per-row "move to folder" menu.
-  const macroFolderNames = $derived(
-    [...new Set(macroList.map((m) => m.folder).filter((f): f is string => !!f))].sort((a, b) =>
-      a.localeCompare(b),
-    ),
-  )
-
-  /// Reorder a macro within its current folder group: swap with its neighbour
-  /// (dir = -1 up, +1 down) and persist the group's new order. No-op at ends.
-  function moveMacro(group: Snippet[], index: number, dir: -1 | 1) {
-    const j = index + dir
-    if (j < 0 || j >= group.length) return
-    const ids = group.map((m) => m.id)
-    const tmp = ids[index]!
-    ids[index] = ids[j]!
-    ids[j] = tmp
-    onReorderMacros?.(ids)
-  }
-
   // Membership = collapsed (folders are expanded by default).
   let collapsedFolders = $state<Set<string>>(new Set())
   function toggleMacroFolder(name: string) {
@@ -239,6 +220,121 @@
     draggingSessionId = null
     dragOver = 'none'
     rowDropTarget = null
+  }
+
+  // ── Macro drag-and-drop ─────────────────────────────────────────────────
+  // Mirrors the session DnD above but keyed on macro ids and string folder
+  // labels (the `Snippet.folder` field), with a distinct DataTransfer type so
+  // a macro drag can never be confused with a session drag. `macroDragOver`
+  // holds the hovered folder target (`null` = ungrouped, `'none'` = nothing).
+  let draggingMacroId = $state<number | null>(null)
+  let macroDragOver = $state<string | null | 'none'>('none')
+  let macroRowDropTarget = $state<{ macroId: number; position: 'before' | 'after' } | null>(null)
+
+  function findMacro(id: number): Snippet | undefined {
+    return macroList.find((m) => m.id === id)
+  }
+
+  function onMacroDragStart(e: DragEvent, macroId: number) {
+    draggingMacroId = macroId
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('application/x-zapx-macro', String(macroId))
+    }
+  }
+
+  function onMacroDragOver(e: DragEvent, targetFolder: string | null) {
+    if (draggingMacroId == null) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    macroDragOver = targetFolder
+  }
+
+  /// Per-row dragover: pick "insert before" vs "insert after" from the cursor
+  /// half and render the accent indicator. Stops propagation so the section's
+  /// handler doesn't overwrite the feedback.
+  function onMacroRowDragOver(e: DragEvent, macroId: number) {
+    if (draggingMacroId == null || draggingMacroId === macroId) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const position: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    if (macroRowDropTarget?.macroId !== macroId || macroRowDropTarget?.position !== position) {
+      macroRowDropTarget = { macroId, position }
+    }
+  }
+
+  function onMacroRowDragLeave(macroId: number) {
+    if (macroRowDropTarget?.macroId === macroId) macroRowDropTarget = null
+  }
+
+  /// Per-row drop. Same-group → reorder within that group via
+  /// `onReorderMacros`. Cross-folder → move into the target row's folder via
+  /// `onSetMacroFolder` (the backend resets position on folder change).
+  function onMacroRowDrop(e: DragEvent, targetFolder: string | null, targetMacroId: number) {
+    if (draggingMacroId == null) return
+    e.preventDefault()
+    e.stopPropagation()
+    // Dropping a macro exactly on itself is a no-op.
+    if (targetMacroId === draggingMacroId) {
+      resetMacroDrag()
+      return
+    }
+    const id = draggingMacroId
+    const dragged = findMacro(id)
+    const position = macroRowDropTarget?.position ?? 'after'
+    const currentFolder = dragged?.folder ?? null
+
+    if (currentFolder === targetFolder) {
+      // Reorder within the same group.
+      const group = macroList
+        .filter((m) => (m.folder ?? null) === targetFolder)
+        .sort((a, b) => {
+          const pa = a.position ?? Number.MAX_SAFE_INTEGER
+          const pb = b.position ?? Number.MAX_SAFE_INTEGER
+          if (pa !== pb) return pa - pb
+          if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+          return a.name.localeCompare(b.name)
+        })
+      const ids = group.map((m) => m.id).filter((mid) => mid !== id)
+      let idx = ids.indexOf(targetMacroId)
+      if (idx < 0) idx = ids.length
+      const insertAt = position === 'before' ? idx : idx + 1
+      ids.splice(insertAt, 0, id)
+      onReorderMacros?.(ids)
+    } else if (dragged) {
+      // Cross-folder move; backend resets position so it lands at the bottom.
+      onSetMacroFolder?.(dragged, targetFolder)
+    }
+    resetMacroDrag()
+  }
+
+  /// Drop on the section/folder background → set folder (move) without an
+  /// explicit position. `null` = ungrouped.
+  function onMacroDrop(e: DragEvent, targetFolder: string | null) {
+    if (draggingMacroId == null) return
+    e.preventDefault()
+    // Folder groups are nested INSIDE the root droparea, so without this a
+    // drop on a group header would bubble and re-fire `onMacroDrop(null)`.
+    e.stopPropagation()
+    const id = draggingMacroId
+    const dragged = findMacro(id)
+    const currentFolder = dragged?.folder ?? null
+    if (dragged && currentFolder !== targetFolder) {
+      onSetMacroFolder?.(dragged, targetFolder)
+    }
+    resetMacroDrag()
+  }
+
+  function onMacroDragEnd() {
+    resetMacroDrag()
+  }
+
+  function resetMacroDrag() {
+    draggingMacroId = null
+    macroDragOver = 'none'
+    macroRowDropTarget = null
   }
 
   let search = $state('')
@@ -659,76 +755,36 @@
       <p class="sb-hint" style:color={theme.textDim}>No sessions yet.</p>
     {/if}
 
-    {#snippet macroRow(m: Snippet, group: Snippet[], index: number)}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
+    {#snippet macroRow(m: Snippet, folder: string | null)}
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
       <div
         class="sb-row"
+        class:dragging={draggingMacroId === m.id}
+        class:drop-before={macroRowDropTarget?.macroId === m.id &&
+          macroRowDropTarget?.position === 'before'}
+        class:drop-after={macroRowDropTarget?.macroId === m.id &&
+          macroRowDropTarget?.position === 'after'}
         role="button"
         tabindex="0"
+        draggable="true"
         title="Run on the focused session"
+        ondragstart={(e) => onMacroDragStart(e, m.id)}
+        ondragend={onMacroDragEnd}
+        ondragover={(e) => onMacroRowDragOver(e, m.id)}
+        ondragleave={() => onMacroRowDragLeave(m.id)}
+        ondrop={(e) => onMacroRowDrop(e, folder, m.id)}
         onclick={() => onRunMacro?.(m)}
       >
         <span class="sb-macro-bolt" style:color={m.color ?? theme.accent}>
           <Icon name="bolt" size={13} />
         </span>
         <span class="sb-name" style:color={theme.textMuted}>{m.name}</span>
-        {#if onReorderMacros && group.length > 1}
-          <span class="sb-macro-move">
-            <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
-            <span
-              class="sb-edit sb-macro-arrow"
-              class:disabled={index === 0}
-              role="button"
-              title="Move up"
-              style:color={theme.textDim}
-              onclick={(e) => {
-                e.stopPropagation()
-                moveMacro(group, index, -1)
-              }}>▲</span
-            >
-            <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
-            <span
-              class="sb-edit sb-macro-arrow"
-              class:disabled={index === group.length - 1}
-              role="button"
-              title="Move down"
-              style:color={theme.textDim}
-              onclick={(e) => {
-                e.stopPropagation()
-                moveMacro(group, index, 1)
-              }}>▼</span
-            >
-          </span>
-        {/if}
-        {#if onSetMacroFolder}
-          <!-- Move to folder. A bare select styled as an icon; changing it
-               reparents the macro (empty value = ungrouped). -->
-          <select
-            class="sb-macro-folder"
-            title="Move to folder"
-            aria-label="Move macro to folder"
-            value={m.folder ?? ''}
-            onclick={(e) => e.stopPropagation()}
-            onchange={(e) => {
-              const v = (e.currentTarget as HTMLSelectElement).value
-              onSetMacroFolder?.(m, v || null)
-            }}
-            style:background={theme.sidebarBg}
-            style:color={theme.textDim}
-            style:border="1px solid {theme.border}"
-          >
-            <option value="">(no folder)</option>
-            {#each macroFolderNames as f (f)}
-              <option value={f}>{f}</option>
-            {/each}
-          </select>
-        {/if}
         {#if onCloneMacro}
           <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
           <span
             class="sb-edit"
             role="button"
-            title="Duplicate macro"
+            title="Clone macro"
             style:color={theme.textDim}
             onclick={(e) => {
               e.stopPropagation()
@@ -746,7 +802,7 @@
             onclick={(e) => {
               e.stopPropagation()
               onExportMacro?.(m)
-            }}><Icon name="download" size={12} /></span
+            }}><Icon name="upload" size={12} /></span
           >
         {/if}
         {#if onEditMacro}
@@ -768,7 +824,13 @@
     <!-- Macros: a library of saved macros (snippets with steps), run on the
          focused session with one click. Lives below the sessions. -->
     {#if !search && (macroList.length > 0 || onNewMacro)}
-      <div class="sb-section">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="sb-section"
+        class:dragover={macroDragOver === null && draggingMacroId != null}
+        ondragover={(e) => onMacroDragOver(e, null)}
+        ondrop={(e) => onMacroDrop(e, null)}
+      >
         <div class="sb-section-row" style:color={theme.textDim}>
           <button
             class="sb-section-header"
@@ -784,7 +846,7 @@
               class="sb-add-btn"
               title="Export all macros to a JSON file"
               style:color={theme.textDim}
-              onclick={onExportMacros}><Icon name="download" size={13} /></button
+              onclick={onExportMacros}><Icon name="upload" size={13} /></button
             >
           {/if}
           {#if onImportMacrosJson}
@@ -792,7 +854,7 @@
               class="sb-add-btn"
               title="Import macros from a JSON file"
               style:color={theme.textDim}
-              onclick={onImportMacrosJson}><Icon name="upload" size={13} /></button
+              onclick={onImportMacrosJson}><Icon name="download" size={13} /></button
             >
           {/if}
           {#if onImportMacro}
@@ -813,28 +875,50 @@
           {/if}
         </div>
         {#if expandedSections.has('macros')}
-          <div class="sb-droparea">
-            {#each macroGroups.ungrouped as m, i (m.id)}
-              {@render macroRow(m, macroGroups.ungrouped, i)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="sb-droparea"
+            class:dragover={macroDragOver === null && draggingMacroId != null}
+            ondragover={(e) => onMacroDragOver(e, null)}
+            ondrop={(e) => onMacroDrop(e, null)}
+          >
+            {#each macroGroups.ungrouped as m (m.id)}
+              {@render macroRow(m, null)}
             {/each}
             {#each macroGroups.folders as [folderName, items] (folderName)}
-              <button
-                class="sb-folder-row"
-                style:color={theme.textDim}
-                onclick={() => toggleMacroFolder(folderName)}
+              <div
+                class="sb-macro-folder-group"
+                class:dragover={macroDragOver === folderName && draggingMacroId != null}
+                ondragover={(e) => onMacroDragOver(e, folderName)}
+                ondrop={(e) => onMacroDrop(e, folderName)}
+                role="group"
               >
-                <Icon name="chevron" size={10} open={!collapsedFolders.has(folderName)} />
-                <Icon name="folder" size={12} />
-                <span class="sb-folder-name">{folderName}</span>
-                <span class="sb-count" style:color={theme.textDim}>{items.length}</span>
-              </button>
-              {#if !collapsedFolders.has(folderName)}
-                <div class="sb-folder-items">
-                  {#each items as m, i (m.id)}
-                    {@render macroRow(m, items, i)}
-                  {/each}
-                </div>
-              {/if}
+                <button
+                  class="sb-folder-row"
+                  style:color={theme.textDim}
+                  onclick={() => toggleMacroFolder(folderName)}
+                  ondragenter={() => {
+                    // Auto-expand on hover so the drop is visibly registered.
+                    if (draggingMacroId != null && collapsedFolders.has(folderName)) {
+                      const next = new Set(collapsedFolders)
+                      next.delete(folderName)
+                      collapsedFolders = next
+                    }
+                  }}
+                >
+                  <Icon name="chevron" size={10} open={!collapsedFolders.has(folderName)} />
+                  <Icon name="folder" size={12} />
+                  <span class="sb-folder-name">{folderName}</span>
+                  <span class="sb-count" style:color={theme.textDim}>{items.length}</span>
+                </button>
+                {#if !collapsedFolders.has(folderName)}
+                  <div class="sb-folder-items">
+                    {#each items as m (m.id)}
+                      {@render macroRow(m, folderName)}
+                    {/each}
+                  </div>
+                {/if}
+              </div>
             {/each}
             {#if macroList.length === 0}
               <span class="sb-empty" style:color={theme.textDim}
@@ -1190,41 +1274,12 @@
     flex-shrink: 0;
   }
 
-  .sb-macro-move {
-    display: inline-flex;
-    flex-direction: column;
-    line-height: 0.6;
-    flex-shrink: 0;
-  }
-  .sb-macro-arrow {
-    font-size: 8px;
-    padding: 0 2px;
-    line-height: 1;
-  }
-  .sb-macro-arrow.disabled {
-    opacity: 0.25 !important;
-    pointer-events: none;
-  }
-
-  /* "Move to folder" picker: hidden until the row is hovered (like the edit
-     icons), kept narrow so the row stays compact. */
-  .sb-macro-folder {
-    flex-shrink: 0;
-    max-width: 5.5rem;
-    border-radius: 4px;
-    padding: 1px 2px;
-    font-size: 10px;
-    font-family: inherit;
-    outline: none;
-    opacity: 0;
-    transition: opacity 0.1s;
-  }
-  .sb-row:hover .sb-macro-folder {
-    opacity: 0.7;
-  }
-  .sb-macro-folder:hover,
-  .sb-macro-folder:focus {
-    opacity: 1;
+  /* Highlight a macro folder group when dragging a macro over its header so
+     it's clear the drop will reparent into that folder. Mirrors the session
+     `.sb-section.dragover` treatment. */
+  .sb-macro-folder-group.dragover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-radius: var(--radius, 7px);
   }
 
   .sb-folder-row {
