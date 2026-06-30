@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-06-30
+
+### Fixed
+- **Linux ARM terminal — typing and rendering** — on aarch64 (ARM) the app no
+  longer force-disables the WebKitGTK DMABUF renderer. Forcing it off on ARM
+  pushed rendering onto a fallback path that, on several ARM GPUs/VMs, painted
+  garbage and swallowed keyboard input (the terminal "went crazy" and you
+  couldn't type). The high-CPU workaround this came from is an x86/NVIDIA/
+  Wayland issue, so it now applies only on x86_64; ARM keeps WebKit's default.
+  An ARM user who still wants it off can export
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1` before launch.
+
 ## [0.14.0] - 2026-06-30
 
 ### Added

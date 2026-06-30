@@ -12,7 +12,15 @@ fn main() {
     // didn't. So re-exec ourselves once with the variable set, so the real run
     // starts with it already present. The guard makes this a no-op on the
     // re-exec'd process and whenever the user picked their own value.
-    #[cfg(target_os = "linux")]
+    //
+    // IMPORTANT: only auto-disable on x86_64. On aarch64 (ARM) WebKitGTK,
+    // forcing the DMABUF renderer off pushes rendering onto a fallback path
+    // that on several ARM GPUs/VMs paints garbage and swallows keyboard input
+    // (reported as "the terminal goes crazy and you can't type"). The high-CPU
+    // problem this works around is an x86/NVIDIA/Wayland issue, so ARM keeps
+    // WebKit's default. An ARM user who still wants it off can export
+    // WEBKIT_DISABLE_DMABUF_RENDERER=1 themselves before launch.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         use std::os::unix::process::CommandExt;
         if let Ok(exe) = std::env::current_exe() {
