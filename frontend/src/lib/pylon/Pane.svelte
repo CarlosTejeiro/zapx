@@ -261,7 +261,18 @@
     }
     onConnectRan = true
     const sid = runtimeSid
-    runMacro(sid, steps).catch(() => {})
+    const macroName = macro.name
+    runMacro(sid, steps)
+      .then((res) => {
+        if (!res.ok) {
+          showToast({
+            kind: 'error',
+            title: `On-connect macro "${macroName}" failed`,
+            detail: `step ${(res.failedStep ?? 0) + 1}: ${res.error ?? 'timed out'}`,
+          })
+        }
+      })
+      .catch(() => {})
   })
 
   // Map PylonTheme terminal tokens → xterm ColorPalette
