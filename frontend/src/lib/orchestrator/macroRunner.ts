@@ -106,7 +106,7 @@ async function send(sessionId: string, text: string): Promise<void> {
     const enter = vault[2] !== undefined
     if (/^\d+$/.test(inner)) {
       // Legacy id reference → always the password.
-      await sendVaultSecret(sessionId, parseInt(inner, 10), enter).catch(() => {})
+      await sendVaultSecret(sessionId, parseInt(inner, 10), enter)
       return
     }
     // Name+field: split on the LAST dot. A recognised Username/Password suffix
@@ -124,18 +124,43 @@ async function send(sessionId: string, text: string): Promise<void> {
         field = suffix
       }
     }
-    await sendVaultField(sessionId, name, field, enter).catch(() => {})
+    await sendVaultField(sessionId, name, field, enter)
     return
   }
   const decoded = decodeEscapes(text)
   if (decoded.length === 0) return
-  await invoke('send_input', { sessionId, data: withEnter(decoded) }).catch(() => {})
+  await invoke('send_input', { sessionId, data: withEnter(decoded) })
+}
+
+/** Unwrap a Tauri command error (`{"Internal":"…"}`) to a readable message. */
+function errMsg(e: unknown): string {
+  const raw =
+    e instanceof Error
+      ? e.message
+      : typeof e === 'string'
+        ? e
+        : (() => {
+            try {
+              return JSON.stringify(e)
+            } catch {
+              return String(e)
+            }
+          })()
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>
+    if (typeof o.Internal === 'string') return o.Internal
+  } catch {
+    /* not JSON */
+  }
+  return raw
 }
 
 export interface MacroResult {
   ok: boolean
-  /** Index of the step that timed out, when `ok` is false. */
+  /** Index of the step that timed out or failed, when `ok` is false. */
   failedStep?: number
+  /** Human-readable reason when `ok` is false (send/vault error or no match). */
+  error?: string
 }
 
 /**
@@ -157,7 +182,11 @@ export async function runMacro(sessionId: string, steps: LoginStep[]): Promise<M
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i]!
       if (step.kind === 'send') {
-        await send(sessionId, step.send)
+        try {
+          await send(sessionId, step.send)
+        } catch (e) {
+          return { ok: false, failedStep: i, error: errMsg(e) }
+        }
       } else if (step.kind === 'wait') {
         await sleep(step.timeout_ms)
       } else {
@@ -177,8 +206,18 @@ export async function runMacro(sessionId: string, steps: LoginStep[]): Promise<M
           }
           await sleep(50)
         }
-        if (!matched) return { ok: false, failedStep: i }
-        await send(sessionId, step.send)
+        if (!matched) {
+          return {
+            ok: false,
+            failedStep: i,
+            error: `no match for ${step.is_regex ? 'regex ' : ''}"${step.expect}"`,
+          }
+        }
+        try {
+          await send(sessionId, step.send)
+        } catch (e) {
+          return { ok: false, failedStep: i, error: errMsg(e) }
+        }
       }
     }
     return { ok: true }
@@ -221,6 +260,7 @@ export async function runMacroOnFocused(
   if (res.ok) {
     notify('success', `Macro "${snippet.name}" done`)
   } else {
-    notify('error', `Macro "${snippet.name}" timed out at step ${(res.failedStep ?? 0) + 1}`)
+    const where = `step ${(res.failedStep ?? 0) + 1}`
+    notify('error', `Macro "${snippet.name}" failed at ${where}: ${res.error ?? 'timed out'}`)
   }
 }

@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] - 2026-07-01
+
+### Fixed
+- **Macros now report why they fail instead of failing silently** — a failed
+  send, a vault reference that can't be resolved (e.g. no vault credential with
+  that name), or an `expect` that never matches now surface a clear error toast
+  naming the step and the reason (the `expect` message includes the pattern it
+  was waiting for). Previously these errors were swallowed, so a macro that
+  didn't work gave no feedback. Also covers on-connect macros. Added an
+  integration test suite that drives `runMacro` against a simulated terminal
+  stream to verify expect (literal + regex) matching and vault sends end-to-end.
+
 ## [0.19.1] - 2026-07-01
 
 ### Changed
