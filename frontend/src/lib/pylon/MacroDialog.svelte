@@ -45,12 +45,43 @@
     if (json) {
       try {
         const v = JSON.parse(json)
-        if (Array.isArray(v) && v.length > 0) return v
+        if (Array.isArray(v) && v.length > 0) return normalizeExpectSteps(v)
       } catch {
         /* fall through to the seeded default */
       }
     }
     return [{ kind: 'expect', expect: '', is_regex: false, send: '', timeout_ms: 10000 }]
+  }
+
+  /// The visual Steps editor treats `expect` as a pure wait — typing lives in a
+  /// separate `send` step (which owns the vault picker). Legacy / imported
+  /// macros can still carry an `expect` step that also sends a payload; split
+  /// each of those into an `expect` (send:'') immediately followed by an
+  /// equivalent `send` step so nothing is hidden. Run-time behaviour is
+  /// identical (the runner already sends after matching). Called once on open.
+  function normalizeExpectSteps(steps: LoginStep[]): LoginStep[] {
+    const out: LoginStep[] = []
+    for (const step of steps) {
+      if (step.kind === 'expect' && typeof step.send === 'string' && step.send.length > 0) {
+        out.push({
+          kind: 'expect',
+          expect: step.expect,
+          is_regex: step.is_regex,
+          send: '',
+          timeout_ms: step.timeout_ms,
+        })
+        out.push({
+          kind: 'send',
+          expect: '',
+          is_regex: false,
+          send: step.send,
+          timeout_ms: step.timeout_ms,
+        })
+      } else {
+        out.push(step)
+      }
+    }
+    return out
   }
 
   // Vault entries available to reference from a `send` step. Loaded lazily;

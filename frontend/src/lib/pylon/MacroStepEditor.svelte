@@ -1,6 +1,7 @@
 <script lang="ts">
-  /// Reusable expect/send/wait step list for a macro. Shared by the button-bar
-  /// inline editor (ButtonEditor) and the sidebar macro dialog (MacroDialog).
+  /// Reusable expect/send/wait step list for a macro, used by the sidebar macro
+  /// dialog (MacroDialog). `expect` waits for a pattern; typing goes in a
+  /// separate `send` step (which carries the vault picker).
   /// `steps` is bindable so the parent owns the array.
   import type { PylonTheme } from '$lib/themes/index'
   import type { LoginStep, VaultEntry } from '$lib/bridge/types'
@@ -86,18 +87,10 @@
       </select>
       {#if step.kind === 'expect'}
         <input
-          class="m-in"
-          placeholder="expect"
+          class="m-in m-wide"
+          placeholder="expect (wait for…)"
+          title="expect: wait for this string (type in a separate send step)"
           bind:value={step.expect}
-          spellcheck="false"
-          style:background={theme.bodyBg}
-          style:color={theme.textPrimary}
-          style:border="1px solid {theme.border}"
-        />
-        <input
-          class="m-in"
-          placeholder="send"
-          bind:value={step.send}
           spellcheck="false"
           style:background={theme.bodyBg}
           style:color={theme.textPrimary}
