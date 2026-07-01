@@ -1947,15 +1947,16 @@
     overflow: hidden;
   }
 
-  /* Terminal zone — the cards float on the body background with a 14px
-     frame around them (handoff: «terminal como tarjeta flotante»). */
+  /* Terminal zone — the cards float on the body background with a small
+     frame around them (handoff: «terminal como tarjeta flotante»), kept tight
+     so the terminal fills more of the window while staying a rounded card. */
   .pylon-panes {
     flex: 1;
     display: flex;
     min-height: 0;
     overflow: hidden;
     position: relative;
-    padding: 14px;
+    padding: 6px;
   }
 
   .pane-slot {
