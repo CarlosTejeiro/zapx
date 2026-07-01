@@ -99,7 +99,13 @@
   import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { loadSettings } from '$lib/stores/settings.svelte'
+  import {
+    loadSettings,
+    uiSettings,
+    clampSidebarWidth,
+    applySidebarWidth,
+    DEFAULT_SIDEBAR_WIDTH,
+  } from '$lib/stores/settings.svelte'
   import type { SavedSession, Folder, BroadcastGroup, Snippet, LoginStep } from '$lib/bridge/types'
   import { groups, loadGroups } from '$lib/stores/groups.svelte'
   import GroupsDialog from '$lib/sessions/GroupsDialog.svelte'
@@ -811,6 +817,59 @@
     tab.layout.root = setRatio(tab.layout.root, path, ratio)
   }
 
+  // ── Resizable sidebar divider ──────────────────────────────────────────────
+  // The sidebar width is driven by the reactive `uiSettings.sidebarWidth`
+  // (loaded on startup, defaults to DEFAULT_SIDEBAR_WIDTH). Dragging the handle
+  // updates it live, clamped to [MIN, 50% of the window]; the chosen width is
+  // persisted on drag-end via the generic settings bridge. The terminal pane's
+  // own ResizeObserver/FitAddon reflows automatically once the flex row resizes.
+  let draggingSidebar = $state(false)
+
+  function onSidebarHandleDown(e: PointerEvent) {
+    e.preventDefault()
+    draggingSidebar = true
+    const startX = e.clientX
+    const startWidth = uiSettings.sidebarWidth
+    const handle = e.currentTarget as HTMLElement
+    // Capture the pointer so releasing OUTSIDE the OS window still fires
+    // pointerup on this element — otherwise the drag could "stick".
+    handle.setPointerCapture(e.pointerId)
+    const move = (ev: PointerEvent) => {
+      uiSettings.sidebarWidth = clampSidebarWidth(startWidth + (ev.clientX - startX))
+    }
+    const end = () => {
+      draggingSidebar = false
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', end)
+      handle.removeEventListener('pointercancel', end)
+      try {
+        handle.releasePointerCapture(e.pointerId)
+      } catch {
+        // capture may already be gone (e.g. on pointercancel) — ignore.
+      }
+      // Persist the final width (debounced to drag-end).
+      applySidebarWidth(uiSettings.sidebarWidth).catch(console.error)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', end)
+    handle.addEventListener('pointercancel', end)
+  }
+
+  /// Double-click the handle → reset to the default width (and persist it).
+  function resetSidebarWidth() {
+    applySidebarWidth(DEFAULT_SIDEBAR_WIDTH).catch(console.error)
+  }
+
+  // Re-clamp on window resize so a previously-saved wide sidebar can't exceed
+  // 50% of the window after it shrinks.
+  $effect(() => {
+    function onResize() {
+      uiSettings.sidebarWidth = clampSidebarWidth(uiSettings.sidebarWidth)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  })
+
   /// TabBar's "Split" button: split the currently focused pane horizontally.
   function handleSplitFocused() {
     handleSplit(focusedPaneId, 'h')
@@ -1450,9 +1509,10 @@
     onTunnelsManager={() => (showTunnelsManager = true)}
   />
 
-  <div class="pylon-body">
+  <div class="pylon-body" class:resizing-sidebar={draggingSidebar}>
     <Sidebar
       {theme}
+      width={uiSettings.sidebarWidth}
       {sessions}
       {folders}
       activeSessionId={focusedPaneData?.savedSession?.id}
@@ -1563,6 +1623,19 @@
       onExportMacro={(m) => exportMacrosToFile([m.id], m.name)}
       onOpenVault={() => (showVault = true)}
     />
+
+    <!-- Draggable divider between the sidebar and the terminal area. Widen the
+         sidebar to read long session names; double-click resets to default. -->
+    <div
+      class="sidebar-resizer"
+      class:dragging={draggingSidebar}
+      style:--accent={theme.accent}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      onpointerdown={onSidebarHandleDown}
+      ondblclick={resetSidebarWidth}
+    ></div>
 
     <div class="pylon-workspace" style:background={theme.bodyBg}>
       <TabBar
@@ -1824,6 +1897,46 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* While dragging the divider, suppress text selection across the whole body
+     so a fast drag can't start selecting sidebar/terminal text. Cleared the
+     moment `draggingSidebar` flips back to false. */
+  .pylon-body.resizing-sidebar {
+    user-select: none;
+  }
+
+  /* Drag handle between the sidebar and the terminal area. A thin (~5px) hit
+     strip with a subtle centred rule that brightens on hover/active. */
+  .sidebar-resizer {
+    flex: 0 0 5px;
+    width: 5px;
+    cursor: col-resize;
+    position: relative;
+    z-index: 5;
+    align-self: stretch;
+    background: transparent;
+    transition: background 0.1s;
+  }
+
+  .sidebar-resizer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 1px;
+    background: transparent;
+    transition: background 0.1s;
+  }
+
+  .sidebar-resizer:hover::before,
+  .sidebar-resizer.dragging::before {
+    background: color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+
+  .sidebar-resizer.dragging {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
 
   .pylon-workspace {

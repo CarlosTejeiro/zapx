@@ -289,7 +289,7 @@
     align-items: center;
     gap: 8px;
     height: 30px;
-    padding: 0 12px;
+    padding: 0 10px;
     min-width: 140px;
     max-width: 220px;
     cursor: pointer;
@@ -328,8 +328,9 @@
   }
 
   .tab-label {
-    font-size: 12.5px;
+    font-size: 11.5px;
     font-weight: 400;
+    font-family: inherit;
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;

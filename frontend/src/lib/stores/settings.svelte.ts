@@ -21,6 +21,17 @@ export const connectionSettings = $state({
   autoReconnect: true,
 })
 
+// ── UI layout settings ──────────────────────────────────────────────────────
+
+/** Default sidebar width (px). Matches the historical hard-coded `.sidebar`. */
+export const DEFAULT_SIDEBAR_WIDTH = 248
+/** Min sidebar width so the search box + section headers still fit. */
+export const MIN_SIDEBAR_WIDTH = 180
+
+export const uiSettings = $state({
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+})
+
 export const colorSchemes = $state<ColorScheme[]>([])
 
 // ── load from DB on app start ───────────────────────────────────────────────
@@ -43,6 +54,7 @@ export async function loadSettings(): Promise<void> {
     'terminal.activeColorScheme',
     'ssh.keepalive_secs',
     'connection.autoReconnect',
+    'ui.sidebar_width',
   ]
   try {
     const values = await Promise.all(keys.map((k) => getSetting(k)))
@@ -59,9 +71,28 @@ export async function loadSettings(): Promise<void> {
     }
     if (values[7] !== null && values[7] !== undefined)
       connectionSettings.autoReconnect = values[7] === 'true'
+    if (values[8] !== null && values[8] !== undefined) {
+      const w = parseInt(values[8], 10)
+      if (!Number.isNaN(w)) uiSettings.sidebarWidth = clampSidebarWidth(w)
+    }
   } catch {
     // use defaults
   }
+}
+
+/** Clamp a sidebar width to [MIN, 50% of the window]. Re-run on window
+ *  resize so a previously-saved wide sidebar can't exceed half the shrunken
+ *  window. Guards against a zero/undefined `innerWidth` (e.g. under tests). */
+export function clampSidebarWidth(width: number): number {
+  const winW = typeof window !== 'undefined' ? window.innerWidth : 0
+  const max = winW > 0 ? Math.floor(winW * 0.5) : Number.POSITIVE_INFINITY
+  return Math.min(Math.max(width, MIN_SIDEBAR_WIDTH), max)
+}
+
+/** Persist the chosen sidebar width (call on drag-end, not on every move). */
+export async function applySidebarWidth(width: number): Promise<void> {
+  uiSettings.sidebarWidth = clampSidebarWidth(width)
+  await setSetting('ui.sidebar_width', String(uiSettings.sidebarWidth))
 }
 
 export async function applyKeepalive(secs: number): Promise<void> {

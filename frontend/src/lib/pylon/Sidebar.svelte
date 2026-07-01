@@ -6,6 +6,8 @@
 
   interface Props {
     theme: PylonTheme
+    /** Sidebar width in px (driven by the resizable divider). */
+    width?: number
     sessions: SavedSession[]
     folders: Folder[]
     activeSessionId?: number
@@ -53,6 +55,7 @@
 
   const {
     theme,
+    width = 248,
     sessions,
     folders,
     activeSessionId,
@@ -406,6 +409,7 @@
 
 <aside
   class="sidebar"
+  style:width="{width}px"
   style:background={theme.sidebarBg}
   style:border-right="1px solid {theme.border}"
   style:font-family={theme.fontUi}
@@ -965,6 +969,8 @@
 
 <style>
   .sidebar {
+    /* Width is driven by an inline style from the resizable divider; 248px
+       is the default when no prop is supplied. */
     width: 248px;
     flex-shrink: 0;
     display: flex;
@@ -1161,7 +1167,7 @@
 
   .sb-name {
     flex: 1;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1174,7 +1180,7 @@
   }
 
   .sb-name-sm {
-    font-size: 12.5px;
+    font-size: 11.5px;
   }
 
   .sb-droparea {

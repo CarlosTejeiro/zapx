@@ -609,7 +609,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 4px 14px 12px;
+    padding: 2px 6px 6px;
   }
 
   .pw-overlay {
