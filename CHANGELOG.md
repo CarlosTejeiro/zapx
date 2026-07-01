@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-07-01
+
+### Added
+- **Resizable sidebar** — drag the divider between the sidebar and the terminal
+  to widen the sessions/macros panel (handy for long session names). The width
+  is clamped between 180px and 50% of the window, re-clamps if the window
+  shrinks, persists across restarts, and double-clicking the divider resets it
+  to the default.
+
+### Changed
+- **Tighter, more homogeneous chrome** — smaller session-name and tab text, tab
+  font aligned with the rest of the UI, and the terminal card now uses less
+  inner padding so its content fills more of the rounded pane.
+
 ## [0.17.0] - 2026-07-01
 
 ### Changed
