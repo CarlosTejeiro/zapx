@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-07-01
+
+### Changed
+- **Macro `expect` steps are now pure "wait for text"** — an expect step waits
+  for its pattern and nothing more; whatever you want to type goes in a separate
+  `send` step. Because sending now always happens in a `send` step, you can
+  reference a vault credential (username/password) for any input, including
+  right after an expect — the vault picker lives on send steps. Existing macros
+  that combined an expect with a payload are split automatically into
+  expect + send when opened, with identical run-time behaviour (nothing is lost,
+  no migration). Login-automation scripts on saved sessions are unaffected.
+
 ## [0.16.0] - 2026-06-30
 
 ### Changed
