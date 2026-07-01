@@ -8,6 +8,7 @@
 // user-triggered, so the frontend drives it.
 
 import { invoke } from '@tauri-apps/api/core'
+import { matchEnd } from './macroMatch'
 import { sendVaultSecret, sendVaultField } from '$lib/bridge/commands'
 import { onTerminalData } from '$lib/bridge/events'
 import { getFocusedSessionId, focusSession } from '$lib/stores/sessionRuntime.svelte'
@@ -22,18 +23,6 @@ function stripAnsi(s: string): string {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-function stepMatches(step: LoginStep, haystack: string): boolean {
-  if (!step.expect) return false
-  if (step.is_regex) {
-    try {
-      return new RegExp(step.expect).test(haystack)
-    } catch {
-      return haystack.includes(step.expect) // invalid regex → literal
-    }
-  }
-  return haystack.includes(step.expect)
-}
 
 /**
  * Decode C-style backslash escapes (`\r` `\n` `\t` `\b` `\e` `\0` `\\` `\xHH`)
@@ -172,14 +161,18 @@ export async function runMacro(sessionId: string, steps: LoginStep[]): Promise<M
       } else if (step.kind === 'wait') {
         await sleep(step.timeout_ms)
       } else {
-        // expect: reset the window, then poll until the pattern shows or the
-        // per-step timeout elapses; on match, send the step's payload.
-        buffer = ''
+        // expect: poll the streaming buffer (which keeps accumulating from the
+        // macro's start — including output that arrived during the previous
+        // step's send) until the pattern shows or the per-step timeout elapses.
+        // On match, CONSUME up to the match end so a later expect can't re-match
+        // already-seen output, then send the step's payload.
         const deadline = Date.now() + step.timeout_ms
         let matched = false
         while (Date.now() < deadline) {
-          if (stepMatches(step, buffer)) {
+          const end = matchEnd(step, buffer)
+          if (end >= 0) {
             matched = true
+            buffer = buffer.slice(end)
             break
           }
           await sleep(50)

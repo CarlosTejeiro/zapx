@@ -5,6 +5,29 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-07-01
+
+### Fixed
+- **Macro `expect` steps no longer miss on fast hosts** — the runner used to
+  clear its capture buffer at the start of each `expect`, which discarded output
+  (including the very prompt being awaited) that arrived while the previous
+  `send` step was in flight. On quick SSH/local sessions this made an `expect`
+  time out without ever matching. It now keeps the stream and consumes only up
+  to each match, so expects match reliably and a later step can't re-match
+  already-seen text.
+
+### Added
+- **Mark a macro `expect` as a regular expression** — the step editor now has a
+  regex (`.*`) toggle on `expect` rows, so you can type a pattern like
+  `password:\s*$` and have it matched as a regex (no JSON escaping needed).
+
+### Changed
+- **Human-readable macro export** — exported macro files now store each macro's
+  steps as a real JSON array (`"steps": [ … ]`) instead of an escaped
+  single-string blob, so the file is readable and a regex reads as
+  `"password:\\s*$"` rather than a quadruple-escaped mess. The format is v2;
+  older v1 export files still import unchanged.
+
 ## [0.18.0] - 2026-07-01
 
 ### Added

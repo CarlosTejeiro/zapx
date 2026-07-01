@@ -96,6 +96,10 @@
           style:color={theme.textPrimary}
           style:border="1px solid {theme.border}"
         />
+        <label class="m-rx" title="Treat as a regular expression" style:color={theme.textDim}>
+          <input type="checkbox" bind:checked={step.is_regex} />
+          .*
+        </label>
         <input
           class="m-ms"
           type="number"
@@ -242,6 +246,18 @@
   .m-hint {
     font-size: 10.5px;
     flex-shrink: 0;
+  }
+  .m-rx {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-family: var(--zx-font-mono);
+    font-size: 11px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .m-rx input {
+    accent-color: var(--zx-accent);
   }
   .m-lock {
     font-size: 11px;

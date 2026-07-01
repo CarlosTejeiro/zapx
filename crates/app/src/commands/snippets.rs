@@ -189,10 +189,32 @@ pub struct RecentCommand {
 
 // ── Macro export / import (versioned JSON) ───────────────────────────────────
 
-const MACRO_EXPORT_VERSION: u32 = 1;
+const MACRO_EXPORT_VERSION: u32 = 2;
+
+/// A single macro step in the export envelope, mirroring
+/// [`crate::login_script::LoginStep`]'s wire shape. Kept local (rather than
+/// reusing `LoginStep`) so the on-disk export format is stable and independent
+/// of the runner's internal type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedStep {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub expect: String,
+    #[serde(default)]
+    pub is_regex: bool,
+    #[serde(default)]
+    pub send: String,
+    #[serde(default)]
+    pub timeout_ms: u64,
+}
 
 /// A single macro in the export envelope. Only the macro-relevant fields are
 /// carried; ids, ordering and timestamps are local and re-derived on import.
+///
+/// Both `steps` (v2, a real nested array) and `steps_json` (legacy v1, a raw
+/// string) are accepted on import for backward compatibility; export always
+/// writes `steps`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedMacro {
     pub name: String,
@@ -200,7 +222,13 @@ pub struct ExportedMacro {
     pub color: Option<String>,
     #[serde(default)]
     pub folder: Option<String>,
-    pub steps_json: String,
+    /// v2: steps as a real nested JSON array.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<ExportedStep>,
+    /// Legacy v1: doubly-encoded steps string. Only read on import; never
+    /// written by current exports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steps_json: Option<String>,
 }
 
 /// The versioned macro export envelope written to / read from disk.
@@ -232,8 +260,14 @@ fn build_macro_export(db: &Database, ids: Option<&[i64]>) -> Result<MacroExportF
             name: s.name,
             color: s.color,
             folder: s.folder,
-            // Filtered above to Some, but stay defensive.
-            steps_json: s.steps_json.unwrap_or_else(|| "[]".to_string()),
+            // Parse the stored steps string into a real array so the export is
+            // human-readable; on parse error fall back to an empty vec.
+            steps: s
+                .steps_json
+                .as_deref()
+                .and_then(|j| serde_json::from_str::<Vec<ExportedStep>>(j).ok())
+                .unwrap_or_default(),
+            steps_json: None,
         })
         .collect();
     Ok(MacroExportFile {
@@ -262,10 +296,17 @@ fn apply_macro_import(
             summary.skipped += 1;
             continue;
         }
+        // Prefer the v2 `steps` array (re-serialized to the DB's string form);
+        // fall back to a legacy v1 `steps_json` string when no array is present.
+        let steps_json = if !m.steps.is_empty() {
+            serde_json::to_string(&m.steps).map_err(|e| AppError::Internal(e.to_string()))?
+        } else {
+            m.steps_json.clone().unwrap_or_else(|| "[]".to_string())
+        };
         let id = db
             .create_snippet(&m.name, "", None, m.color.as_deref())
             .map_err(internal)?;
-        db.set_snippet_steps(id, Some(&m.steps_json))
+        db.set_snippet_steps(id, Some(&steps_json))
             .map_err(internal)?;
         if let Some(folder) = &m.folder {
             db.set_snippet_folder(id, Some(folder)).map_err(internal)?;
@@ -448,6 +489,11 @@ mod tests {
         assert_eq!(file.macros[0].name, "login");
         assert_eq!(file.macros[0].color.as_deref(), Some("#0af"));
         assert_eq!(file.macros[0].folder.as_deref(), Some("Net"));
+        // Steps export as a real nested array (v2), not a doubly-encoded string.
+        assert_eq!(file.macros[0].steps.len(), 1);
+        assert_eq!(file.macros[0].steps[0].kind, "send");
+        assert_eq!(file.macros[0].steps[0].send, "a\r");
+        assert!(file.macros[0].steps_json.is_none());
 
         // Serialize + parse back, exercising the on-disk shape.
         let json = serde_json::to_string(&file).unwrap();
@@ -461,10 +507,13 @@ mod tests {
         let m = imported.iter().find(|s| s.name == "login").unwrap();
         assert_eq!(m.color.as_deref(), Some("#0af"));
         assert_eq!(m.folder.as_deref(), Some("Net"));
-        assert_eq!(
-            m.steps_json.as_deref(),
-            Some(r#"[{"kind":"send","send":"a\r"}]"#)
-        );
+        // Imported steps parse back to the same array (fields are normalized to
+        // the full step shape on the round-trip through the v2 array form).
+        let steps: Vec<ExportedStep> =
+            serde_json::from_str(m.steps_json.as_deref().unwrap()).unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].kind, "send");
+        assert_eq!(steps[0].send, "a\r");
 
         // Idempotence: re-import skips by name.
         let s2 = apply_macro_import(&dst, &parsed).unwrap();
@@ -473,6 +522,83 @@ mod tests {
 
         let _ = std::fs::remove_file(src_path);
         let _ = std::fs::remove_file(dst_path);
+    }
+
+    /// Import accepts BOTH formats: a v2 file with a `steps` array, and a legacy
+    /// v1 file with a `steps_json` string. A regex step whose `expect` contains a
+    /// backslash must survive export → import intact.
+    #[test]
+    fn macro_import_v2_and_legacy_v1() {
+        // v2 file: steps as a real nested array, including a regex step whose
+        // `expect` carries a raw backslash escape.
+        let v2 = MacroExportFile {
+            zapx_macro_export: 2,
+            macros: vec![ExportedMacro {
+                name: "v2mac".into(),
+                color: None,
+                folder: Some("Telefonica".into()),
+                steps: vec![
+                    ExportedStep {
+                        kind: "wait".into(),
+                        expect: String::new(),
+                        is_regex: false,
+                        send: String::new(),
+                        timeout_ms: 1000,
+                    },
+                    ExportedStep {
+                        kind: "expect".into(),
+                        expect: r"password:\s*$".into(),
+                        is_regex: true,
+                        send: String::new(),
+                        timeout_ms: 10000,
+                    },
+                ],
+                steps_json: None,
+            }],
+        };
+        // Round-trip through the on-disk (pretty) shape.
+        let json = serde_json::to_string_pretty(&v2).unwrap();
+        // The array must be human-readable: no doubly-encoded quotes.
+        assert!(json.contains("\"steps\""));
+        assert!(!json.contains("steps_json"));
+        let parsed: MacroExportFile = serde_json::from_str(&json).unwrap();
+
+        let (dst, dst_path) = temp_db("v2");
+        let s = apply_macro_import(&dst, &parsed).unwrap();
+        assert_eq!(s.added, 1);
+        let m = dst
+            .list_snippets()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.name == "v2mac")
+            .unwrap();
+        assert_eq!(m.folder.as_deref(), Some("Telefonica"));
+        let steps: Vec<ExportedStep> =
+            serde_json::from_str(m.steps_json.as_deref().unwrap()).unwrap();
+        assert_eq!(steps.len(), 2);
+        // Regex step survived intact: backslash and flag preserved.
+        assert!(steps[1].is_regex);
+        assert_eq!(steps[1].expect, r"password:\s*$");
+        let _ = std::fs::remove_file(dst_path);
+
+        // Legacy v1 file: steps carried as a raw JSON string.
+        let v1_raw = r#"{"zapx_macro_export":1,"macros":[{"name":"v1mac","color":null,"folder":null,"steps_json":"[{\"kind\":\"expect\",\"expect\":\"password:\\\\s*$\",\"is_regex\":true,\"send\":\"\",\"timeout_ms\":5000}]"}]}"#;
+        let v1: MacroExportFile = serde_json::from_str(v1_raw).unwrap();
+        let (dst2, dst2_path) = temp_db("v1");
+        let s2 = apply_macro_import(&dst2, &v1).unwrap();
+        assert_eq!(s2.added, 1);
+        let m2 = dst2
+            .list_snippets()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.name == "v1mac")
+            .unwrap();
+        let steps2: Vec<ExportedStep> =
+            serde_json::from_str(m2.steps_json.as_deref().unwrap()).unwrap();
+        assert_eq!(steps2.len(), 1);
+        assert!(steps2[0].is_regex);
+        assert_eq!(steps2[0].expect, r"password:\s*$");
+        let _ = std::fs::remove_file(dst2_path);
     }
 
     /// A newer-schema file is rejected.
