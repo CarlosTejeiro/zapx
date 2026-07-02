@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - 2026-07-01
+
+### Fixed
+- **Vault credentials work on unsigned builds** — a `{{vault:Name.Password}}`
+  reference could fail at run time with *"keyring error: No matching entry found
+  in secure storage"* because vault secrets lived only in the OS keyring, which
+  on unsigned builds often denies the app access to its own entries. Vault
+  secrets now also have the same AES-256-GCM encrypted-database fallback that
+  saved-session passwords already use: the keyring stays primary, and the
+  encrypted local copy is used when the keyring can't return the secret.
+  (Vault entries created before this update need to be re-saved once — Edit the
+  entry and re-enter the password — to write the fallback; existing secrets the
+  keyring won't return can't be recovered automatically.)
+
 ## [0.20.0] - 2026-07-01
 
 ### Security

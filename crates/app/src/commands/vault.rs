@@ -75,7 +75,22 @@ pub async fn create_vault_entry(
         .db
         .create_vault_entry(name.trim(), username.as_deref(), &keyring_key)
     {
-        Ok(id) => Ok(id),
+        Ok(id) => {
+            // Best-effort encrypted-DB fallback so the entry keeps working on a
+            // keyring-denying (unsigned) build where `Vault::retrieve` fails.
+            // The blob is AES-256-GCM under `vault_seed`; never returned/logged.
+            match core_vault::encrypt_with_seed(&state.vault_seed, &password) {
+                Ok(blob) => {
+                    if let Err(e) = state.db.set_credential_secret(id, &blob) {
+                        tracing::warn!(credential_id = id, "persist credential_secret failed: {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(credential_id = id, "encrypt credential_secret failed: {e}")
+                }
+            }
+            Ok(id)
+        }
         Err(e) => {
             core_vault::Vault::delete(&keyring_key).ok();
             Err(AppError::Internal(e.to_string()))
@@ -138,6 +153,19 @@ pub async fn update_vault_entry(
             .get_credential_keyring_key(id)
             .map_err(|e| AppError::Internal(e.to_string()))?;
         core_vault::Vault::store(&key, &pw).map_err(|e| AppError::Internal(e.to_string()))?;
+        // Refresh the encrypted-DB fallback to match the rotated secret. This is
+        // best-effort: if it fails, the keyring already has the new secret, so
+        // the only consequence is a stale fallback blob (the PREVIOUS password)
+        // that would be used solely on a keyring-denied build — not a bug, and
+        // the warning below records it.
+        match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
+            Ok(blob) => {
+                if let Err(e) = state.db.set_credential_secret(id, &blob) {
+                    tracing::warn!(credential_id = id, "persist credential_secret failed: {e}");
+                }
+            }
+            Err(e) => tracing::warn!(credential_id = id, "encrypt credential_secret failed: {e}"),
+        }
     }
     Ok(())
 }
@@ -149,6 +177,8 @@ pub async fn delete_vault_entry(state: State<'_, AppState>, id: i64) -> Result<(
     if let Ok(key) = state.db.get_credential_keyring_key(id) {
         core_vault::Vault::delete(&key).ok();
     }
+    // The FK `ON DELETE CASCADE` also removes this, but be explicit.
+    state.db.delete_credential_secret(id).ok();
     state
         .db
         .delete_credential(id)
@@ -171,10 +201,26 @@ pub async fn send_vault_secret(
         .db
         .get_credential_keyring_key(vault_entry_id)
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let secret =
-        core_vault::Vault::retrieve(&key).map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let mut bytes = secret.into_bytes();
+    // Keyring first; on ANY keyring error fall back to the encrypted DB blob
+    // (unsigned builds are routinely denied read access to their own entry).
+    let mut bytes = match core_vault::Vault::retrieve(&key) {
+        Ok(s) => s.into_bytes(),
+        Err(_) => {
+            let blob = state
+                .db
+                .get_credential_secret(vault_entry_id)
+                .map_err(|e| AppError::Internal(e.to_string()))?
+                .ok_or_else(|| {
+                    AppError::Internal(
+                        "vault secret unavailable (keyring denied and no local fallback — re-save this vault entry)"
+                            .into(),
+                    )
+                })?;
+            core_vault::decrypt_with_seed(&state.vault_seed, &blob)
+                .map_err(|e| AppError::Internal(e.to_string()))?
+                .into_bytes()
+        }
+    };
     if enter {
         bytes.push(b'\r');
     }
@@ -203,9 +249,26 @@ pub async fn send_vault_field(
         .ok_or_else(|| AppError::Internal(format!("no vault credential named '{name}'")))?;
 
     let mut bytes = match field.to_ascii_lowercase().as_str() {
-        "password" => core_vault::Vault::retrieve(&cred.keyring_key)
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .into_bytes(),
+        // Keyring first; fall back to the encrypted DB blob on ANY keyring error
+        // (unsigned builds are routinely denied read access to their own entry).
+        "password" => match core_vault::Vault::retrieve(&cred.keyring_key) {
+            Ok(s) => s.into_bytes(),
+            Err(_) => {
+                let blob = state
+                    .db
+                    .get_credential_secret(cred.id)
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::Internal(
+                            "vault secret unavailable (keyring denied and no local fallback — re-save this vault entry)"
+                                .into(),
+                        )
+                    })?;
+                core_vault::decrypt_with_seed(&state.vault_seed, &blob)
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .into_bytes()
+            }
+        },
         "username" => cred.username.unwrap_or_default().into_bytes(),
         other => {
             return Err(AppError::Internal(format!(
@@ -244,5 +307,42 @@ mod tests {
         assert!(reserved_name_error("prod-root").is_none());
         assert!(reserved_name_error("svc.admin").is_none());
         assert!(reserved_name_error("password").is_none());
+    }
+
+    /// Exercises the load-bearing fallback path that `create_vault_entry`
+    /// performs after a successful insert: the password is encrypted under the
+    /// vault seed, stored in `credential_secrets`, and `send_vault_field` later
+    /// restores it via `get_credential_secret` + `decrypt_with_seed` when the
+    /// keyring is denied. (Keyring denial itself is not simulable in a unit
+    /// test, so we cover the encrypt→store→get→decrypt round-trip directly.)
+    #[test]
+    fn credential_secret_fallback_roundtrip() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("zapx_vault_fallback_{nanos}.db"));
+        let db = core_persistence::Database::open(&path).expect("open db");
+
+        let seed = "some/app/data/dir";
+        let password = "hunter2-\u{1f510}"; // include non-ASCII to catch byte issues
+
+        let id = db
+            .create_vault_entry("prod-root", Some("root"), "vault:key-1")
+            .unwrap();
+
+        // Mirror create_vault_entry's happy-path fallback write.
+        let blob = core_vault::encrypt_with_seed(seed, password).unwrap();
+        db.set_credential_secret(id, &blob).unwrap();
+
+        // The ciphertext is opaque — it must not equal the plaintext bytes.
+        assert_ne!(blob, password.as_bytes());
+
+        // Mirror send_vault_field's fallback read.
+        let stored = db.get_credential_secret(id).unwrap().expect("blob present");
+        let recovered = core_vault::decrypt_with_seed(seed, &stored).unwrap();
+        assert_eq!(recovered, password);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

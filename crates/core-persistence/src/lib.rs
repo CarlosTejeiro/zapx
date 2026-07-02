@@ -264,6 +264,9 @@ impl Database {
         if version < 22 {
             conn.execute_batch(include_str!("migrations/022_snippet_position.sql"))?;
         }
+        if version < 23 {
+            conn.execute_batch(include_str!("migrations/023_credential_secrets.sql"))?;
+        }
         Ok(())
     }
 
@@ -783,6 +786,53 @@ impl Database {
         conn.execute(
             "DELETE FROM session_secrets WHERE session_id = ?1",
             rusqlite::params![session_id],
+        )?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Credential secrets (encrypted local-fallback for vault entries)
+    //
+    // Mirrors `session_secrets`: the keyring stays the primary store, this is
+    // consulted only when keyring retrieval fails (unsigned builds). The blob
+    // is AES-256-GCM under `vault_seed`; the plaintext never leaves the
+    // decrypt path in the vault send commands.
+    // -----------------------------------------------------------------------
+
+    pub fn set_credential_secret(
+        &self,
+        credential_id: i64,
+        ciphertext: &[u8],
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO credential_secrets (credential_id, ciphertext) VALUES (?1, ?2)
+             ON CONFLICT(credential_id) DO UPDATE SET
+                 ciphertext = excluded.ciphertext",
+            rusqlite::params![credential_id, ciphertext],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_credential_secret(&self, credential_id: i64) -> Result<Option<Vec<u8>>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT ciphertext FROM credential_secrets WHERE credential_id = ?1",
+            rusqlite::params![credential_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn delete_credential_secret(&self, credential_id: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM credential_secrets WHERE credential_id = ?1",
+            rusqlite::params![credential_id],
         )?;
         Ok(())
     }
@@ -1733,6 +1783,39 @@ mod tests {
         assert!(db
             .create_vault_entry("prod-root", None, "vault:key-3")
             .is_err());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn credential_secret_crud_roundtrip() {
+        let (db, path) = temp_db();
+
+        let id = db
+            .create_vault_entry("prod-root", Some("root"), "vault:key-1")
+            .unwrap();
+
+        // Absent until written.
+        assert!(db.get_credential_secret(id).unwrap().is_none());
+
+        // Insert, then read back the exact bytes.
+        let blob = b"\x01\x02ciphertext\xff".to_vec();
+        db.set_credential_secret(id, &blob).unwrap();
+        assert_eq!(db.get_credential_secret(id).unwrap(), Some(blob.clone()));
+
+        // ON CONFLICT updates in place.
+        let blob2 = b"rotated".to_vec();
+        db.set_credential_secret(id, &blob2).unwrap();
+        assert_eq!(db.get_credential_secret(id).unwrap(), Some(blob2));
+
+        // Explicit delete clears it.
+        db.delete_credential_secret(id).unwrap();
+        assert!(db.get_credential_secret(id).unwrap().is_none());
+
+        // FK ON DELETE CASCADE also removes the fallback when the row goes.
+        db.set_credential_secret(id, &blob).unwrap();
+        db.delete_credential(id).unwrap();
+        assert!(db.get_credential_secret(id).unwrap().is_none());
 
         let _ = std::fs::remove_file(&path);
     }
