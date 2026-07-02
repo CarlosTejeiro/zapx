@@ -2,6 +2,7 @@ import type { Terminal } from '@xterm/xterm'
 import type { Hint } from '$lib/bridge/types'
 import { getHints, recordCommand } from '$lib/bridge/commands'
 import { InputBuffer } from './input-buffer'
+import { isPasswordPromptLine } from './passwordPrompt'
 
 // xterm exposes cell dimensions via a private path; we touch it through a
 // loose-typed accessor and fall back to a measured estimate if the shape
@@ -86,10 +87,23 @@ export class HintController {
   onOutgoing(data: Uint8Array): string | null {
     const submitted = this.buffer.feed(data)
     if (submitted !== null && submitted.length > 0) {
-      // Persist asynchronously; backend filters out sensitive lines. Pass the
-      // previous command so the backend learns the prev→submitted transition.
-      recordCommand(this.opts.savedSessionId, submitted, this.lastSubmitted).catch(console.error)
-      this.lastSubmitted = submitted
+      // SECURITY (PRIMARY defense — the backend can't see a bare secret typed
+      // at a prompt): if the terminal is sitting at a no-echo password prompt,
+      // the typed secret isn't echoed, so the current cursor line is still the
+      // prompt. Never record the secret into command history / recents, and
+      // never let it become a later transition's `prev` (don't touch
+      // lastSubmitted). The ghost/cursor machinery still gets `submitted`.
+      // Also test the previous line joined to the current one, in case the
+      // prompt wrapped and its terminator fell onto the continuation row.
+      const buf = this.opts.term.buffer.active
+      const line = buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) ?? ''
+      const prevLine = buf.getLine(buf.baseY + buf.cursorY - 1)?.translateToString(true) ?? ''
+      if (!isPasswordPromptLine(line) && !isPasswordPromptLine(prevLine + line)) {
+        // Persist asynchronously; backend filters out sensitive lines. Pass the
+        // previous command so the backend learns the prev→submitted transition.
+        recordCommand(this.opts.savedSessionId, submitted, this.lastSubmitted).catch(console.error)
+        this.lastSubmitted = submitted
+      }
     }
     return submitted
   }

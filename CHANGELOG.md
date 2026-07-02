@@ -5,6 +5,26 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-07-01
+
+### Security
+- **Passwords typed at a prompt no longer land in command history / recents** —
+  when you type a value at a password/passphrase prompt (which the remote echoes
+  as nothing), that line is no longer recorded to history, the recents bar, or
+  hint suggestions, and it can never resurface as the "previous command" of a
+  later entry. This is the primary guard for bare secrets: the existing filter
+  only caught lines that *contain* a keyword like `password:`, not a bare secret
+  value. Detection covers common prompts (including several non-English labels
+  and wrapped prompt lines). Vault references and macro sends already bypassed
+  this path.
+
+### Added
+- **Macro editor warns on a malformed vault reference** — a `send` step whose
+  `{{vault:…}}` reference has an unrecognised field (e.g. a typo like
+  `{{vault:admin.Pass word}}`) now shows a ⚠️ badge instead of the 🔒, so the
+  mistake is visible before you run the macro. Pick the entry from the 🔒 menu
+  to insert a correct `Name.Password` / `Name.Username` reference.
+
 ## [0.19.2] - 2026-07-01
 
 ### Fixed

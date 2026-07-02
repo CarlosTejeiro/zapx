@@ -6,6 +6,7 @@
   import type { PylonTheme } from '$lib/themes/index'
   import type { LoginStep, VaultEntry } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
+  import { vaultRefStatus } from './vaultRef'
 
   interface Props {
     theme: PylonTheme
@@ -16,12 +17,6 @@
 
   let { theme, steps = $bindable(), vaultEntries = [] }: Props = $props()
 
-  /** A send that is exactly a vault reference — either the legacy `{{vault:<id>}}`
-   *  form or the name+field `{{vault:<Name>.<Field>}}` form (optionally `\r`). */
-  const VAULT_REF_RE = /^\{\{vault:([^}]+)\}\}(\\r)?$/
-  function isVaultRef(send: string): boolean {
-    return VAULT_REF_RE.test(send)
-  }
   /// Set a send step to reference a vault entry by NAME + field. We append `\r`
   /// so the value is submitted (the common case: a password prompt). The stored
   /// value stays the placeholder — the secret / username is resolved
@@ -112,8 +107,16 @@
           style:border="1px solid {theme.border}"
         />
       {:else if step.kind === 'send'}
-        {#if isVaultRef(step.send)}
+        {@const vstatus = vaultRefStatus(step.send)}
+        {#if vstatus === 'valid'}
           <span class="m-lock" title="Vault reference (secret resolved at run time)">🔒</span>
+        {:else if vstatus === 'malformed'}
+          <span
+            class="m-lock"
+            style:color={theme.err}
+            title="Invalid vault reference — use Name.Password or Name.Username (pick it from the 🔒 menu)"
+            >⚠️</span
+          >
         {/if}
         <input
           class="m-in m-wide"
