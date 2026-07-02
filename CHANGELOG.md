@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.2] - 2026-07-01
+
+### Docs
+- **New User Guide** (`docs/user-guide/`) — a full English walkthrough covering
+  the workspace, sessions, the credential vault, macros (expect/send/wait, regex
+  expects, `{{vault:…}}` references, folders, run-on-connect, import/export),
+  snippets, SFTP, splits/multi-exec, logging, settings and the security model,
+  with image slots to drop screenshots into.
+- **README refreshed** to document the credential vault, the macros library and
+  vault references, the "passwords typed at a prompt aren't recorded" behaviour,
+  the resizable sidebar, the encrypted-DB keyring fallback, and a link to the
+  new guide.
+
 ## [0.20.1] - 2026-07-01
 
 ### Fixed

@@ -19,16 +19,18 @@ and modern replacement for SecureCRT, MobaXterm, or PuTTY. Proprietary software 
 | **Reliability** | SSH keepalive (configurable), auto-reconnect on drop with a one-click banner, reconnect/clear/save-output toolbar |
 | **Triggers** | Per-session regex/literal on output → notify, auto-send text, or ring the bell |
 | **SFTP** | File browser with streaming up/downloads, progress and cancellation |
-| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar); tabs rename / colour / duplicate |
-| **Splits & multi-exec** | Recursive split panes, grid view, broadcast typing to many sessions |
+| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar); tabs rename / colour / duplicate; **resizable sidebar** |
+| **Credential vault** | Reusable named credentials (name + username + password) in the OS keyring (AES-256-GCM DB fallback); attach to a session, or reference from a macro as `{{vault:Name.Password}}` — the secret is resolved in the backend and never enters the UI, JSON, exports or logs |
+| **Macros** | Sidebar library of expect/send/wait macros, run on the focused session; regex expects, vault references, folders, drag-to-reorder/move, edit-as-JSON, run-on-connect, JSON export/import and MobaXterm import |
+| **Splits & multi-exec** | Recursive split panes, grid view, broadcast typing to many sessions, output compare |
 | **Login automation** | Expect-like login scripts (expect/send steps) per saved session |
-| **Hints & snippets** | Command autocomplete from history + vendor catalogs (12 platforms), per-platform snippets on `Ctrl+Shift+1..9`, automatic platform detection from the prompt |
+| **Hints & snippets** | Command autocomplete from history + vendor catalogs (12 platforms), per-platform snippets on `Ctrl+Shift+1..9`, automatic platform detection from the prompt; passwords typed at a prompt are never recorded to history/recents |
 | **Keyword highlighting** | Per-rule regex, true-color ANSI, user-overridable vendor catalogs (Cisco, Juniper, Fortinet, Palo Alto, F5…) |
 | **Session logging** | Plain or raw capture, 50 MB rotation, per-session history panel |
 | **Themes** | 7 full themes — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor, Amber — UI chrome + terminal ANSI palettes, bundled Geist / JetBrains Mono fonts |
 | **Command palette** | `Ctrl+K` — fuzzy-launch sessions, groups, actions and themes |
 | **Portable & data control** | Windows portable exe, portable mode (data travels with the binary), user-selectable data folder |
-| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords) — idempotent import for backup, migration and team sharing. Imports from `~/.ssh/config`, PuTTY, MobaXterm and SecureCRT too |
+| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords, never the vault) — idempotent import for backup, migration and team sharing; macros export/import as their own JSON. Imports from `~/.ssh/config`, PuTTY, MobaXterm and SecureCRT too |
 | **Window memory** | Remembers size/position/maximized; first launch sizes to your monitor |
 
 ## Keyboard shortcuts
@@ -132,11 +134,21 @@ zapx/
 ## Security
 
 - Passwords are stored in the **OS keyring** (Windows Credential Manager, macOS Keychain,
-  libsecret on Linux) — never in SQLite and never in logs. In portable mode they are
-  stored AES-256-GCM-encrypted in the database instead (see *Windows portable* above).
+  libsecret on Linux) — never in SQLite in cleartext and never in logs. When the keyring
+  can't return a secret (e.g. unsigned builds) or in portable mode, an **AES-256-GCM**
+  copy encrypted in the database is used as a fallback.
+- **Vault** secrets and session passwords are resolved in the backend at run time and
+  written straight to the session; a macro or export only ever holds the `{{vault:…}}`
+  placeholder — never the secret.
+- **Passwords typed at a prompt are not recorded** to command history, recents or hints.
 - Host key verification with SHA-256 fingerprints and known_hosts.
 - Session logs capture raw terminal bytes only; credentials are not echoed by the PTY.
 - `#![forbid(unsafe_code)]` in all core crates.
+
+## Documentation
+
+- **[User Guide](docs/user-guide/)** — full walkthrough of sessions, the credential
+  vault, macros, SFTP, splits, settings and more.
 
 ## Releases
 
