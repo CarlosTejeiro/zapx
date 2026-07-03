@@ -21,6 +21,7 @@
     listSessionLogs,
   } from '$lib/bridge/commands'
   import type { SavedSession, SessionLog, AuthMethod, HostKeyStatus } from '$lib/bridge/types'
+  import { sanitizeDims, isSaneDim } from './dims'
   import HostKeyDialog from './HostKeyDialog.svelte'
   import TunnelsDialog from './TunnelsDialog.svelte'
   import SftpDialog from './SftpDialog.svelte'
@@ -216,8 +217,15 @@
   let reconnecting = $state(false)
   let reconnectAttempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  // Delayed retry of the post-open fit self-heal. Tracked so onDestroy can
+  // cancel it — otherwise closing the tab within its window would fire
+  // safeFit()/correctPtySize() on an already-disposed terminal.
+  let selfHealTimer: ReturnType<typeof setTimeout> | null = null
   // Held for $effect theme/font reactivity — set inside onMount.
   let term: InstanceType<typeof Terminal> | null = null
+  // Held at component scope so safeFit() and the post-open correction can reach
+  // it (populated inside onMount).
+  let fitAddon: FitAddon | null = null
   let hintController = $state<HintController | null>(null)
   // Teardown resources populated during the async onMount. They're released by
   // a synchronously-registered onDestroy (see the note there): registering the
@@ -436,14 +444,69 @@
     return new Date(iso).toLocaleString()
   }
 
+  // Wait until fonts are loaded and the browser has laid the container out, so
+  // xterm's cell measurement is valid before the first fit. On some WebKitGTK
+  // builds, fitting before the terminal font is ready yields a bogus (1×1 /
+  // 0-cell) measurement. Guarded for environments without `document.fonts`.
+  async function waitForLayout(): Promise<void> {
+    try {
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        await document.fonts.ready
+      }
+    } catch {
+      /* font loading API unavailable/unsupported — proceed anyway */
+    }
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  // Fit the terminal to its container and validate the result. If xterm still
+  // reports a degenerate size (< 2 cols/rows or non-finite) — the WebKitGTK
+  // cell-measurement bug — retry a couple of times on the next frames / a short
+  // timeout. Returns true once a sane size is measured.
+  async function safeFit(retries = 3): Promise<boolean> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      // Re-check each iteration: an await below yields, during which the
+      // component may be destroyed (term/fitAddon nulled). Never touch a
+      // disposed terminal.
+      if (!term || !fitAddon) return false
+      try {
+        fitAddon.fit()
+      } catch {
+        /* fit can throw if the element was detached — treat as invalid */
+      }
+      if (isSaneDim(term.cols) && isSaneDim(term.rows)) return true
+      if (attempt < retries) {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => setTimeout(() => resolve(), 30))
+        })
+      }
+    }
+    return term != null && isSaneDim(term.cols) && isSaneDim(term.rows)
+  }
+
+  // Push the currently-measured (sane) size to the live PTY. No-op if there's
+  // no session or the size is still invalid. Used to correct a bad initial fit
+  // after the terminal has settled, so the shell isn't stuck on the 80×24
+  // fallback when the pane is actually a different size.
+  async function correctPtySize(): Promise<void> {
+    if (!term || !sessionId) return
+    if (!isSaneDim(term.cols) || !isSaneDim(term.rows)) return
+    await invoke('resize_terminal', {
+      sessionId,
+      cols: term.cols,
+      rows: term.rows,
+    }).catch(console.error)
+  }
+
   // Open the backend session for this pane's parameters and return its id.
-  // Factored out so reconnect can re-run it.
+  // Factored out so reconnect can re-run it. Dimensions are sanitized so a
+  // failed fit never opens the PTY at 1×1 — it falls back to 80×24.
   async function doOpen(): Promise<string> {
     if (!term) throw new Error('terminal not ready')
-    if (savedSession) return await openSavedSession(savedSession.id, term.cols, term.rows)
-    if (ssh)
-      return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, term.cols, term.rows)
-    if (telnet) return await openTelnetSession(telnet.host, telnet.port, term.cols, term.rows)
+    const { cols, rows } = sanitizeDims(term.cols, term.rows)
+    if (savedSession) return await openSavedSession(savedSession.id, cols, rows)
+    if (ssh) return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, cols, rows)
+    if (telnet) return await openTelnetSession(telnet.host, telnet.port, cols, rows)
     return await invoke<string>('open_local_session')
   }
 
@@ -451,6 +514,13 @@
     if (reconnectTimer != null) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
+    }
+  }
+
+  function clearSelfHealTimer() {
+    if (selfHealTimer != null) {
+      clearTimeout(selfHealTimer)
+      selfHealTimer = null
     }
   }
 
@@ -565,12 +635,16 @@
       theme: effectivePalette,
     })
 
-    const fitAddon = new FitAddon()
+    fitAddon = new FitAddon()
     searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(searchAddon)
     term.open(container)
-    fitAddon.fit()
+    // Wait for fonts + one layout frame before the first fit so xterm's cell
+    // measurement is valid; then fit with retry. Without this, some WebKitGTK
+    // builds measure a 1×1 grid and the PTY would be opened at that bad size.
+    await waitForLayout()
+    await safeFit()
     // Focus immediately so the user can start typing the moment the tab
     // mounts. Without this, the hidden xterm textarea has no focus until
     // the user clicks the surface — which feels like the connection toast
@@ -691,6 +765,7 @@
           if (!errorMsg) errorMsg = 'Host key not trusted'
           onSessionError?.()
           term.dispose()
+          term = null
           return
         }
       } else if (ssh) {
@@ -698,6 +773,7 @@
           if (!errorMsg) errorMsg = 'Host key not trusted'
           onSessionError?.()
           term.dispose()
+          term = null
           return
         }
       }
@@ -706,12 +782,14 @@
     } catch (e) {
       if (needsPasswordReentry(e)) {
         onNeedPassword?.()
-        term.dispose()
+        term?.dispose()
+        term = null
         return
       }
       errorMsg = fmtError(e)
       onSessionError?.()
-      term.dispose()
+      term?.dispose()
+      term = null
       return
     }
 
@@ -740,6 +818,24 @@
     // host-key dialog, password prompt, or while the await chain ran.
     // Without this, the first key after "Conectado" can land nowhere.
     term.focus()
+
+    // Self-heal a bad initial fit without waiting for a user resize. If the
+    // first measurement was degenerate (opened the PTY at the 80×24 fallback),
+    // re-fit once fonts/layout are settled and, if we now get a valid size that
+    // differs from what the PTY was opened with, push it to the backend.
+    void (async () => {
+      await waitForLayout()
+      if (await safeFit()) await correctPtySize()
+      // One more delayed retry for slow WebKitGTK layout passes. Tracked so
+      // onDestroy can cancel it if the tab closes inside the 150ms window.
+      clearSelfHealTimer()
+      selfHealTimer = setTimeout(() => {
+        selfHealTimer = null
+        void (async () => {
+          if (await safeFit()) await correctPtySize()
+        })()
+      }, 150)
+    })()
 
     // Forward PTY output to xterm.
     unlisteners.push(
@@ -826,17 +922,21 @@
       }
     })
 
-    // Resize terminal when the container size changes.
+    // Resize terminal when the container size changes. safeFit re-validates the
+    // measurement (with retry), and we only forward the resize when the fitted
+    // size is sane — never send a 1×1 / NaN resize to the PTY.
     resizeObserver = new ResizeObserver(() => {
       if (!term) return
-      fitAddon.fit()
-      if (sessionId) {
-        invoke('resize_terminal', {
-          sessionId,
-          cols: term.cols,
-          rows: term.rows,
-        }).catch(console.error)
-      }
+      void safeFit().then((ok) => {
+        if (!term || !sessionId) return
+        if (ok && isSaneDim(term.cols) && isSaneDim(term.rows)) {
+          invoke('resize_terminal', {
+            sessionId,
+            cols: term.cols,
+            rows: term.rows,
+          }).catch(console.error)
+        }
+      })
     })
     resizeObserver.observe(container)
   })
@@ -847,12 +947,16 @@
   // it's safe even if the component is destroyed before onMount finishes.
   onDestroy(() => {
     clearReconnectTimer()
+    clearSelfHealTimer()
     resizeObserver?.disconnect()
     for (const off of unlisteners) off()
     unlisteners = []
     hintController?.clear()
     hintController = null
     term?.dispose()
+    // Null the ref so any in-flight safeFit()/correctPtySize() (e.g. the
+    // deferred self-heal) short-circuits instead of touching a disposed term.
+    term = null
     if (paneId != null) unregisterSession(paneId)
     if (sessionId) {
       const id = sessionId
