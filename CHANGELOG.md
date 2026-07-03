@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.4] - 2026-07-03
+
+### Fixed
+- **Garbled rendering/typing on Linux laptops without the NVIDIA driver** — ZAPX
+  no longer force-disables the WebKitGTK DMABUF renderer by default. That was a
+  workaround for a high-CPU issue on the NVIDIA *proprietary* driver, but forcing
+  it off broke rendering on other setups (ARM, and x86_64 hybrid laptops running
+  on Intel/nouveau under Wayland — an NVIDIA GPU present but its driver not
+  loaded), which is what re-broke the terminal in 0.20.3 even after the IBus fix.
+  It's now opt-in: if you hit the NVIDIA high-CPU issue, launch with
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1`. The IBus/IME fix from 0.20.3 stays.
+
 ## [0.20.3] - 2026-07-03
 
 ### Fixed
