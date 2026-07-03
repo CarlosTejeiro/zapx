@@ -5,6 +5,21 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.3] - 2026-07-03
+
+### Fixed
+- **Garbled / duplicated typing in the terminal on Linux (Wayland)** — on some
+  setups (reproduced on Fedora + KDE Plasma + Wayland) WebKitGTK mishandles the
+  IBus/Fcitx input method and produced duplicated or "ghost" characters, making
+  the terminal unusable. ZAPX now launches with the input-method modules
+  disabled by default on Linux (direct keyboard input). If you need composed /
+  CJK / emoji input, set `ZAPX_ENABLE_IME=1` to keep your session's IME.
+- **Terminal never opens at a 1×1 size** — hardened the terminal measurement so
+  a failed font/layout measurement can't create a 1-column PTY (which made the
+  remote shell's line editor misbehave). The size now waits for fonts/layout,
+  falls back to 80×24 if measurement fails, and self-corrects to the pane's real
+  size — with teardown-safe deferred fits.
+
 ## [0.20.2] - 2026-07-01
 
 ### Docs
