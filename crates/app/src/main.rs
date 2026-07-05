@@ -2,39 +2,62 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // Linux/WebKitGTK IME fixup.
+    // Linux/WebKitGTK launch-environment fixups.
     //
-    // On Wayland (reproduced on Fedora 44 + KDE Plasma), WebKitGTK mishandles
-    // the IBus/Fcitx input-method system and garbles terminal typing —
-    // duplicated/ghost characters, "crazy" input per keystroke. Launching with
-    // GTK_IM_MODULE="" and QT_IM_MODULE="" (empty, i.e. direct keyboard input,
-    // no IME) fixes it. This must be in the environment *before* WebKit
-    // initializes (setting it in-process is too late), so we re-exec ourselves
-    // once with those vars set. We force it off by default because it's the
-    // primary fix; a user who needs composed/CJK/emoji input opts out with
-    // ZAPX_ENABLE_IME=1, which keeps the session's IME modules.
+    // Two Wayland problems make the terminal unusable on some Linux setups
+    // (both reproduced on Fedora + KDE Plasma + Wayland). Both must be fixed in
+    // the environment *before* WebKit/GTK initializes — setting them in-process
+    // is too late — so we re-exec ourselves once with the vars set. A dedicated
+    // ZAPX_REEXEC sentinel on the child prevents an infinite re-exec loop
+    // (we can't guard on the vars themselves because the session pre-sets some
+    // of them, e.g. GTK_IM_MODULE=ibus, so their presence isn't a reliable
+    // guard — we must override).
     //
-    // We deliberately do NOT force WEBKIT_DISABLE_DMABUF_RENDERER anymore.
-    // Disabling the DMABUF renderer was a workaround for a busy-repaint/high-CPU
-    // issue on the NVIDIA *proprietary* driver, but forcing it off broke
-    // rendering on other setups — aarch64/ARM, and x86_64 hybrid laptops running
-    // on Intel/nouveau under Wayland (NVIDIA present but its driver not loaded).
-    // It only helped NVIDIA-proprietary and hurt everyone else, and "is NVIDIA
-    // present?" is not a reliable guard (a hybrid laptop has an NVIDIA GPU that
-    // isn't in use). So it's opt-in: a user hitting the high-CPU issue exports
-    // WEBKIT_DISABLE_DMABUF_RENDERER=1 themselves (it's inherited into the
-    // re-exec'd child).
+    // 1. GDK backend. WebKitGTK's *native-Wayland* input handling duplicates
+    //    keystrokes in the terminal ("crazy"/ghost characters, one input per
+    //    keypress). This is independent of the NVIDIA driver — it reproduces
+    //    both with the proprietary driver installed and without it — and it is
+    //    NOT the IME issue below: it persists even with the IME modules emptied.
+    //    Running under XWayland (GDK_BACKEND=x11) fixes it completely. XWayland
+    //    is present in every Wayland session, so forcing x11 there is a safe
+    //    default. We only touch this on a Wayland session (on native X11 it's
+    //    already x11 and there's no bug), we respect a user-set GDK_BACKEND, and
+    //    a user who wants native Wayland opts out with ZAPX_ENABLE_WAYLAND=1.
     //
-    // Loop prevention: we can't guard the IME change on "GTK_IM_MODULE unset?"
-    // because Fedora/KDE *sets* GTK_IM_MODULE=ibus in the session, so we must
-    // OVERRIDE it — its presence can't be the guard. Instead a dedicated
-    // ZAPX_REEXEC sentinel: the re-exec'd child carries ZAPX_REEXEC=1, and if
-    // that's already set we skip straight to app::run(), making an infinite
-    // re-exec loop impossible.
+    // 2. IME. WebKitGTK also mishandles the IBus/Fcitx input-method system on
+    //    Wayland and garbles typing. Launching with GTK_IM_MODULE="" and
+    //    QT_IM_MODULE="" (empty, i.e. direct keyboard input, no IME) fixes that
+    //    part. Forced off by default; a user who needs composed/CJK/emoji input
+    //    opts out with ZAPX_ENABLE_IME=1.
+    //
+    // We deliberately do NOT force WEBKIT_DISABLE_DMABUF_RENDERER. Disabling the
+    // DMABUF renderer was a workaround for a busy-repaint/high-CPU issue on the
+    // NVIDIA *proprietary* driver, but forcing it off broke rendering on other
+    // setups (ARM, and x86_64 hybrid laptops on Intel/nouveau). It's opt-in: a
+    // user hitting the high-CPU issue exports WEBKIT_DISABLE_DMABUF_RENDERER=1
+    // themselves (it's inherited into the re-exec'd child).
+    //
+    // Escape hatch: ZAPX_NO_LAUNCH_ENV=1 skips ALL of the above (no re-exec, no
+    // env overrides), so a user can isolate whether one of these fixups is
+    // causing a problem on their machine.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("ZAPX_REEXEC").is_none() {
+    if std::env::var_os("ZAPX_REEXEC").is_none() && std::env::var_os("ZAPX_NO_LAUNCH_ENV").is_none()
+    {
         // Collect the (name, value) env changes we need for this launch.
         let mut planned: Vec<(&str, &str)> = Vec::new();
+
+        // GDK backend: force XWayland on a Wayland session unless the user set
+        // GDK_BACKEND themselves or opted back into native Wayland.
+        let on_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v.eq_ignore_ascii_case("wayland"))
+                .unwrap_or(false);
+        if on_wayland
+            && std::env::var_os("GDK_BACKEND").is_none()
+            && std::env::var_os("ZAPX_ENABLE_WAYLAND").is_none()
+        {
+            planned.push(("GDK_BACKEND", "x11"));
+        }
 
         // IME (all Linux arches): force direct keyboard input unless the user
         // opted back into their session IME via ZAPX_ENABLE_IME.

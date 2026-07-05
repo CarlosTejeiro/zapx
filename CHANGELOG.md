@@ -5,6 +5,24 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.5] - 2026-07-05
+
+### Fixed
+- **Duplicated / "crazy" typing in the terminal on Linux Wayland (the real
+  fix)** — the remaining cause of duplicated keystrokes on Wayland was
+  WebKitGTK's native-Wayland input handling, not the IME. It reproduced on
+  Fedora + KDE Plasma + Wayland **regardless of the NVIDIA driver** (with the
+  proprietary driver installed and without it) and persisted even with the IME
+  modules emptied — but launching under XWayland (`GDK_BACKEND=x11`) fixes it
+  completely. ZAPX now defaults to the X11/XWayland backend on Linux Wayland
+  sessions. XWayland is present in every Wayland session, so this is safe; a
+  user who wants native Wayland opts out with `ZAPX_ENABLE_WAYLAND=1` (and a
+  user-set `GDK_BACKEND` is always respected). The 0.20.3 IME fix and the
+  0.20.4 DMABUF change both stay.
+- **`ZAPX_NO_LAUNCH_ENV=1` escape hatch** — set it to skip *all* of ZAPX's
+  Linux launch-environment fixups (no re-exec, no `GDK_BACKEND`/IME overrides),
+  to isolate whether one of them is interacting badly with a specific machine.
+
 ## [0.20.4] - 2026-07-03
 
 ### Fixed
