@@ -60,18 +60,15 @@ describe('eventToCombo', () => {
 })
 
 describe('default bindings are all reachable', () => {
-  // Each default must match the event a user actually produces when pressing
-  // it — the previous bug was that Ctrl+Shift+\ could never be produced.
-  it('split-horizontal (Ctrl+\\) fires on the backslash key', () => {
-    expect(match(key('\\', { code: 'Backslash', ctrl: true }))).toBe('split-h')
+  // Split defaults use letter keys (Ctrl+Shift+H / Ctrl+Shift+K) so they read
+  // and fire the same on every layout — the old `\`-based defaults were
+  // unreachable (Shift remaps the char; `\` needs AltGr on some layouts).
+  it('split-horizontal fires on Ctrl+Shift+H', () => {
+    expect(match(key('H', { code: 'KeyH', ctrl: true, shift: true }))).toBe('split-h')
   })
 
-  it('split-vertical (Ctrl+Shift+\\) fires even though Shift changes the char', () => {
-    expect(match(key('|', { code: 'Backslash', ctrl: true, shift: true }))).toBe('split-v')
-  })
-
-  it('split-horizontal is reachable on a Spanish keyboard', () => {
-    expect(match(key('ç', { code: 'Backslash', ctrl: true }))).toBe('split-h')
+  it('split-vertical fires on Ctrl+Shift+K', () => {
+    expect(match(key('K', { code: 'KeyK', ctrl: true, shift: true }))).toBe('split-v')
   })
 
   it('matches the remaining letter/named-key defaults', () => {

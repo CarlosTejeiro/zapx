@@ -8,16 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.20.6] - 2026-07-06
 
 ### Fixed
-- **Split-pane shortcuts (and other symbol shortcuts) now fire on every
-  keyboard layout** — `Ctrl+Shift+\` (split vertically) never worked because
-  holding Shift makes the `\` key emit a different character (`|` on a US
-  layout), so the pressed combo never matched the binding; and `Ctrl+\` (split
-  horizontally) was unreachable on layouts where `\` needs AltGr (e.g.
-  Spanish). Shortcuts that use punctuation keys are now matched by physical key
-  position instead of the character the key emits, so the documented combos
-  work regardless of Shift and of keyboard layout. Letter/number shortcuts are
-  unchanged (still follow your layout as printed). Any shortcut can still be
-  rebound in **Settings → Shortcuts**.
+- **Split-pane shortcuts now work on every keyboard layout** — the split
+  defaults were `Ctrl+\` / `Ctrl+Shift+\`, which were unreachable: holding
+  Shift makes the `\` key emit a different character (`|` on a US layout) so
+  the combo never matched, and `\` needs AltGr on layouts like Spanish. The
+  split defaults are now **`Ctrl+Shift+H`** (horizontal) and **`Ctrl+Shift+K`**
+  (vertical), which read and fire the same on any layout. In addition, any
+  shortcut bound to a punctuation key is now matched by physical key position
+  rather than the character the key emits, so such combos are robust to Shift
+  and layout too (letter/number shortcuts still follow your layout as printed).
+  Everything remains rebindable in **Settings → Shortcuts**.
 
 ## [0.20.5] - 2026-07-05
 

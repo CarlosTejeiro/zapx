@@ -45,7 +45,7 @@ All customizable in **Settings → Shortcuts**. Defaults:
 | `Ctrl+T` | New local shell tab |
 | `Ctrl+W` | Close current tab |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
-| `Ctrl+\` / `Ctrl+Shift+\` | Split pane horizontally / vertically |
+| `Ctrl+Shift+H` / `Ctrl+Shift+K` | Split pane horizontally / vertically |
 | `Ctrl+Shift+M` | Toggle multi-exec broadcast |
 | `Ctrl+Shift+S` | Snippets |
 | `Ctrl+Shift+1..9` | Fire snippet 1..9 |
