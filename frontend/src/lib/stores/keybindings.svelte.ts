@@ -4,26 +4,21 @@
 // can override the combo from `SettingsModal` and it is persisted to the
 // `settings` SQLite table under the key `shortcut.<action-id>`.
 //
-// `matchAction(e)` is the dispatch helper — `App.svelte` calls it from its
-// global keydown listener and then runs the corresponding action handler.
+// The pure combo/matching logic lives in `shortcuts.ts` (unit-testable under
+// Vitest's node environment); this module holds the reactive `bindings` state
+// and the `matchAction(e)` dispatch helper that `App.svelte` /
+// `TerminalTab.svelte` call from their keydown handlers.
 
 import { getSetting, setSetting } from '$lib/bridge/commands'
+import {
+  SHORTCUT_ACTIONS,
+  eventToCombo,
+  findAction,
+  type ShortcutAction,
+} from '$lib/stores/shortcuts'
 
-export const SHORTCUT_ACTIONS = [
-  { id: 'new-session', label: 'New session…', default: 'Ctrl+N' },
-  { id: 'new-tab', label: 'New local tab', default: 'Ctrl+T' },
-  { id: 'close-tab', label: 'Close tab', default: 'Ctrl+W' },
-  { id: 'next-tab', label: 'Next tab', default: 'Ctrl+Tab' },
-  { id: 'prev-tab', label: 'Previous tab', default: 'Ctrl+Shift+Tab' },
-  { id: 'settings', label: 'Open settings', default: 'Ctrl+,' },
-  { id: 'split-h', label: 'Split horizontally', default: 'Ctrl+\\' },
-  { id: 'split-v', label: 'Split vertically', default: 'Ctrl+Shift+\\' },
-  { id: 'multi-exec', label: 'Toggle MultiExec broadcast', default: 'Ctrl+Shift+M' },
-  { id: 'snippets', label: 'Open snippets', default: 'Ctrl+Shift+S' },
-  { id: 'quick-connect', label: 'Quick connect (ad-hoc)', default: 'Ctrl+Shift+N' },
-] as const
-
-export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number]['id']
+export { SHORTCUT_ACTIONS, eventToCombo }
+export type { ShortcutAction }
 
 /// Reactive bindings: action id → combo string (e.g. `"Ctrl+Shift+M"`).
 export const bindings = $state<Record<string, string>>(
@@ -57,30 +52,7 @@ export async function resetBinding(actionId: ShortcutAction): Promise<void> {
   await setSetting(`shortcut.${actionId}`, '')
 }
 
-/// Build a combo string from a KeyboardEvent, or `null` if only modifier
-/// keys are currently pressed (so we don't capture half-typed shortcuts).
-export function eventToCombo(e: KeyboardEvent): string | null {
-  let key = e.key
-  if (key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift') {
-    return null
-  }
-  if (key.length === 1) key = key.toUpperCase()
-  // Stable modifier order so combos serialise deterministically.
-  const parts: string[] = []
-  if (e.ctrlKey) parts.push('Ctrl')
-  if (e.metaKey) parts.push('Meta')
-  if (e.altKey) parts.push('Alt')
-  if (e.shiftKey) parts.push('Shift')
-  parts.push(key)
-  return parts.join('+')
-}
-
 /// Find the action whose combo matches this event, or null.
 export function matchAction(e: KeyboardEvent): ShortcutAction | null {
-  const combo = eventToCombo(e)
-  if (!combo) return null
-  for (const a of SHORTCUT_ACTIONS) {
-    if (bindings[a.id] === combo) return a.id
-  }
-  return null
+  return findAction(eventToCombo(e), bindings)
 }

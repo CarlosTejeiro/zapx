@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.6] - 2026-07-06
+
+### Fixed
+- **Split-pane shortcuts (and other symbol shortcuts) now fire on every
+  keyboard layout** — `Ctrl+Shift+\` (split vertically) never worked because
+  holding Shift makes the `\` key emit a different character (`|` on a US
+  layout), so the pressed combo never matched the binding; and `Ctrl+\` (split
+  horizontally) was unreachable on layouts where `\` needs AltGr (e.g.
+  Spanish). Shortcuts that use punctuation keys are now matched by physical key
+  position instead of the character the key emits, so the documented combos
+  work regardless of Shift and of keyboard layout. Letter/number shortcuts are
+  unchanged (still follow your layout as printed). Any shortcut can still be
+  rebound in **Settings → Shortcuts**.
+
 ## [0.20.5] - 2026-07-05
 
 ### Fixed
