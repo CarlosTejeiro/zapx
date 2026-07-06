@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.6] - 2026-07-06
+
+### Fixed
+- **Split-pane shortcuts now work on every keyboard layout** — the split
+  defaults were `Ctrl+\` / `Ctrl+Shift+\`, which were unreachable: holding
+  Shift makes the `\` key emit a different character (`|` on a US layout) so
+  the combo never matched, and `\` needs AltGr on layouts like Spanish. The
+  split defaults are now **`Ctrl+Shift+H`** (horizontal) and **`Ctrl+Shift+K`**
+  (vertical), which read and fire the same on any layout. In addition, any
+  shortcut bound to a punctuation key is now matched by physical key position
+  rather than the character the key emits, so such combos are robust to Shift
+  and layout too (letter/number shortcuts still follow your layout as printed).
+  Everything remains rebindable in **Settings → Shortcuts**.
+
 ## [0.20.5] - 2026-07-05
 
 ### Fixed
