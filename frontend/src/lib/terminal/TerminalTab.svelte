@@ -504,7 +504,24 @@
   async function doOpen(): Promise<string> {
     if (!term) throw new Error('terminal not ready')
     const { cols, rows } = sanitizeDims(term.cols, term.rows)
-    if (savedSession) return await openSavedSession(savedSession.id, cols, rows)
+    if (savedSession) {
+      // Surface backend connection progress (jump-host hops → target tunnel)
+      // in the pane while we wait, so a slow/failed ProxyJump isn't a blank
+      // screen. Tagged by saved-session id (the live id doesn't exist yet).
+      const sid = savedSession.id
+      const unlistenProgress = await listen<{ saved_session_id: number; line: string }>(
+        'connection-progress',
+        (event) => {
+          if (event.payload.saved_session_id !== sid) return
+          term?.write(`\x1b[2m${event.payload.line}\x1b[0m\r\n`)
+        },
+      )
+      try {
+        return await openSavedSession(sid, cols, rows)
+      } finally {
+        unlistenProgress()
+      }
+    }
     if (ssh) return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, cols, rows)
     if (telnet) return await openTelnetSession(telnet.host, telnet.port, cols, rows)
     return await invoke<string>('open_local_session')

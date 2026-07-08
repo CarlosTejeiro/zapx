@@ -5,6 +5,26 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.7] - 2026-07-08
+
+### Added
+- **Connection progress for jump hosts (ProxyJump)** — opening a session that
+  connects through one or more jump hosts now prints live status in the pane as
+  it goes: `→ [jump 1/2] connecting to «bastion» (10.0.0.5:22)…`, `✓ jump host
+  «bastion» ready`, `→ opening tunnel to «target» (…) via the jump host…`,
+  `✓ connected`. Previously the pane stayed blank until it either connected or
+  failed, so you couldn't tell whether it reached the jump host or the hop to
+  the target was the problem.
+
+### Fixed
+- **Jump-host connection errors now say which hop failed** — a failure is
+  reported as e.g. `jump host «bastion» (10.0.0.5:22) unreachable: …` or
+  `target «device» (…) not reachable through the jump host: …`, instead of a
+  bare `I/O error: … (os error 10060)` with no host. Unreachable hosts also
+  fail after ~15s instead of hanging on the OS default (~21s on Windows); this
+  timeout covers only the pre-auth TCP connect, so it never interrupts password
+  or 2FA prompts.
+
 ## [0.20.6] - 2026-07-06
 
 ### Fixed
