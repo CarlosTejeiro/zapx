@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.9] - 2026-07-08
+
+### Fixed
+- **Windows portable: sessions with a typed username + password failed to
+  authenticate** — in portable mode ZAPX deliberately doesn't depend on the OS
+  keyring, but a session's own password was still stored in the keyring only,
+  with no encrypted-database fallback (vault credentials already had one since
+  0.20.1). So on the portable build the password couldn't be recovered and
+  every connect failed authentication, while vault-based sessions worked.
+  Portable installs now also write the same AES-256-GCM `session_secrets`
+  fallback for a session's password/passphrase, and a keyring failure no longer
+  aborts creating the session. (Sessions created on the portable build before
+  this update must be re-created once to write the fallback.)
+
 ## [0.20.8] - 2026-07-08
 
 ### Added

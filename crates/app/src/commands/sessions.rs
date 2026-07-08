@@ -792,6 +792,26 @@ fn reader_loop(
 // Saved session CRUD (persisted in SQLite via core-persistence)
 // ---------------------------------------------------------------------------
 
+/// Store `secret` in the OS keyring under `key`.
+///
+/// On **portable** installs the keyring is not the source of truth (see
+/// `data_dir` docs) — the AES-256-GCM `session_secrets` fallback is — so a
+/// keyring failure there is logged and tolerated rather than aborting session
+/// creation. On non-portable installs the keyring is primary, so a failure is
+/// fatal.
+fn store_secret_in_keyring(key: &str, secret: &str, portable: bool) -> Result<(), AppError> {
+    match core_vault::Vault::store(key, secret) {
+        Ok(()) => Ok(()),
+        Err(e) if portable => {
+            tracing::warn!(
+                "keyring store failed in portable mode ({e}); using encrypted DB fallback"
+            );
+            Ok(())
+        }
+        Err(e) => Err(AppError::Internal(e.to_string())),
+    }
+}
+
 /// Save a new SSH session. Secrets (password, key passphrase) go to the OS
 /// keyring; the key file path is not a secret and is stored in `options_json`.
 #[tauri::command]
@@ -819,6 +839,10 @@ pub async fn create_saved_session(
             )));
         }
     }
+    // Portable installs deliberately don't depend on the OS keyring (see
+    // data_dir docs); the AES-256-GCM `session_secrets` fallback is the store.
+    let portable = state.data_dir.is_portable();
+
     // (auth_method, credential_id, options_json, password_to_cache) derived per type.
     let (auth_method, credential_id, options_json, password_to_cache): (
         &str,
@@ -828,8 +852,7 @@ pub async fn create_saved_session(
     ) = match auth {
         AuthMethodArg::Password { password } => {
             let keyring_key = format!("ssh:{}", Uuid::new_v4());
-            core_vault::Vault::store(&keyring_key, &password)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            store_secret_in_keyring(&keyring_key, &password, portable)?;
             let cred_id = state
                 .db
                 .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
@@ -841,22 +864,20 @@ pub async fn create_saved_session(
             passphrase,
         } => {
             // Only the passphrase is a secret; store it in the vault if present.
-            let cred_id = match passphrase {
+            let (cred_id, pp_to_persist) = match passphrase {
                 Some(pp) if !pp.is_empty() => {
                     let keyring_key = format!("ssh:{}", Uuid::new_v4());
-                    core_vault::Vault::store(&keyring_key, &pp)
+                    store_secret_in_keyring(&keyring_key, &pp, portable)?;
+                    let id = state
+                        .db
+                        .create_credential(&name, "ssh_key", Some(&username), &keyring_key)
                         .map_err(|e| AppError::Internal(e.to_string()))?;
-                    Some(
-                        state
-                            .db
-                            .create_credential(&name, "ssh_key", Some(&username), &keyring_key)
-                            .map_err(|e| AppError::Internal(e.to_string()))?,
-                    )
+                    (Some(id), Some(pp))
                 }
-                _ => None,
+                _ => (None, None),
             };
             let options = serde_json::json!({ "key_path": key_path }).to_string();
-            ("key", cred_id, options, None)
+            ("key", cred_id, options, pp_to_persist)
         }
         AuthMethodArg::KeyboardInteractive => {
             ("keyboard-interactive", None, "{}".to_string(), None)
@@ -895,7 +916,24 @@ pub async fn create_saved_session(
     // `cache_session_password`, i.e. once the keyring has actually proven
     // unusable and the user re-entered the password.
     if let Some(pw) = password_to_cache {
-        state.password_cache.lock().unwrap().insert(id, pw);
+        state.password_cache.lock().unwrap().insert(id, pw.clone());
+        // Portable installs: also persist the AES-256-GCM on-disk fallback so
+        // the secret is recoverable after the process exits WITHOUT the OS
+        // keyring (which portable mode doesn't rely on). Vault credentials
+        // already carry this fallback; session passwords/passphrases did not,
+        // which made direct-password sessions fail to authenticate on the
+        // Windows portable build. Non-portable installs keep the secret in the
+        // keyring only, to avoid a second at-rest copy on signed builds.
+        if portable {
+            match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
+                Ok(blob) => {
+                    if let Err(e) = state.db.set_session_secret(id, &blob) {
+                        tracing::warn!(id, "persist portable session_secret failed: {e}");
+                    }
+                }
+                Err(e) => tracing::warn!(id, "encrypt portable session_secret failed: {e}"),
+            }
+        }
     }
 
     Ok(id)
