@@ -38,6 +38,30 @@ struct SessionPlatformDetected {
     display_name: String,
 }
 
+/// Frontend payload for `connection-progress` — human-readable status lines
+/// shown in the terminal while a (possibly multi-hop / ProxyJump) SSH
+/// connection is being established, so the user can see it reach the jump
+/// host(s) and then tunnel to the target instead of staring at a blank pane.
+/// Tagged with the saved-session id the frontend is opening so the right pane
+/// picks the lines up (the live session id doesn't exist yet at connect time).
+#[derive(serde::Serialize, Clone)]
+struct ConnectionProgress {
+    saved_session_id: i64,
+    line: String,
+}
+
+/// Emit a `connection-progress` line (best-effort — a dropped status line must
+/// never fail a connection).
+fn emit_progress(app: &AppHandle, saved_session_id: i64, line: impl Into<String>) {
+    let _ = app.emit(
+        "connection-progress",
+        ConnectionProgress {
+            saved_session_id,
+            line: line.into(),
+        },
+    );
+}
+
 /// Build the callback the platform detector fires the first time it latches.
 /// Persists the platform onto the saved-session row IF (a) the session was
 /// saved and (b) it doesn't already have an explicit platform — we never
@@ -1210,36 +1234,50 @@ fn collect_chain_ids(start_id: i64, state: &AppState) -> Result<Vec<i64>, AppErr
 /// the returned Vec is the bastion through which the target is tunneled.
 async fn build_bastion_chain(
     via_start: i64,
+    tag_id: i64,
     app: &AppHandle,
     state: &AppState,
 ) -> Result<Vec<core_transport::SshHandle>, AppError> {
     let chain_ids = collect_chain_ids(via_start, state)?;
-    let mut handles: Vec<core_transport::SshHandle> = Vec::with_capacity(chain_ids.len());
-    for id in chain_ids {
+    let total = chain_ids.len();
+    let mut handles: Vec<core_transport::SshHandle> = Vec::with_capacity(total);
+    for (i, id) in chain_ids.into_iter().enumerate() {
         let saved = state
             .db
             .get_session(id)
             .map_err(|e| AppError::Internal(e.to_string()))?;
+        let label = saved.name.clone();
         let host = saved
             .host
             .clone()
-            .ok_or_else(|| AppError::Internal(format!("bastion {id} missing host")))?;
+            .ok_or_else(|| AppError::Internal(format!("jump host «{label}» has no host set")))?;
         let port = saved.port.unwrap_or(22);
-        let user = saved
-            .username
-            .clone()
-            .ok_or_else(|| AppError::Internal(format!("bastion {id} missing username")))?;
+        let user = saved.username.clone().ok_or_else(|| {
+            AppError::Internal(format!("jump host «{label}» has no username set"))
+        })?;
         let auth = resolve_ssh_auth_for_session(&saved, app, state)?;
 
+        emit_progress(
+            app,
+            tag_id,
+            format!(
+                "→ [jump {}/{total}] connecting to «{label}» ({host}:{port})…",
+                i + 1
+            ),
+        );
+
         let handle = if let Some(prev) = handles.last() {
-            core_transport::connect_authenticated_via(prev, host, port, user, auth)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
+            core_transport::connect_authenticated_via(prev, host.clone(), port, user, auth).await
         } else {
-            core_transport::connect_authenticated(host, port, user, auth)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-        };
+            core_transport::connect_authenticated(host.clone(), port, user, auth).await
+        }
+        .map_err(|e| {
+            let msg = format!("jump host «{label}» ({host}:{port}) unreachable: {e}");
+            emit_progress(app, tag_id, format!("✗ {msg}"));
+            AppError::Internal(msg)
+        })?;
+
+        emit_progress(app, tag_id, format!("✓ jump host «{label}» ready"));
         handles.push(handle);
     }
     Ok(handles)
@@ -1286,18 +1324,66 @@ pub async fn open_saved_session(
             let auth = resolve_ssh_auth_for_session(&session, &app, &state)?;
 
             let session_id = Uuid::new_v4().to_string();
+            let target_label = session.name.clone();
             let mut transport = if let Some(via_id) = session.via_session_id {
                 // Build the bastion chain, then tunnel to the target through it.
-                let chain = build_bastion_chain(via_id, &app, &state).await?;
-                core_transport::SshTransport::open_shell_via(
-                    chain, host, port, username, auth, cols, rows,
+                let chain = build_bastion_chain(via_id, saved_session_id, &app, &state).await?;
+                emit_progress(
+                    &app,
+                    saved_session_id,
+                    format!(
+                        "→ opening tunnel to «{target_label}» ({host}:{port}) via the jump host…"
+                    ),
+                );
+                let t = core_transport::SshTransport::open_shell_via(
+                    chain,
+                    host.clone(),
+                    port,
+                    username,
+                    auth,
+                    cols,
+                    rows,
                 )
                 .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
+                .map_err(|e| {
+                    let msg = format!(
+                        "target «{target_label}» ({host}:{port}) not reachable through the jump host: {e}"
+                    );
+                    emit_progress(&app, saved_session_id, format!("✗ {msg}"));
+                    AppError::Internal(msg)
+                })?;
+                emit_progress(
+                    &app,
+                    saved_session_id,
+                    format!("✓ connected to «{target_label}»"),
+                );
+                t
             } else {
-                core_transport::SshTransport::open_shell(host, port, username, auth, cols, rows)
-                    .await
-                    .map_err(|e| AppError::Internal(e.to_string()))?
+                emit_progress(
+                    &app,
+                    saved_session_id,
+                    format!("→ connecting to {host}:{port}…"),
+                );
+                let t = core_transport::SshTransport::open_shell(
+                    host.clone(),
+                    port,
+                    username,
+                    auth,
+                    cols,
+                    rows,
+                )
+                .await
+                .map_err(|e| {
+                    let msg = format!("{host}:{port} — {e}");
+                    emit_progress(&app, saved_session_id, format!("✗ {msg}"));
+                    AppError::Internal(msg)
+                })?;
+                emit_progress(
+                    &app,
+                    saved_session_id,
+                    format!("✓ connected to «{target_label}»"),
+                );
+                t
             };
 
             let sid = session_id.clone();

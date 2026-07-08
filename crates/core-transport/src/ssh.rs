@@ -615,9 +615,21 @@ async fn connect_only(
     ),
     Error,
 > {
-    let stream = tokio::net::TcpStream::connect((host.as_str(), port))
-        .await
-        .map_err(Error::Io)?;
+    // Bound the TCP connect so an unreachable host (e.g. a jump host behind a
+    // firewall) fails in a few seconds with a clear error instead of hanging on
+    // the OS default (~21s on Windows, surfaced as a bare "os error 10060").
+    // This covers only the pre-auth socket connect, so it never truncates
+    // interactive auth (password / 2FA keyboard-interactive).
+    let connect = tokio::net::TcpStream::connect((host.as_str(), port));
+    let stream = match tokio::time::timeout(std::time::Duration::from_secs(15), connect).await {
+        Ok(res) => res.map_err(Error::Io)?,
+        Err(_) => {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("connection to {host}:{port} timed out after 15s"),
+            )))
+        }
+    };
     let mss = crate::tcp_mss::query(&stream);
     let watcher = crate::tcp_mss::MssWatcher::new(&stream);
 
