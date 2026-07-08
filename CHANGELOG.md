@@ -5,7 +5,7 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.20.7] - 2026-07-08
+## [0.20.8] - 2026-07-08
 
 ### Added
 - **Connection progress for jump hosts (ProxyJump)** — opening a session that
@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `✓ connected`. Previously the pane stayed blank until it either connected or
   failed, so you couldn't tell whether it reached the jump host or the hop to
   the target was the problem.
+- **Clearer jump-host labelling in the session dialog** — the "Connect through"
+  field is now **Jump host (ProxyJump)** with an inline explanation: ZAPX
+  connects to the jump host and then tunnels an *end-to-end* SSH session to the
+  target through it (like `ssh -J`), so the jump host only forwards encrypted
+  traffic and never sees the target session's credentials or host key.
 
 ### Fixed
 - **Jump-host connection errors now say which hop failed** — a failure is

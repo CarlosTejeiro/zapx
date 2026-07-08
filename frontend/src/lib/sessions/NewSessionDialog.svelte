@@ -597,7 +597,7 @@
 
       {#if bastionCandidates.length > 0}
         <label>
-          Connect through (jump host)
+          Jump host (ProxyJump)
           <select bind:value={viaSessionId}>
             <option value={null}>— Direct connection —</option>
             {#each bastionCandidates as b (b.id)}
@@ -605,6 +605,14 @@
             {/each}
           </select>
         </label>
+        {#if viaSessionId != null}
+          <p class="hint">
+            ProxyJump (like <code>ssh -J</code>): ZAPX connects to the jump host, then tunnels an
+            <strong>end-to-end</strong> SSH session to this target through it. The jump host only forwards
+            encrypted traffic — it never sees this session's credentials or host key. Chain more hops
+            by giving the jump host its own jump host.
+          </p>
+        {/if}
       {/if}
     {/if}
 
