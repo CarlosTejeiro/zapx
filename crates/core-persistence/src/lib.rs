@@ -1529,6 +1529,32 @@ impl Database {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Substring search over command history for the Ctrl+R reverse-i-search:
+    /// scoped to this session (plus session-less entries), most-recent first.
+    /// An empty `query` returns the most recent commands. Commands are already
+    /// de-duplicated in `command_history` (one row per command).
+    pub fn search_history(
+        &self,
+        session_id: Option<i64>,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT command FROM command_history
+              WHERE (session_id = ?1 OR session_id IS NULL)
+                AND command LIKE '%' || ?2 || '%' ESCAPE '\\'
+              ORDER BY last_used DESC
+              LIMIT ?3",
+        )?;
+        let escaped = escape_like(query);
+        let rows = stmt.query_map(
+            rusqlite::params![session_id, escaped, limit as i64],
+            |row| row.get::<_, String>(0),
+        )?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     /// Top `limit` commands for the dynamic "Recents" snippet bar. Ranked
     /// by frecency: a freshly-used command outranks an old frequent one,
     /// but raw frequency still matters within the same age band.

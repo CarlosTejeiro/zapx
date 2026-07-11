@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.10] - 2026-07-09
+
+### Added
+- **Ctrl+V pastes in the terminal** — Ctrl+V (and Ctrl+Shift+V) now paste the
+  clipboard into the terminal instead of sending a literal ^V, matching the
+  Windows / MobaXterm convention and completing the Ctrl+C-copies pair from
+  0.20.9. A multi-line paste still shows the "paste N lines?" confirmation.
+- **Ctrl+R command-history search (bash-style reverse-i-search)** — press Ctrl+R
+  in the terminal to open a `(reverse-i-search)` bar over your command history,
+  scoped to the current session (most-recent first). Type to filter, Ctrl+R to
+  cycle to older matches, Enter to insert the match at the prompt (it is *not*
+  run — you review and press Enter yourself), Esc to cancel.
+
 ## [0.20.9] - 2026-07-08
 
 ### Fixed

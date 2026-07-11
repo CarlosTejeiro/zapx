@@ -5,7 +5,10 @@
   import { FitAddon } from '@xterm/addon-fit'
   import { SearchAddon } from '@xterm/addon-search'
   import { invoke } from '@tauri-apps/api/core'
-  import { writeText as clipboardWriteText } from '@tauri-apps/plugin-clipboard-manager'
+  import {
+    writeText as clipboardWriteText,
+    readText as clipboardReadText,
+  } from '@tauri-apps/plugin-clipboard-manager'
   import { listen } from '@tauri-apps/api/event'
   import type { UnlistenFn } from '@tauri-apps/api/event'
   import '@xterm/xterm/css/xterm.css'
@@ -19,6 +22,7 @@
     startSessionLogging,
     stopSessionLogging,
     listSessionLogs,
+    searchCommandHistory,
   } from '$lib/bridge/commands'
   import type { SavedSession, SessionLog, AuthMethod, HostKeyStatus } from '$lib/bridge/types'
   import { sanitizeDims, isSaneDim } from './dims'
@@ -244,6 +248,13 @@
   let showLogs = $state(false)
   let pastLogs = $state<SessionLog[]>([])
   let logsLoading = $state(false)
+
+  // Reverse-i-search (Ctrl+R) state — a bash-style command-history search.
+  let revOpen = $state(false)
+  let revQuery = $state('')
+  let revMatches = $state<string[]>([])
+  let revIndex = $state(0)
+  let revInput = $state<HTMLInputElement | null>(null)
 
   // Search state
   let showSearch = $state(false)
@@ -552,6 +563,80 @@
     return true
   }
 
+  // Paste the clipboard into the terminal (Ctrl+V). Reads via Tauri's native
+  // clipboard (browser fallback) and routes through the same multi-line guard
+  // as a native paste, so pasting a block still shows the confirmation dialog.
+  async function pasteFromClipboard(): Promise<void> {
+    let text = ''
+    try {
+      text = (await clipboardReadText()) ?? ''
+    } catch {
+      try {
+        text = await navigator.clipboard.readText()
+      } catch {
+        text = ''
+      }
+    }
+    if (!text) return
+    if (/\r|\n/.test(text)) {
+      pastePending = text
+    } else {
+      term?.paste(text)
+    }
+  }
+
+  // ── Reverse-i-search (Ctrl+R) ────────────────────────────────────────────
+  // Bash-style command-history search. Scoped to this session's history,
+  // most-recent first. Enter inserts the match at the prompt (does NOT run it),
+  // Ctrl+R cycles to older matches, Esc cancels.
+  // Fetch matches for the current query; apply only if the query is still
+  // current (a stale async response must not clobber newer input).
+  async function fetchRevMatches(query: string): Promise<void> {
+    const matches = await searchCommandHistory(savedSession?.id ?? null, query, 50).catch(
+      () => [] as string[],
+    )
+    if (revOpen && revQuery === query) {
+      revMatches = matches
+      revIndex = 0
+    }
+  }
+
+  function onRevInput(): void {
+    void fetchRevMatches(revQuery)
+  }
+
+  function openReverseSearch(): void {
+    revOpen = true
+    revQuery = ''
+    revMatches = []
+    revIndex = 0
+    void fetchRevMatches('')
+    requestAnimationFrame(() => revInput?.focus())
+  }
+
+  function cycleReverseSearch(): void {
+    if (revMatches.length === 0) return
+    revIndex = (revIndex + 1) % revMatches.length
+  }
+
+  function closeReverseSearch(): void {
+    revOpen = false
+    refocusTerminal()
+  }
+
+  // Insert the current match at the prompt (no newline — the user reviews/edits
+  // and presses Enter themselves), then close.
+  function acceptReverseSearch(): void {
+    const cmd = revMatches[revIndex]
+    const sid = sessionId
+    revOpen = false
+    if (cmd && sid) {
+      const u8 = new TextEncoder().encode(cmd)
+      invoke('send_input', { sessionId: sid, data: Array.from(u8) }).catch(console.error)
+    }
+    refocusTerminal()
+  }
+
   function clearSelfHealTimer() {
     if (selfHealTimer != null) {
       clearTimeout(selfHealTimer)
@@ -725,13 +810,36 @@
       // Ctrl+C copies the selection (terminal convention) instead of sending
       // SIGINT; with nothing selected it falls through so ^C still interrupts.
       // Ctrl+Shift+C always copies (and is swallowed even with no selection).
+      // preventDefault is needed on the branches we handle because returning
+      // false from xterm's custom handler skips xterm but does NOT stop the
+      // browser default (Ctrl+R would reload, Ctrl+C/V would hit the browser
+      // clipboard which drops newlines on WebKitGTK).
       if (e.ctrlKey && !e.altKey && e.code === 'KeyC') {
         if (copySelection()) {
           term?.clearSelection()
+          e.preventDefault()
           return false
         }
-        if (e.shiftKey) return false
+        if (e.shiftKey) {
+          e.preventDefault()
+          return false
+        }
         // No selection, plain Ctrl+C → let xterm send SIGINT.
+      }
+      // Ctrl+V / Ctrl+Shift+V pastes the clipboard (Windows/MobaXterm
+      // convention) instead of sending a literal ^V.
+      if (e.ctrlKey && !e.altKey && e.code === 'KeyV') {
+        e.preventDefault()
+        void pasteFromClipboard()
+        return false
+      }
+      // Ctrl+R opens the bash-style command-history reverse-i-search (or cycles
+      // to an older match if it's already open).
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyR') {
+        e.preventDefault()
+        if (revOpen) cycleReverseSearch()
+        else openReverseSearch()
+        return false
       }
       if (e.ctrlKey && e.key === 'f') {
         if (showSearch) closeSearch()
@@ -1238,6 +1346,45 @@
     </div>
   {/if}
 
+  {#if revOpen}
+    <div class="search-bar">
+      <span class="rev-label">(reverse-i-search)</span>
+      <input
+        class="search-input rev-query"
+        bind:this={revInput}
+        bind:value={revQuery}
+        placeholder="command…"
+        oninput={onRevInput}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            acceptReverseSearch()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            closeReverseSearch()
+          } else if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+            e.preventDefault()
+            cycleReverseSearch()
+          }
+        }}
+      />
+      <span class="rev-match" class:no-match={revQuery !== '' && revMatches.length === 0}
+        >{revMatches.length === 0 ? (revQuery ? 'no match' : '') : revMatches[revIndex]}</span
+      >
+      <span class="search-count">
+        {#if revMatches.length > 0}{revIndex + 1}/{revMatches.length}{/if}
+      </span>
+      <button class="search-nav" title="Older match (Ctrl+R)" onclick={cycleReverseSearch}>▲</button
+      >
+      <button class="search-nav" title="Insert at prompt (Enter)" onclick={acceptReverseSearch}
+        >↵</button
+      >
+      <button class="search-nav" title="Close (Esc)" onclick={closeReverseSearch}
+        ><Icon name="x" size={11} /></button
+      >
+    </div>
+  {/if}
+
   {#if disconnected}
     <div class="disconnected-bar">
       <span class="disconnected-icon">⚠</span>
@@ -1508,6 +1655,32 @@
     min-width: 3.5rem;
     text-align: right;
     white-space: nowrap;
+  }
+
+  .rev-label {
+    font-size: 0.72rem;
+    color: #71717a;
+    font-family: monospace;
+    white-space: nowrap;
+  }
+
+  .rev-query {
+    flex: 0 1 12rem;
+  }
+
+  .rev-match {
+    flex: 1;
+    min-width: 0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: #e4e4e7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rev-match.no-match {
+    color: #ef4444;
   }
 
   .search-toggle {
