@@ -534,6 +534,24 @@
     }
   }
 
+  // Return focus to the terminal after a UI element that stole it (the
+  // multi-line paste dialog) is dismissed. Deferred to the next frame so it
+  // runs AFTER Svelte removes the element from the DOM — otherwise focus lands
+  // on <body> and typing goes nowhere until the user clicks the pane.
+  function refocusTerminal() {
+    requestAnimationFrame(() => term?.focus())
+  }
+
+  // Copy the current selection to the clipboard (native path first — WebKitGTK
+  // drops newlines from the browser clipboard API). Returns true if something
+  // was copied. Shared by copy-on-select and Ctrl+C.
+  function copySelection(): boolean {
+    const sel = term?.hasSelection() ? term.getSelection() : ''
+    if (!sel) return false
+    clipboardWriteText(sel).catch(() => navigator.clipboard.writeText(sel).catch(() => {}))
+    return true
+  }
+
   function clearSelfHealTimer() {
     if (selfHealTimer != null) {
       clearTimeout(selfHealTimer)
@@ -697,18 +715,24 @@
     // it's the same path on macOS/Windows. Fall back to the browser API if the
     // native write fails; ignore failures silently either way.
     container.addEventListener('mouseup', () => {
-      if (term?.hasSelection()) {
-        const sel = term.getSelection()
-        if (sel) {
-          clipboardWriteText(sel).catch(() => navigator.clipboard.writeText(sel).catch(() => {}))
-        }
-      }
+      copySelection()
     })
 
     // Ctrl+F opens search bar; user-bound global shortcuts are forwarded to
     // App so xterm doesn't consume them as terminal control characters.
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== 'keydown') return true
+      // Ctrl+C copies the selection (terminal convention) instead of sending
+      // SIGINT; with nothing selected it falls through so ^C still interrupts.
+      // Ctrl+Shift+C always copies (and is swallowed even with no selection).
+      if (e.ctrlKey && !e.altKey && e.code === 'KeyC') {
+        if (copySelection()) {
+          term?.clearSelection()
+          return false
+        }
+        if (e.shiftKey) return false
+        // No selection, plain Ctrl+C → let xterm send SIGINT.
+      }
       if (e.ctrlKey && e.key === 'f') {
         if (showSearch) closeSearch()
         else showSearch = true
@@ -1036,7 +1060,10 @@
       aria-modal="true"
       tabindex="-1"
       onclick={(e) => {
-        if (e.target === e.currentTarget) pastePending = null
+        if (e.target === e.currentTarget) {
+          pastePending = null
+          refocusTerminal()
+        }
       }}
     >
       <div class="paste-confirm">
@@ -1049,7 +1076,14 @@
             ? pastePending.slice(0, 1500) + `\n… (${pastePending.length - 1500} more chars)`
             : pastePending}</pre>
         <div class="paste-confirm-actions">
-          <button class="btn" type="button" onclick={() => (pastePending = null)}>Cancel</button>
+          <button
+            class="btn"
+            type="button"
+            onclick={() => {
+              pastePending = null
+              refocusTerminal()
+            }}>Cancel</button
+          >
           <button
             class="btn primary"
             type="button"
@@ -1057,6 +1091,7 @@
               const text = pastePending ?? ''
               pastePending = null
               term?.paste(text)
+              refocusTerminal()
             }}>Send {pastePending.split(/\r?\n/).length} lines</button
           >
         </div>

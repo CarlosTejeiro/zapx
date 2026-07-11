@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback for a session's password/passphrase, and a keyring failure no longer
   aborts creating the session. (Sessions created on the portable build before
   this update must be re-created once to write the fallback.)
+- **Typing did nothing after the multi-line paste dialog** — confirming or
+  cancelling the "paste N lines?" dialog (or clicking outside it) left keyboard
+  focus on the dismissed dialog instead of the terminal, so the pane looked
+  frozen until you clicked it. Focus now returns to the terminal automatically.
+- **Ctrl+C now copies the selection** — with text selected in the terminal,
+  Ctrl+C copies it to the clipboard (and clears the selection) instead of only
+  sending SIGINT; with nothing selected it still sends ^C to interrupt, as
+  before. Ctrl+Shift+C always copies. (Copy-on-select and right-click copy are
+  unchanged.)
 
 ## [0.20.8] - 2026-07-08
 
