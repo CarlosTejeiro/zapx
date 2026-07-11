@@ -56,6 +56,22 @@ pub async fn get_hints(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Reverse-i-search (Ctrl+R) over the command history. Substring match, scoped
+/// to this session (plus session-less entries), most-recent first. An empty
+/// `query` returns the most recent commands.
+#[tauri::command]
+pub async fn search_command_history(
+    state: State<'_, AppState>,
+    saved_session_id: Option<i64>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<String>, AppError> {
+    state
+        .db
+        .search_history(saved_session_id, &query, limit.unwrap_or(50))
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Stateless prompt-return check for the multi-host command runner. Given a
 /// platform string and a tail of captured output, returns whether that output
 /// ends at the device's idle prompt (i.e. the command finished). Unknown /

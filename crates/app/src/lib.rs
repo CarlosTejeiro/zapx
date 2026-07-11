@@ -302,6 +302,7 @@ pub fn run() {
             commands::settings::set_ssh_keepalive,
             commands::settings::list_color_schemes,
             commands::hints::get_hints,
+            commands::hints::search_command_history,
             commands::hints::record_command,
             commands::hints::set_session_platform,
             commands::hints::get_session_platform,

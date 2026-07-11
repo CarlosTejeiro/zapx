@@ -73,6 +73,19 @@ export async function promptReturned(platform: string, tail: string): Promise<bo
   return invoke<boolean>('prompt_returned', { platform, tail })
 }
 
+/**
+ * Reverse-i-search (Ctrl+R) over command history: substring match scoped to
+ * this saved session (plus session-less entries), most-recent first. An empty
+ * `query` returns the most recent commands.
+ */
+export async function searchCommandHistory(
+  savedSessionId: number | null,
+  query: string,
+  limit = 50,
+): Promise<string[]> {
+  return invoke<string[]>('search_command_history', { savedSessionId, query, limit })
+}
+
 export async function createSavedSession(
   name: string,
   folderId: number | null,
