@@ -5,7 +5,10 @@
   import { FitAddon } from '@xterm/addon-fit'
   import { SearchAddon } from '@xterm/addon-search'
   import { invoke } from '@tauri-apps/api/core'
-  import { writeText as clipboardWriteText } from '@tauri-apps/plugin-clipboard-manager'
+  import {
+    writeText as clipboardWriteText,
+    readText as clipboardReadText,
+  } from '@tauri-apps/plugin-clipboard-manager'
   import { listen } from '@tauri-apps/api/event'
   import type { UnlistenFn } from '@tauri-apps/api/event'
   import '@xterm/xterm/css/xterm.css'
@@ -552,6 +555,28 @@
     return true
   }
 
+  // Paste the clipboard into the terminal (Ctrl+V). Reads via Tauri's native
+  // clipboard (browser fallback) and routes through the same multi-line guard
+  // as a native paste, so pasting a block still shows the confirmation dialog.
+  async function pasteFromClipboard(): Promise<void> {
+    let text = ''
+    try {
+      text = (await clipboardReadText()) ?? ''
+    } catch {
+      try {
+        text = await navigator.clipboard.readText()
+      } catch {
+        text = ''
+      }
+    }
+    if (!text) return
+    if (/\r|\n/.test(text)) {
+      pastePending = text
+    } else {
+      term?.paste(text)
+    }
+  }
+
   function clearSelfHealTimer() {
     if (selfHealTimer != null) {
       clearTimeout(selfHealTimer)
@@ -732,6 +757,12 @@
         }
         if (e.shiftKey) return false
         // No selection, plain Ctrl+C → let xterm send SIGINT.
+      }
+      // Ctrl+V / Ctrl+Shift+V pastes the clipboard (Windows/MobaXterm
+      // convention) instead of sending a literal ^V.
+      if (e.ctrlKey && !e.altKey && e.code === 'KeyV') {
+        void pasteFromClipboard()
+        return false
       }
       if (e.ctrlKey && e.key === 'f') {
         if (showSearch) closeSearch()
