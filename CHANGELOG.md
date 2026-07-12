@@ -5,6 +5,14 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.11] - 2026-07-12
+
+### Changed
+- **Ctrl+R search bar moved to the bottom, inline with the command line** — the
+  reverse-i-search now appears pinned to the bottom of the terminal, styled
+  like a bash prompt (`(reverse-i-search)`query': match`), instead of a bar at
+  the top — so it reads as if it's on the CLI line where you're typing.
+
 ## [0.20.10] - 2026-07-09
 
 ### Added
