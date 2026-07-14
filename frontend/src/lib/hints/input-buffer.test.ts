@@ -69,6 +69,29 @@ describe('InputBuffer', () => {
     expect(b.snapshot.dirty).toBe(true)
   })
 
+  it('consumes SS3 arrow keys (ESC O A) instead of leaking "OA"', () => {
+    const b = new InputBuffer()
+    // Application-cursor-mode up arrow: ESC O A — must NOT add "OA".
+    b.feed(new Uint8Array([0x1b, 0x4f, 0x41]))
+    expect(b.snapshot.text).toBe('')
+    expect(b.snapshot.dirty).toBe(true)
+    // Typing after the recall still accumulates, but the line is dirty.
+    feed(b, ' | grep x')
+    expect(b.snapshot.text).toBe(' | grep x')
+  })
+
+  it('does not record a dirty line on Enter (history recall + edit)', () => {
+    const b = new InputBuffer()
+    // Recall a command with up arrow (SS3), then append a pipe.
+    b.feed(new Uint8Array([0x1b, 0x4f, 0x41]))
+    feed(b, ' | grep smart')
+    // The buffer never saw the recalled text, so the line is untrackable —
+    // Enter must return null rather than a polluted/partial command.
+    const submitted = b.feed(new Uint8Array([0x0d]))
+    expect(submitted).toBeNull()
+    expect(b.snapshot.dirty).toBe(false)
+  })
+
   it('handles UTF-8 multi-byte chars', () => {
     const b = new InputBuffer()
     feed(b, 'echo héllo')

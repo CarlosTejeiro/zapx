@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.12] - 2026-07-13
+
+### Fixed
+- **Command history was polluted by arrow-key history recall (broke Ctrl+R)** —
+  in application-cursor-mode shells (zsh commonly enables it) the arrow keys are
+  sent as SS3 sequences (`ESC O A`), not CSI (`ESC [ A`). The input tracker only
+  skipped the CSI form, so the `O` and final letter of an SS3 arrow leaked in as
+  literal characters — recalling a command with the up arrow and editing it
+  stored garbage like `OA | grep smart` in the history, which then reappeared
+  (and mis-ran) via Ctrl+R. SS3 sequences are now consumed correctly, and a line
+  the tracker couldn't follow cleanly (history recall, Tab completion) is no
+  longer recorded at all rather than recorded partially. (Existing polluted
+  history entries remain until cleared via Settings → clear history.)
+
 ## [0.20.11] - 2026-07-12
 
 ### Changed
