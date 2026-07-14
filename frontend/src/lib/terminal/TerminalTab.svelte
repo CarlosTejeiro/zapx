@@ -1346,45 +1346,6 @@
     </div>
   {/if}
 
-  {#if revOpen}
-    <div class="search-bar">
-      <span class="rev-label">(reverse-i-search)</span>
-      <input
-        class="search-input rev-query"
-        bind:this={revInput}
-        bind:value={revQuery}
-        placeholder="command…"
-        oninput={onRevInput}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            acceptReverseSearch()
-          } else if (e.key === 'Escape') {
-            e.preventDefault()
-            closeReverseSearch()
-          } else if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
-            e.preventDefault()
-            cycleReverseSearch()
-          }
-        }}
-      />
-      <span class="rev-match" class:no-match={revQuery !== '' && revMatches.length === 0}
-        >{revMatches.length === 0 ? (revQuery ? 'no match' : '') : revMatches[revIndex]}</span
-      >
-      <span class="search-count">
-        {#if revMatches.length > 0}{revIndex + 1}/{revMatches.length}{/if}
-      </span>
-      <button class="search-nav" title="Older match (Ctrl+R)" onclick={cycleReverseSearch}>▲</button
-      >
-      <button class="search-nav" title="Insert at prompt (Enter)" onclick={acceptReverseSearch}
-        >↵</button
-      >
-      <button class="search-nav" title="Close (Esc)" onclick={closeReverseSearch}
-        ><Icon name="x" size={11} /></button
-      >
-    </div>
-  {/if}
-
   {#if disconnected}
     <div class="disconnected-bar">
       <span class="disconnected-icon">⚠</span>
@@ -1444,6 +1405,42 @@
         fontFamily={terminalSettings.fontFamily}
         accentColor={pylonPalette?.cursor ?? '#22d3ee'}
       />
+    {/if}
+
+    {#if revOpen}
+      <!-- Bash-style reverse-i-search, pinned to the bottom of the terminal so
+           it reads like it's on the command line. -->
+      <div class="rev-bar" style:font-family={terminalSettings.fontFamily}>
+        <span class="rev-label">(reverse-i-search)`</span>
+        <input
+          class="rev-query"
+          bind:this={revInput}
+          bind:value={revQuery}
+          oninput={onRevInput}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              acceptReverseSearch()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              closeReverseSearch()
+            } else if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+              e.preventDefault()
+              cycleReverseSearch()
+            }
+          }}
+        />
+        <span class="rev-sep">':</span>
+        <span class="rev-match" class:no-match={revQuery !== '' && revMatches.length === 0}
+          >{revMatches.length === 0 ? (revQuery ? 'no match' : '') : revMatches[revIndex]}</span
+        >
+        {#if revMatches.length > 0}
+          <span class="rev-count">{revIndex + 1}/{revMatches.length}</span>
+        {/if}
+        <button class="rev-close" title="Close (Esc)" onclick={closeReverseSearch}
+          ><Icon name="x" size={11} /></button
+        >
+      </div>
     {/if}
   </div>
 </div>
@@ -1657,22 +1654,43 @@
     white-space: nowrap;
   }
 
-  .rev-label {
-    font-size: 0.72rem;
-    color: #71717a;
-    font-family: monospace;
+  /* Bash-style reverse-i-search bar, pinned to the bottom of the terminal. */
+  .rev-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    background: rgba(24, 24, 27, 0.97);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .rev-label,
+  .rev-sep {
+    color: #a1a1aa;
     white-space: nowrap;
   }
 
   .rev-query {
-    flex: 0 1 12rem;
+    flex: 0 1 14rem;
+    min-width: 3rem;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fbbf24;
+    font: inherit;
+    padding: 0;
   }
 
   .rev-match {
     flex: 1;
     min-width: 0;
-    font-family: monospace;
-    font-size: 0.8rem;
     color: #e4e4e7;
     white-space: nowrap;
     overflow: hidden;
@@ -1681,6 +1699,27 @@
 
   .rev-match.no-match {
     color: #ef4444;
+  }
+
+  .rev-count {
+    color: #71717a;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rev-close {
+    background: transparent;
+    border: none;
+    color: #71717a;
+    cursor: pointer;
+    padding: 0 0.15rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .rev-close:hover {
+    color: #e4e4e7;
   }
 
   .search-toggle {
