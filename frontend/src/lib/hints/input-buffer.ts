@@ -45,9 +45,12 @@ export class InputBuffer {
     while (i < bytes.length) {
       const b = bytes[i]
 
-      // Enter — flush.
+      // Enter — flush. Only report a line we tracked cleanly: a dirty line
+      // (Tab completion, history recall, an ESC sequence we couldn't fully
+      // parse) may be incomplete or polluted with stray bytes, so don't hand
+      // it back to be recorded into history.
       if (b === 0x0d || b === 0x0a) {
-        submitted = this.chars.join('').trim()
+        submitted = this._dirty ? null : this.chars.join('').trim()
         this.reset()
         i += 1
         continue
@@ -87,19 +90,29 @@ export class InputBuffer {
       }
 
       // ESC sequence — arrow keys, function keys, etc. Mark dirty and skip
-      // past the sequence (best-effort: arrow keys are ESC [ A/B/C/D).
+      // past the whole sequence. Two forms matter:
+      //   • CSI: ESC [ <params> <final 0x40-0x7e>  (normal cursor mode)
+      //   • SS3: ESC O <final>                      (application cursor mode,
+      //     which zsh commonly enables — arrows are ESC O A/B/C/D, Home/End
+      //     ESC O H/F). If we don't consume the 'O' and its final byte they
+      //     leak in as printable characters and pollute the recorded command
+      //     (e.g. an up-arrow history recall stored as "OA").
       if (b === 0x1b) {
         this.markDirty()
-        // Skip CSI parameters until we hit a final byte (0x40-0x7e) or run out.
         i += 1
-        if (i < bytes.length && bytes[i] === 0x5b /* [ */) {
+        const next = bytes[i]
+        if (next === 0x5b /* [ */) {
           i += 1
           while (i < bytes.length) {
             const c = bytes[i] ?? 0
             i += 1
             if (c >= 0x40 && c <= 0x7e) break
           }
+        } else if (next === 0x4f /* O (SS3) */) {
+          i += 2 // skip the 'O' and the single final byte
         }
+        // A lone ESC (or a form we don't model) just falls through — already
+        // marked dirty, and `i` is past the ESC byte.
         continue
       }
 
