@@ -242,8 +242,10 @@ pub struct MacroExportFile {
 /// Summary returned to the frontend after importing a macro file.
 #[derive(Debug, Default, Serialize)]
 pub struct MacroImportSummary {
+    /// Macros created (name didn't exist yet).
     pub added: usize,
-    pub skipped: usize,
+    /// Macros whose steps/folder were updated in place (name already existed).
+    pub updated: usize,
 }
 
 /// Snapshot the requested macros (snippets with a non-null `steps_json`) into a
@@ -276,8 +278,10 @@ fn build_macro_export(db: &Database, ids: Option<&[i64]>) -> Result<MacroExportF
     })
 }
 
-/// Recreate exported macros, skipping any whose name already exists (idempotent,
-/// like session import). Returns added/skipped counts.
+/// Apply exported macros. A macro whose name already exists is UPDATED in place
+/// (its steps and folder are overwritten from the file) rather than skipped, so
+/// re-importing an edited export actually applies the changes; a new name is
+/// created. Returns added/updated counts.
 fn apply_macro_import(
     db: &Database,
     file: &MacroExportFile,
@@ -292,10 +296,6 @@ fn apply_macro_import(
     let existing = db.list_snippets().map_err(internal)?;
     let mut summary = MacroImportSummary::default();
     for m in &file.macros {
-        if existing.iter().any(|e| e.name == m.name) {
-            summary.skipped += 1;
-            continue;
-        }
         // Prefer the v2 `steps` array (re-serialized to the DB's string form);
         // fall back to a legacy v1 `steps_json` string when no array is present.
         let steps_json = if !m.steps.is_empty() {
@@ -303,15 +303,24 @@ fn apply_macro_import(
         } else {
             m.steps_json.clone().unwrap_or_else(|| "[]".to_string())
         };
-        let id = db
-            .create_snippet(&m.name, "", None, m.color.as_deref())
-            .map_err(internal)?;
-        db.set_snippet_steps(id, Some(&steps_json))
-            .map_err(internal)?;
-        if let Some(folder) = &m.folder {
-            db.set_snippet_folder(id, Some(folder)).map_err(internal)?;
+        if let Some(ex) = existing.iter().find(|e| e.name == m.name) {
+            // Update the existing macro's steps and folder in place.
+            db.set_snippet_steps(ex.id, Some(&steps_json))
+                .map_err(internal)?;
+            db.set_snippet_folder(ex.id, m.folder.as_deref())
+                .map_err(internal)?;
+            summary.updated += 1;
+        } else {
+            let id = db
+                .create_snippet(&m.name, "", None, m.color.as_deref())
+                .map_err(internal)?;
+            db.set_snippet_steps(id, Some(&steps_json))
+                .map_err(internal)?;
+            if let Some(folder) = &m.folder {
+                db.set_snippet_folder(id, Some(folder)).map_err(internal)?;
+            }
+            summary.added += 1;
         }
-        summary.added += 1;
     }
     Ok(summary)
 }
@@ -329,7 +338,8 @@ pub async fn export_macros(
     std::fs::write(&path, json).map_err(|e| AppError::Internal(format!("{path}: {e}")))
 }
 
-/// Import macros from a JSON file (skip-by-name idempotent).
+/// Import macros from a JSON file. Existing macros (matched by name) are updated
+/// in place; new names are created.
 #[tauri::command]
 pub async fn import_macros(
     state: State<'_, AppState>,
@@ -502,7 +512,7 @@ mod tests {
         let (dst, dst_path) = temp_db("dst");
         let s1 = apply_macro_import(&dst, &parsed).unwrap();
         assert_eq!(s1.added, 1);
-        assert_eq!(s1.skipped, 0);
+        assert_eq!(s1.updated, 0);
         let imported = dst.list_snippets().unwrap();
         let m = imported.iter().find(|s| s.name == "login").unwrap();
         assert_eq!(m.color.as_deref(), Some("#0af"));
@@ -515,10 +525,19 @@ mod tests {
         assert_eq!(steps[0].kind, "send");
         assert_eq!(steps[0].send, "a\r");
 
-        // Idempotence: re-import skips by name.
+        // Re-import updates the existing macro in place (by name), not skipped.
         let s2 = apply_macro_import(&dst, &parsed).unwrap();
         assert_eq!(s2.added, 0);
-        assert_eq!(s2.skipped, 1);
+        assert_eq!(s2.updated, 1);
+        // Still a single macro (updated, not duplicated).
+        assert_eq!(
+            dst.list_snippets()
+                .unwrap()
+                .iter()
+                .filter(|s| s.name == "login")
+                .count(),
+            1
+        );
 
         let _ = std::fs::remove_file(src_path);
         let _ = std::fs::remove_file(dst_path);

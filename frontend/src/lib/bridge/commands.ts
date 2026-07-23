@@ -345,7 +345,7 @@ export async function setSnippetsOrder(orderedIds: number[]): Promise<void> {
 /** Summary returned by importMacros. */
 export interface MacroImportSummary {
   added: number
-  skipped: number
+  updated: number
 }
 
 /** Export macros to a JSON file. `ids = null` exports all macros. */
