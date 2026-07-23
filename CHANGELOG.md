@@ -5,6 +5,17 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.13] - 2026-07-15
+
+### Changed
+- **Importing macros now updates existing ones instead of skipping them** — a
+  macro whose name already exists is updated in place (its steps and folder are
+  overwritten from the file) rather than skipped, so re-importing an edited
+  export actually applies the changes. New names are still created. The import
+  summary now reports "N added, N updated" instead of "added / skipped". (This
+  is why importing your own export previously reported "0 added, 6 skipped" —
+  the six macros already existed; now it updates them.)
+
 ## [0.20.12] - 2026-07-13
 
 ### Fixed

@@ -466,7 +466,7 @@
       showToast({
         kind: 'success',
         title: 'Macros imported',
-        detail: `${summary.added} added, ${summary.skipped} skipped`,
+        detail: `${summary.added} added, ${summary.updated} updated`,
       })
     } catch (e) {
       showToast({
