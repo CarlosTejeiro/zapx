@@ -291,7 +291,11 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         summary.groups_added += 1;
     }
 
-    // 5. Snippets — identity: (name, platform).
+    // 5. Snippets — identity: (name, platform). A macro is a snippet carrying
+    //    `steps_json` (+ optional `folder`); restore both after creating it so a
+    //    macro doesn't round-trip as a PLAIN snippet — that regression flooded
+    //    the bottom button bar with device-named buttons (the macros) instead of
+    //    keeping them in the sidebar Macros library.
     let existing_snippets = db.list_snippets().map_err(internal)?;
     for sn in &file.snippets {
         if existing_snippets
@@ -300,13 +304,22 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         {
             continue;
         }
-        db.create_snippet(
-            &sn.name,
-            &sn.content,
-            sn.platform.as_deref(),
-            sn.color.as_deref(),
-        )
-        .map_err(internal)?;
+        let id = db
+            .create_snippet(
+                &sn.name,
+                &sn.content,
+                sn.platform.as_deref(),
+                sn.color.as_deref(),
+            )
+            .map_err(internal)?;
+        if sn.steps_json.is_some() {
+            db.set_snippet_steps(id, sn.steps_json.as_deref())
+                .map_err(internal)?;
+        }
+        if sn.folder.is_some() {
+            db.set_snippet_folder(id, sn.folder.as_deref())
+                .map_err(internal)?;
+        }
         summary.snippets_added += 1;
     }
 
@@ -541,6 +554,12 @@ mod tests {
             .unwrap();
         src.create_snippet("brief", "show ip int brief", Some("cisco_ios"), None)
             .unwrap();
+        // A macro (snippet with steps + folder) must survive export/import as a
+        // macro, not collapse into a plain button-bar snippet.
+        let mac = src.create_snippet("login-fw", "", None, Some("#0af")).unwrap();
+        src.set_snippet_steps(mac, Some(r#"[{"kind":"send","send":"a\r"}]"#))
+            .unwrap();
+        src.set_snippet_folder(mac, Some("Net")).unwrap();
         src.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
             .unwrap();
 
@@ -552,9 +571,23 @@ mod tests {
         assert_eq!(s1.sessions_added, 2);
         assert_eq!(s1.folders_added, 2);
         assert_eq!(s1.groups_added, 1);
-        assert_eq!(s1.snippets_added, 1);
+        assert_eq!(s1.snippets_added, 2);
         assert_eq!(s1.rules_added, 1);
         assert!(s1.warnings.is_empty(), "warnings: {:?}", s1.warnings);
+
+        // The macro round-trips as a macro: steps + folder preserved, so it
+        // stays in the sidebar library and out of the bottom button bar.
+        let imported_mac = dst
+            .list_snippets()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.name == "login-fw")
+            .unwrap();
+        assert_eq!(
+            imported_mac.steps_json.as_deref(),
+            Some(r#"[{"kind":"send","send":"a\r"}]"#)
+        );
+        assert_eq!(imported_mac.folder.as_deref(), Some("Net"));
 
         // Remapping: spine lives in DC/Spines and jumps through the new bastion id.
         let sessions = dst.list_sessions().unwrap();
@@ -582,7 +615,7 @@ mod tests {
         assert_eq!(s2.sessions_skipped, 2);
         assert_eq!(s2.folders_added, 0);
         assert_eq!(s2.groups_added, 0);
-        assert_eq!(s2.snippets_added, 0);
+        assert_eq!(s2.snippets_added, 0); // both snippets (plain + macro) dedup by (name, platform)
         assert_eq!(s2.rules_added, 0);
 
         let _ = std::fs::remove_file(src_path);
