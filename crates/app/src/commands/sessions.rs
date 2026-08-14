@@ -520,6 +520,22 @@ pub async fn ssh_trust_host_key(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Overwrite a CHANGED host key: forget the stale `known_hosts` entry and trust
+/// the key the server now presents (the "server was reinstalled / factory-reset"
+/// case). `fingerprint` is the value the UI showed and the user approved; the
+/// transport re-captures the key and refuses if it no longer matches (TOCTOU
+/// guard, same as [`ssh_trust_host_key`]).
+#[tauri::command]
+pub async fn ssh_overwrite_host_key(
+    host: String,
+    port: u16,
+    fingerprint: String,
+) -> Result<(), AppError> {
+    core_transport::overwrite_host_key(host, port, fingerprint)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Connect to an SSH host, open a PTY shell, and return the session UUID.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]

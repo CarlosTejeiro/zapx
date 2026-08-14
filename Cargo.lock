@@ -675,6 +675,7 @@ name = "core-transport"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "home",
  "libc",
  "portable-pty",
  "russh",

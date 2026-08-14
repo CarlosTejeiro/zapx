@@ -29,8 +29,9 @@ pub use sftp::{
     ProgressFn, SftpClient, SftpEntry, SftpSlot,
 };
 pub use ssh::{
-    connect_authenticated, connect_authenticated_via, preflight_host_key, set_keepalive_secs,
-    trust_host_key, AgentPriority, HostKeyStatus, KiPrompt, KiRequest, KiResponder,
+    connect_authenticated, connect_authenticated_via, overwrite_host_key, preflight_host_key,
+    set_keepalive_secs, trust_host_key, AgentPriority, HostKeyStatus, KiPrompt, KiRequest,
+    KiResponder,
     RemoteForwardRegistry, RemoteTarget, SshAuth, SshTransport,
 };
 

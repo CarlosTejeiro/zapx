@@ -386,6 +386,100 @@ pub async fn trust_host_key(host: String, port: u16, expected_fp: String) -> Res
     Ok(())
 }
 
+/// The `known_hosts` file russh-keys actually reads/writes. Mirrors its private
+/// `known_hosts_path`, **including the Windows quirk**: russh uses
+/// `%USERPROFILE%\ssh\known_hosts` (no dot), NOT the OpenSSH-standard
+/// `.ssh\known_hosts`. That mismatch is why `ssh-keygen -R` (which edits the
+/// dotted path) appears not to work for ZAPX on Windows — so overwrite must
+/// target the same file russh uses.
+fn known_hosts_file() -> Result<std::path::PathBuf, Error> {
+    let home = home::home_dir().ok_or_else(|| Error::KeyLoad("no home directory".into()))?;
+    #[cfg(windows)]
+    let path = home.join("ssh").join("known_hosts");
+    #[cfg(not(windows))]
+    let path = home.join(".ssh").join("known_hosts");
+    Ok(path)
+}
+
+/// Drop every plaintext `known_hosts` entry for `host` (keyed `[host]:port` when
+/// the port isn't 22) from `path`, mirroring `ssh-keygen -R`. Returns how many
+/// lines were removed. A missing file is not an error (0 removed).
+///
+/// Hashed (`|1|…`) entries are left untouched — matching them needs the per-line
+/// HMAC salt, which we deliberately don't pull in here; [`overwrite_host_key`]
+/// re-verifies afterward and surfaces a clear error if a stale hashed entry
+/// remains, rather than silently "succeeding" into another mismatch.
+fn remove_known_hosts_lines(path: &std::path::Path, host: &str, port: u16) -> std::io::Result<usize> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    let needle = if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
+    };
+    let mut removed = 0usize;
+    let mut out = String::with_capacity(content.len());
+    for line in content.lines() {
+        // The host field is the first whitespace-delimited token; a single entry
+        // can list several comma-separated hosts (e.g. `host,1.2.3.4`).
+        let is_match = {
+            let trimmed = line.trim_start();
+            !trimmed.starts_with('#')
+                && trimmed
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|hosts| hosts.split(',').any(|h| h == needle))
+        };
+        if is_match {
+            removed += 1;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if removed > 0 {
+        std::fs::write(path, out)?;
+    }
+    Ok(removed)
+}
+
+/// Overwrite a **changed** host key: drop the stale `known_hosts` entry and
+/// record the key the server currently presents. This is the one-click
+/// equivalent of `ssh-keygen -R host` followed by a fresh trust-on-first-use,
+/// for the legitimate "server was reinstalled / factory-reset" case.
+///
+/// `expected_fp` is the fingerprint the user just saw in the warning and
+/// approved. We re-capture the key and refuse unless it still matches — the same
+/// TOCTOU guard as [`trust_host_key`], so a MITM can't present a benign key in
+/// the warning and swap in a different one before it gets written.
+pub async fn overwrite_host_key(host: String, port: u16, expected_fp: String) -> Result<(), Error> {
+    let key = capture_host_key(&host, port).await?;
+    let actual_fp = fingerprint(&key);
+    if actual_fp != expected_fp {
+        return Err(Error::HostKeyChanged {
+            fingerprint: actual_fp,
+        });
+    }
+    let path = known_hosts_file()?;
+    remove_known_hosts_lines(&path, &host, port)
+        .map_err(|e| Error::KeyLoad(format!("known_hosts: {e}")))?;
+    russh_keys::known_hosts::learn_known_hosts(&host, port, &key)
+        .map_err(|e| Error::KeyLoad(e.to_string()))?;
+    // Confirm the new key now validates. If a stale entry we couldn't match
+    // (e.g. a hashed one) still lingers, russh reports KeyChanged again — fail
+    // loudly with a manual next step instead of leaving a silently-broken host.
+    match russh_keys::check_known_hosts(&host, port, &key) {
+        Ok(true) => Ok(()),
+        _ => Err(Error::KeyLoad(format!(
+            "the old host key entry could not be removed automatically \
+             (it may be stored hashed); remove it manually with `ssh-keygen -R {host}`"
+        ))),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -1029,7 +1123,61 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::AgentPriority;
+    use super::{remove_known_hosts_lines, AgentPriority};
+
+    /// `remove_known_hosts_lines` drops exactly the entries for the target host
+    /// (plain and `host,ip` forms), keeps everything else, and preserves
+    /// comments and unrelated hosts.
+    #[test]
+    fn remove_known_hosts_drops_matching_host() {
+        let dir = std::env::temp_dir().join(format!("zapx-kh-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("known_hosts");
+        std::fs::write(
+            &path,
+            "# a comment\n\
+             172.19.14.187 ssh-ed25519 AAAAOLD\n\
+             other.example.com,10.0.0.9 ssh-ed25519 AAAAKEEP\n\
+             172.19.14.187,172.19.14.187 ssh-rsa AAAAOLD2\n\
+             172.19.14.1 ssh-ed25519 AAAAKEEP2\n",
+        )
+        .unwrap();
+
+        let removed = remove_known_hosts_lines(&path, "172.19.14.187", 22).unwrap();
+        assert_eq!(removed, 2);
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(!after.contains("AAAAOLD"), "old key lines must be gone: {after}");
+        assert!(after.contains("# a comment"));
+        assert!(after.contains("other.example.com"));
+        assert!(after.contains("172.19.14.1 ")); // the .1 host is a different host
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Non-standard ports are keyed `[host]:port`; a bare host must NOT match a
+    /// `[host]:port` entry and vice-versa. Missing file = 0 removed, no error.
+    #[test]
+    fn remove_known_hosts_port_and_missing_file() {
+        let dir = std::env::temp_dir().join(format!("zapx-kh-port-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("known_hosts");
+        std::fs::write(
+            &path,
+            "[10.0.0.5]:2222 ssh-ed25519 AAAAPORT\n10.0.0.5 ssh-ed25519 AAAABARE\n",
+        )
+        .unwrap();
+
+        // Removing host on port 2222 only touches the bracketed entry.
+        assert_eq!(remove_known_hosts_lines(&path, "10.0.0.5", 2222).unwrap(), 1);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.contains("10.0.0.5 ssh-ed25519 AAAABARE"));
+        assert!(!after.contains("AAAAPORT"));
+
+        // A missing file is a no-op, not an error.
+        let missing = dir.join("nope").join("known_hosts");
+        assert_eq!(remove_known_hosts_lines(&missing, "x", 22).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn priority_round_trip() {
