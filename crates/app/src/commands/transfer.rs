@@ -556,7 +556,9 @@ mod tests {
             .unwrap();
         // A macro (snippet with steps + folder) must survive export/import as a
         // macro, not collapse into a plain button-bar snippet.
-        let mac = src.create_snippet("login-fw", "", None, Some("#0af")).unwrap();
+        let mac = src
+            .create_snippet("login-fw", "", None, Some("#0af"))
+            .unwrap();
         src.set_snippet_steps(mac, Some(r#"[{"kind":"send","send":"a\r"}]"#))
             .unwrap();
         src.set_snippet_folder(mac, Some("Net")).unwrap();

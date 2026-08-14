@@ -31,8 +31,7 @@ pub use sftp::{
 pub use ssh::{
     connect_authenticated, connect_authenticated_via, overwrite_host_key, preflight_host_key,
     set_keepalive_secs, trust_host_key, AgentPriority, HostKeyStatus, KiPrompt, KiRequest,
-    KiResponder,
-    RemoteForwardRegistry, RemoteTarget, SshAuth, SshTransport,
+    KiResponder, RemoteForwardRegistry, RemoteTarget, SshAuth, SshTransport,
 };
 
 /// Type alias for the authenticated SSH session handle that the app layer

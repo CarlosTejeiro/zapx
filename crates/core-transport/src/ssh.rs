@@ -409,7 +409,11 @@ fn known_hosts_file() -> Result<std::path::PathBuf, Error> {
 /// HMAC salt, which we deliberately don't pull in here; [`overwrite_host_key`]
 /// re-verifies afterward and surfaces a clear error if a stale hashed entry
 /// remains, rather than silently "succeeding" into another mismatch.
-fn remove_known_hosts_lines(path: &std::path::Path, host: &str, port: u16) -> std::io::Result<usize> {
+fn remove_known_hosts_lines(
+    path: &std::path::Path,
+    host: &str,
+    port: u16,
+) -> std::io::Result<usize> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
@@ -1147,7 +1151,10 @@ mod tests {
         assert_eq!(removed, 2);
 
         let after = std::fs::read_to_string(&path).unwrap();
-        assert!(!after.contains("AAAAOLD"), "old key lines must be gone: {after}");
+        assert!(
+            !after.contains("AAAAOLD"),
+            "old key lines must be gone: {after}"
+        );
         assert!(after.contains("# a comment"));
         assert!(after.contains("other.example.com"));
         assert!(after.contains("172.19.14.1 ")); // the .1 host is a different host
@@ -1168,7 +1175,10 @@ mod tests {
         .unwrap();
 
         // Removing host on port 2222 only touches the bracketed entry.
-        assert_eq!(remove_known_hosts_lines(&path, "10.0.0.5", 2222).unwrap(), 1);
+        assert_eq!(
+            remove_known_hosts_lines(&path, "10.0.0.5", 2222).unwrap(),
+            1
+        );
         let after = std::fs::read_to_string(&path).unwrap();
         assert!(after.contains("10.0.0.5 ssh-ed25519 AAAABARE"));
         assert!(!after.contains("AAAAPORT"));
