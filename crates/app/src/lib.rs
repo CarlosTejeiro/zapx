@@ -206,6 +206,7 @@ pub fn run() {
             commands::sessions::open_ssh_session,
             commands::sessions::ssh_preflight_host_key,
             commands::sessions::ssh_trust_host_key,
+            commands::sessions::ssh_overwrite_host_key,
             commands::sessions::respond_keyboard_interactive,
             commands::forwards::add_local_forward,
             commands::forwards::add_dynamic_forward,

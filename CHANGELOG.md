@@ -5,6 +5,32 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.14] - 2026-08-14
+
+### Added
+- **Replace a changed host key from the warning dialog** — when a server's SSH
+  host key changes (e.g. after a legitimate reinstall or factory reset) the
+  "Host key changed" dialog now offers a **Replace key & connect** button that
+  forgets the stale `known_hosts` entry and trusts the new key in one click,
+  instead of only telling you to run `ssh-keygen -R`. The replacement is guarded
+  by the fingerprint you approved (the key is re-checked, so a server presenting
+  a different key than the one shown is refused). Note for Windows users: ZAPX
+  (via russh) uses `%USERPROFILE%\ssh\known_hosts` — **without** the leading dot —
+  which is why a manual `ssh-keygen -R` (which edits `.ssh\known_hosts`) appeared
+  to have no effect; this button targets the correct file.
+
+### Fixed
+- **Macros survived environment export but came back as plain button-bar
+  snippets on import** — a macro is a snippet carrying `steps_json` (+ folder),
+  but importing an exported ZAPX environment recreated snippets without those
+  fields, so every macro reappeared as a plain snippet. Because macros are often
+  named after their device/login target, they flooded the bottom button bar with
+  device-named buttons instead of staying in the sidebar Macros library. Import
+  now restores `steps_json` and folder. (Already-degraded snippets from a prior
+  import stay as they are — delete them via the button's edit pencil or the
+  Snippets dialog; re-importing your export after updating brings the macros back
+  intact.)
+
 ## [0.20.13] - 2026-07-15
 
 ### Changed

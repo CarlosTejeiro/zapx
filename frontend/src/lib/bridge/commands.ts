@@ -133,6 +133,18 @@ export async function sshTrustHostKey(
   return invoke<void>('ssh_trust_host_key', { host, port, fingerprint })
 }
 
+/** Overwrite a CHANGED host key: forget the stale known_hosts entry and trust
+ * the key the server currently presents (legitimate reinstall / factory reset).
+ * `fingerprint` is the approved value; the backend refuses if the server now
+ * presents a different key (TOCTOU guard). */
+export async function sshOverwriteHostKey(
+  host: string,
+  port: number,
+  fingerprint: string,
+): Promise<void> {
+  return invoke<void>('ssh_overwrite_host_key', { host, port, fingerprint })
+}
+
 /** Respond to a keyboard-interactive `InfoRequest` (one entry per prompt). */
 export async function respondKeyboardInteractive(
   interactionId: string,

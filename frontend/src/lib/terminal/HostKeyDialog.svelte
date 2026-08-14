@@ -26,9 +26,10 @@
         legitimately reinstalled.
       </p>
       <p class="msg">
-        For safety, the connection is refused. If you trust this change, remove the old key first:
+        For safety, the connection is refused. If this change is expected (you reinstalled or
+        factory-reset the device), you can replace the stored key with the new one below. Only do
+        this if you trust the fingerprint shown.
       </p>
-      <pre class="cmd">ssh-keygen -R {host}</pre>
     {:else}
       <h2 class="title">First connection to {host}:{port}</h2>
       <p class="msg">
@@ -44,7 +45,9 @@
 
     <div class="actions">
       <button class="btn-cancel" onclick={onCancel}>Cancel</button>
-      {#if !changed}
+      {#if changed}
+        <button class="btn-overwrite" onclick={onTrust}>Replace key &amp; connect</button>
+      {:else}
         <button class="btn-trust" onclick={onTrust}>Trust &amp; connect</button>
       {/if}
     </div>
@@ -109,18 +112,6 @@
     border-radius: 0.2rem;
   }
 
-  .cmd {
-    background: var(--zx-surface-2);
-    border: 1px solid var(--zx-border);
-    border-radius: 0.25rem;
-    padding: 0.5rem 0.6rem;
-    font-size: 0.8rem;
-    color: var(--zx-text);
-    font-family: var(--zx-font-mono);
-    margin: 0;
-    overflow-x: auto;
-  }
-
   .fp {
     display: flex;
     flex-direction: column;
@@ -170,5 +161,16 @@
 
   .btn-trust:hover {
     background: color-mix(in srgb, var(--zx-ok) 85%, black);
+  }
+
+  /* A changed key is a destructive replace, so its action reads as danger,
+     not the friendly green of a first-use trust. */
+  .btn-overwrite {
+    background: var(--zx-err);
+    color: var(--zx-on-accent);
+  }
+
+  .btn-overwrite:hover {
+    background: color-mix(in srgb, var(--zx-err) 85%, black);
   }
 </style>

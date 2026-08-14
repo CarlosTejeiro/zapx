@@ -62,6 +62,7 @@ uuid         = { version = "1", features = ["v4"] }
 russh      = "0.46"
 russh-keys = "0.46"
 russh-sftp = "2.1"
+home       = "0.5"
 
 # Bloque 3 — persistence + vault
 rusqlite = { version = "0.32", features = ["bundled"] }

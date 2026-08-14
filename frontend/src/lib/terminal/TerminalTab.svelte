@@ -19,6 +19,7 @@
     openTelnetSession,
     sshPreflightHostKey,
     sshTrustHostKey,
+    sshOverwriteHostKey,
     startSessionLogging,
     stopSessionLogging,
     listSessionLogs,
@@ -126,11 +127,16 @@
     hostKeyResolve = null
     if (!approved) return false
 
-    // Only "unknown" is approvable; persist trust before connecting. Pass the
-    // fingerprint the user just approved so the backend can refuse to learn a
-    // key that changed between preflight and now (TOCTOU guard).
+    // Persist trust before connecting. A first-use ("unknown") key is learned;
+    // a "changed" key the user chose to accept replaces the stale entry. Both
+    // pass the approved fingerprint so the backend refuses if the server now
+    // presents a different key than the one shown (TOCTOU guard).
     try {
-      await sshTrustHostKey(host, port, status.fingerprint)
+      if (changed) {
+        await sshOverwriteHostKey(host, port, status.fingerprint)
+      } else {
+        await sshTrustHostKey(host, port, status.fingerprint)
+      }
     } catch (e) {
       errorMsg = fmtError(e)
       return false
