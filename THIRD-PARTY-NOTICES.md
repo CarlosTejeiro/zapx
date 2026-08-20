@@ -1,8 +1,9 @@
 # Third-Party Notices
 
-ZAPX is proprietary software (see [LICENSE](LICENSE)), but it is built on and
-distributes third-party open-source components. Those components remain under
-their own licenses; this file collects the required attributions.
+ZAPX is free software licensed under the GNU GPL v3 or later (see
+[LICENSE](LICENSE)). It is built on and distributes third-party open-source
+components that remain under their own licenses; this file collects the
+required attributions.
 
 All bundled dependencies are under **permissive** licenses (MIT, Apache-2.0,
 BSD-2/3-Clause, ISC, Zlib, Unicode, CC0). This is enforced in CI by
@@ -45,8 +46,8 @@ Bundled into the web UI (see `frontend/pnpm-lock.yaml` for exact versions):
 - **Geist** — SIL Open Font License 1.1
 - **JetBrains Mono** — SIL Open Font License 1.1
 
-The SIL OFL permits embedding the fonts in software (including proprietary
-software); it only restricts selling the fonts on their own.
+The SIL OFL permits embedding the fonts in software (of any license); it
+only restricts selling the fonts on their own.
 
 ---
 
