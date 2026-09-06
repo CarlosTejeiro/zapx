@@ -671,6 +671,29 @@ impl Database {
         Ok(())
     }
 
+    /// Re-point a session's authentication: its `credential_id` (a private
+    /// credential or a reusable vault entry, or `None` for agent/keyboard-
+    /// interactive) and its `auth_method`. Unlike [`update_session_fields`],
+    /// this is the *only* path that mutates the credential columns, so the
+    /// caller owns keyring/secret lifecycle around it. Returns `NotFound` when
+    /// no session has that id.
+    pub fn set_session_auth(
+        &self,
+        id: i64,
+        credential_id: Option<i64>,
+        auth_method: &str,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE sessions SET credential_id = ?1, auth_method = ?2 WHERE id = ?3",
+            rusqlite::params![credential_id, auth_method, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
     /// List the port-forwards saved on a session, in display order.
     pub fn list_session_forwards(&self, session_id: i64) -> Result<Vec<SavedForward>, Error> {
         let conn = self.conn.lock().unwrap();
@@ -1772,6 +1795,56 @@ mod tests {
         // Deleting the group removes it (and members cascade).
         db.delete_broadcast_group(gid).unwrap();
         assert!(db.list_broadcast_groups().unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn set_session_auth_repoints_credential_and_method() {
+        let (db, path) = temp_db();
+
+        // A password session that starts on a private credential.
+        let cred = db
+            .create_credential("r1", "ssh_password", Some("admin"), "ssh:key-1")
+            .unwrap();
+        let sid = db
+            .create_session_full(
+                None,
+                "r1",
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                Some("admin"),
+                Some(cred),
+                "{}",
+                Some("password"),
+                None,
+            )
+            .unwrap();
+        let s = db.get_session(sid).unwrap();
+        assert_eq!(s.credential_id, Some(cred));
+        assert_eq!(s.auth_method.as_deref(), Some("password"));
+
+        // Re-point at a different (vault) credential — still password auth.
+        let vault = db
+            .create_vault_entry("prod-root", Some("root"), "vault:key-1")
+            .unwrap();
+        db.set_session_auth(sid, Some(vault), "password").unwrap();
+        let s = db.get_session(sid).unwrap();
+        assert_eq!(s.credential_id, Some(vault));
+        assert_eq!(s.auth_method.as_deref(), Some("password"));
+
+        // Switch to a credential-less method (agent): credential_id clears.
+        db.set_session_auth(sid, None, "agent").unwrap();
+        let s = db.get_session(sid).unwrap();
+        assert_eq!(s.credential_id, None);
+        assert_eq!(s.auth_method.as_deref(), Some("agent"));
+
+        // Unknown session id is a clean NotFound, not a silent no-op.
+        assert!(matches!(
+            db.set_session_auth(999_999, None, "agent"),
+            Err(Error::NotFound)
+        ));
 
         let _ = std::fs::remove_file(&path);
     }

@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Edit a saved session's credentials without recreating it** — the Edit
+  Session dialog no longer freezes authentication. You can change the auth method
+  (password, vault entry, private key, SSH agent, keyboard-interactive), type a
+  new password or passphrase, or point the session at a different vault entry,
+  and **Save** applies it. Leaving the password/passphrase field blank keeps the
+  current secret, so metadata-only edits never touch it. Typing a new password on
+  a session that referenced a **shared vault entry** gives that session its own
+  private secret and leaves the vault entry unchanged for every other session
+  using it; switching away from a private password removes its old keyring entry
+  so nothing is orphaned.
+
 ## [0.20.14] - 2026-08-14
 
 ### Added

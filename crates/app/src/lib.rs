@@ -254,6 +254,7 @@ pub fn run() {
             commands::sessions::create_saved_session,
             commands::sessions::cache_session_password,
             commands::sessions::update_saved_session,
+            commands::sessions::set_session_credential,
             commands::sessions::move_saved_session,
             commands::sessions::reorder_saved_session,
             commands::sessions::list_sessions,
