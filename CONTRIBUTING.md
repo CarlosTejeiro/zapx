@@ -1,9 +1,9 @@
 # Contributing to ZAPX
 
-> **ZAPX is proprietary software (© Carlos Tejeiro, all rights reserved).**
-> The source is not open for external contributions or reuse. This document
-> is the internal development guide for the project owner and authorized
-> collaborators.
+> **ZAPX is free software, licensed under the GNU GPL v3 or later.**
+> Contributions are welcome. By submitting a pull request you agree that your
+> contribution is licensed under the same GPL-3.0-or-later terms as the rest
+> of the project. This document is the development guide.
 
 ## Development setup
 

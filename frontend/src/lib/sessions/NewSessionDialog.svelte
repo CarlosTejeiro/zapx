@@ -21,6 +21,7 @@
     getSessionTriggers,
     setSessionTriggers,
     listVaultEntries,
+    setSessionCredential,
   } from '$lib/bridge/commands'
   import type {
     Folder,
@@ -42,8 +43,10 @@
   interface Props {
     folders: Folder[]
     /// When set, the dialog runs in "edit" mode: editable fields are pre-filled
-    /// and Save calls `updateSavedSession`. Auth/credentials stay frozen — to
-    /// change those, delete and recreate.
+    /// and Save calls `updateSavedSession`. Credentials are editable too — when
+    /// the auth method or secret changes, Save additionally calls
+    /// `setSessionCredential` (left untouched otherwise, so the stored secret is
+    /// preserved).
     existing?: SavedSession
     onCreated: (id: number) => void
     onCancel: () => void
@@ -96,6 +99,22 @@
       authType = (existing.auth_method as typeof authType) ?? 'password'
       folderId = existing.folder_id
       viaSessionId = existing.via_session_id
+      // If this password session already points at a vault entry, preselect it
+      // so the picker shows the current choice and "unchanged" is detectable.
+      // Private per-session credentials aren't in `vaultEntries` (reusable only),
+      // so `vaultCredentialId` stays null and the password field shows blank
+      // (= keep the current secret).
+      if (
+        authType === 'password' &&
+        existing.credential_id != null &&
+        vaultEntries.some((v) => v.id === existing.credential_id)
+      ) {
+        vaultCredentialId = existing.credential_id
+      }
+      // Snapshot the starting credential so Save can tell whether it changed and
+      // only then re-point it (an untouched edit must preserve the stored secret).
+      initialAuthType = authType
+      initialVaultCredentialId = vaultCredentialId
       // Protocol-specific options.
       try {
         const opts = JSON.parse(existing.options_json || '{}')
@@ -156,6 +175,10 @@
   // is the chosen entry (null = type a password as usual).
   let vaultEntries = $state<VaultEntry[]>([])
   let vaultCredentialId = $state<number | null>(null)
+  /// Edit-mode snapshot of the starting credential, captured in onMount, so Save
+  /// only re-points the credential when the user actually changed it.
+  let initialAuthType = $state<typeof authType | null>(null)
+  let initialVaultCredentialId = $state<number | null>(null)
   let keyPath = $state('')
   let passphrase = $state('')
 
@@ -321,10 +344,23 @@
         if (onConnectMacroId !== null) opts.on_connect_macro_id = onConnectMacroId
         return Object.keys(opts).length === 0 ? null : JSON.stringify(opts)
       }
+      // Build the AuthMethod for the current form state. Shared by create and
+      // the edit-mode credential update so the two never drift.
+      const buildAuth = (): AuthMethod =>
+        authType === 'key'
+          ? { type: 'key', keyPath: keyPath.trim(), passphrase: passphrase || null }
+          : authType === 'agent'
+            ? { type: 'agent' }
+            : authType === 'keyboard-interactive'
+              ? { type: 'keyboard-interactive' }
+              : vaultCredentialId !== null
+                ? { type: 'vaultentry', credentialId: vaultCredentialId }
+                : { type: 'password', password }
       if (existing) {
-        // Edit mode — credentials stay frozen; only metadata + login script
-        // are mutable. For SSH/key, key_path lives in options_json so persist
-        // it back; for serial, refresh device/baud; color_scheme override too.
+        // Edit mode — metadata (name/host/port/username/via + options_json,
+        // where SSH key_path and serial device/baud live) goes through
+        // updateSavedSession; the credential is updated separately, and only
+        // when it actually changed, so an untouched edit preserves the secret.
         const optsJson = buildOptsJson()
         await updateSavedSession(
           existing.id,
@@ -337,17 +373,23 @@
           optsJson,
         )
         id = existing.id
+        if (protocol === 'ssh') {
+          // A credential change is: switching auth method, picking a different
+          // vault entry (or toggling between vault and a typed password), or
+          // supplying a fresh secret. A blank password/passphrase = keep current.
+          const methodChanged = authType !== initialAuthType
+          const vaultChanged =
+            authType === 'password' && vaultCredentialId !== initialVaultCredentialId
+          const newPassword =
+            authType === 'password' && vaultCredentialId === null && password.length > 0
+          const newPassphrase = authType === 'key' && passphrase.length > 0
+          if (methodChanged || vaultChanged || newPassword || newPassphrase) {
+            await setSessionCredential(existing.id, buildAuth())
+            if (newPassword) setCachedPassword(existing.id, password)
+          }
+        }
       } else if (protocol === 'ssh') {
-        const auth: AuthMethod =
-          authType === 'key'
-            ? { type: 'key', keyPath: keyPath.trim(), passphrase: passphrase || null }
-            : authType === 'agent'
-              ? { type: 'agent' }
-              : authType === 'keyboard-interactive'
-                ? { type: 'keyboard-interactive' }
-                : vaultCredentialId !== null
-                  ? { type: 'vaultentry', credentialId: vaultCredentialId }
-                  : { type: 'password', password }
+        const auth: AuthMethod = buildAuth()
         id = await createSavedSession(
           name.trim(),
           folderId,
@@ -548,20 +590,14 @@
       </label>
       <label>
         Authentication
-        <select bind:value={authType} disabled={isEdit}>
+        <select bind:value={authType}>
           <option value="password">Password</option>
           <option value="key">Private key file</option>
           <option value="keyboard-interactive">Keyboard-interactive (2FA / OTP)</option>
           <option value="agent">SSH agent</option>
         </select>
       </label>
-      {#if isEdit}
-        <p class="hint">
-          Credentials stay frozen on edit. To rotate password / passphrase / switch auth method,
-          delete and recreate the session.
-        </p>
-      {/if}
-      {#if !isEdit && authType === 'password'}
+      {#if authType === 'password'}
         {#if vaultEntries.length > 0}
           <label>
             Use a saved credential (vault)
@@ -576,7 +612,11 @@
         {#if vaultCredentialId === null}
           <label>
             Password
-            <input type="password" bind:value={password} />
+            <input
+              type="password"
+              bind:value={password}
+              placeholder={isEdit ? 'leave blank to keep current' : ''}
+            />
           </label>
         {/if}
       {:else if authType === 'key'}
@@ -587,12 +627,22 @@
             <button type="button" class="pick-btn" onclick={pickKeyFile}>Browse…</button>
           </span>
         </label>
-        {#if !isEdit}
-          <label>
-            Passphrase (if any)
-            <input type="password" bind:value={passphrase} />
-          </label>
-        {/if}
+        <label>
+          Passphrase (if any)
+          <input
+            type="password"
+            bind:value={passphrase}
+            placeholder={isEdit ? 'leave blank to keep current' : ''}
+          />
+        </label>
+      {/if}
+      {#if isEdit}
+        <p class="hint">
+          Changing the authentication method or entering a new password / passphrase updates this
+          session's credential on save. Leaving the secret blank keeps the current one. Typing a
+          password on a session that uses a vault entry gives it its own private secret — the shared
+          vault entry is left unchanged.
+        </p>
       {/if}
 
       {#if bastionCandidates.length > 0}

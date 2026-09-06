@@ -521,6 +521,19 @@ export async function updateSavedSession(
   })
 }
 
+/**
+ * Change an existing SSH session's credential in place: rotate its password,
+ * switch auth method, or re-point it at a different vault entry. A typed
+ * password/passphrase is written to a fresh private credential; a `vaultentry`
+ * auth just references the shared row. The previous credential is purged only
+ * when it was private — shared vault entries are left untouched. Call this only
+ * when the credential actually changed; metadata edits go through
+ * `updateSavedSession`.
+ */
+export async function setSessionCredential(id: number, auth: AuthMethod): Promise<void> {
+  return invoke<void>('set_session_credential', { id, auth })
+}
+
 export async function openSavedSession(
   savedSessionId: number,
   cols: number,

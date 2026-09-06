@@ -2,36 +2,122 @@
 
 > Modern terminal for network engineers — SSH · Telnet · Serial in one app.
 
+**Free software (GNU GPL v3 or later).**
 **Status: alpha — functional but not yet hardened for production.**
 
-ZAPX is a multi-protocol terminal client built for network engineers who need a lightweight, fast,
-and modern replacement for SecureCRT, MobaXterm, or PuTTY. Proprietary software — see
-[License](#license).
+ZAPX is a fast, modern, multi-protocol terminal client for network engineers —
+a lightweight open-source alternative to SecureCRT, MobaXterm or PuTTY. It runs
+on Windows, macOS and Linux, keeps your sessions and credentials organized, and
+automates the repetitive parts of working on network gear.
 
 ---
 
-## Features
+## Table of contents
 
-| Feature | Details |
-|---|---|
-| **Protocols** | SSH2 (password / public key / SSH agent / 2FA keyboard-interactive), Telnet, Serial (COM / TTY), local shell |
-| **Jump hosts & tunnels** | ProxyJump through saved sessions, port forwarding `-L` / `-D` (SOCKS5) / `-R` |
-| **Reliability** | SSH keepalive (configurable), auto-reconnect on drop with a one-click banner, reconnect/clear/save-output toolbar |
-| **Triggers** | Per-session regex/literal on output → notify, auto-send text, or ring the bell |
-| **SFTP** | File browser with streaming up/downloads, progress and cancellation |
-| **Session manager** | Folder tree, drag-and-drop, search, broadcast groups (open N hosts as a grid with a master input bar); tabs rename / colour / duplicate; **resizable sidebar** |
-| **Credential vault** | Reusable named credentials (name + username + password) in the OS keyring (AES-256-GCM DB fallback); attach to a session, or reference from a macro as `{{vault:Name.Password}}` — the secret is resolved in the backend and never enters the UI, JSON, exports or logs |
-| **Macros** | Sidebar library of expect/send/wait macros, run on the focused session; regex expects, vault references, folders, drag-to-reorder/move, edit-as-JSON, run-on-connect, JSON export/import and MobaXterm import |
-| **Splits & multi-exec** | Recursive split panes, grid view, broadcast typing to many sessions, output compare |
-| **Login automation** | Expect-like login scripts (expect/send steps) per saved session |
-| **Hints & snippets** | Command autocomplete from history + vendor catalogs (12 platforms), per-platform snippets on `Ctrl+Shift+1..9`, automatic platform detection from the prompt; passwords typed at a prompt are never recorded to history/recents |
-| **Keyword highlighting** | Per-rule regex, true-color ANSI, user-overridable vendor catalogs (Cisco, Juniper, Fortinet, Palo Alto, F5…) |
-| **Session logging** | Plain or raw capture, 50 MB rotation, per-session history panel |
-| **Themes** | 7 full themes — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor, Amber — UI chrome + terminal ANSI palettes, bundled Geist / JetBrains Mono fonts |
-| **Command palette** | `Ctrl+K` — fuzzy-launch sessions, groups, actions and themes |
-| **Portable & data control** | Windows portable exe, portable mode (data travels with the binary), user-selectable data folder |
-| **Export / import** | One JSON file with sessions, folders, groups, snippets and highlight rules (never passwords, never the vault) — idempotent import for backup, migration and team sharing; macros export/import as their own JSON. Imports from `~/.ssh/config`, PuTTY, MobaXterm and SecureCRT too |
-| **Window memory** | Remembers size/position/maximized; first launch sizes to your monitor |
+- [What ZAPX does](#what-zapx-does)
+  - [Connect to anything](#connect-to-anything)
+  - [Organize your sessions](#organize-your-sessions)
+  - [Work faster in the terminal](#work-faster-in-the-terminal)
+  - [Automate logins and tasks](#automate-logins-and-tasks)
+  - [Keep credentials safe](#keep-credentials-safe)
+  - [Transfer files](#transfer-files)
+  - [Make it yours](#make-it-yours)
+  - [Take it anywhere](#take-it-anywhere)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Installation](#installation)
+- [Building from source](#building-from-source)
+- [Architecture](#architecture)
+- [Security](#security)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## What ZAPX does
+
+### Connect to anything
+
+One app for every way you reach a device:
+
+- **SSH2** — password, public key, SSH agent, and 2FA keyboard-interactive.
+- **Telnet** and **Serial** (COM / TTY) for console and legacy gear.
+- **Local shell** tabs, right alongside your remote sessions.
+- **Jump hosts & tunnels** — ProxyJump through saved sessions, plus `-L` local,
+  `-D` SOCKS5 dynamic and `-R` remote port forwarding.
+- **Rock-solid links** — configurable SSH keepalive, auto-reconnect on drop with
+  a one-click banner, and reconnect / clear / save-output right in the toolbar.
+
+### Organize your sessions
+
+Never hunt for a host again:
+
+- **Session manager** with a folder tree, drag-and-drop, and instant search.
+- **Tabs** you can rename, colour and duplicate; a **resizable sidebar**.
+- **Broadcast groups** — open N hosts at once as a grid with a single master
+  input bar and type to all of them together.
+- **Splits & grid view** — recursive split panes and output compare, so you can
+  watch several devices side by side.
+- **Command palette** (`Ctrl+K`) to fuzzy-launch any session, group, action or
+  theme without touching the mouse.
+- **Window memory** — remembers size, position and maximized state; sizes to
+  your monitor on first launch.
+
+### Work faster in the terminal
+
+The little things that add up across a long day:
+
+- **Command hints** — autocomplete from your own history plus vendor catalogs
+  for **12 platforms**, with automatic platform detection from the prompt.
+- **Snippets** — per-platform command snippets fired on `Ctrl+Shift+1..9`.
+- **Keyword highlighting** — per-rule regex in true-color ANSI, with
+  user-overridable vendor catalogs (Cisco, Juniper, Fortinet, Palo Alto, F5…).
+- **Triggers** — per-session regex/literal matches on output that notify you,
+  auto-send a reply, or ring the bell.
+- **In-terminal search** (`Ctrl+F`) with match count, highlight-all and
+  case / word / regex options.
+- **Session logging** — plain or raw capture with 50 MB rotation and a
+  per-session history panel.
+
+### Automate logins and tasks
+
+- **Login automation** — expect/send login scripts per saved session, with
+  regex expects.
+- **Macros** — a sidebar library of expect / send / wait macros you run on the
+  focused session: folders, drag-to-reorder, edit-as-JSON, run-on-connect, and
+  JSON export/import (plus MobaXterm import).
+
+### Keep credentials safe
+
+- **Credential vault** — reusable named credentials stored in the OS keyring
+  (with an AES-256-GCM database fallback). Attach one to a session, or reference
+  it from a macro as `{{vault:Name.Password}}`.
+- Secrets are resolved **in the backend** at run time — they never enter the UI,
+  the JSON, exports or logs.
+- Passwords **typed at a prompt** are never recorded to history or recents.
+
+### Transfer files
+
+- **SFTP file browser** with streaming up/downloads, live progress and
+  cancellation.
+- **Edit remote files** with your local editor over SFTP.
+
+### Make it yours
+
+- **7 full themes** — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor and
+  Amber — each restyling both the UI chrome and the terminal ANSI palette, with
+  bundled Geist / JetBrains Mono fonts.
+- **Customizable shortcuts** for every action (**Settings → Shortcuts**).
+
+### Take it anywhere
+
+- **Export / import** — one JSON file with your sessions, folders, groups,
+  snippets and highlight rules (never passwords, never the vault). Import is
+  idempotent, so it's safe for backup, migration and team sharing.
+- **Import from what you already use** — `~/.ssh/config`, PuTTY, MobaXterm and
+  SecureCRT.
+- **Portable mode** — a Windows portable `.exe` and a user-selectable data
+  folder let your whole setup travel with the binary.
 
 ## Keyboard shortcuts
 
@@ -149,11 +235,8 @@ zapx/
 
 - **[User Guide](docs/user-guide/)** — full walkthrough of sessions, the credential
   vault, macros, SFTP, splits, settings and more.
-
-## Releases
-
-Per-version notes live in [docs/releases/](docs/releases/) and the full history in
-[CHANGELOG.md](CHANGELOG.md).
+- Per-version notes live in [docs/releases/](docs/releases/) and the full history in
+  [CHANGELOG.md](CHANGELOG.md).
 
 ## Roadmap
 
@@ -164,15 +247,22 @@ Per-version notes live in [docs/releases/](docs/releases/) and the full history 
 - [x] Regex matching in login-script expects (0.8)
 - [x] Edit remote files with a local editor over SFTP (0.8) — OS drag & drop upload deferred
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup and coding standards. By submitting a pull request you agree
+that your contribution is licensed under the project's GPL-3.0-or-later terms.
+
 ## License
 
-**Proprietary — © Carlos Tejeiro. All rights reserved.** See [LICENSE](LICENSE).
-This repository and its source code are private; nothing here is licensed for
-reuse, redistribution or modification.
+ZAPX is free software: you can redistribute it and/or modify it under the terms
+of the **GNU General Public License** as published by the Free Software
+Foundation, either **version 3** of the License, or (at your option) any later
+version. See [LICENSE](LICENSE) for the full text.
+
+ZAPX is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 Third-party open-source components are under their own permissive licenses; see
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-> Releases up to and including 0.6.0 were published under Apache 2.0 and remain
-> available under that license for those specific versions; this proprietary
-> license applies from 0.7.0 onward.

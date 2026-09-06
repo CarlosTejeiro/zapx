@@ -1018,6 +1018,122 @@ pub async fn update_saved_session(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Change the credential of an existing SSH session in place — the editable
+/// counterpart to the credential handling in [`create_saved_session`]. Lets the
+/// Edit dialog switch auth method, rotate a password, or re-point at a different
+/// vault entry without deleting and recreating the session.
+///
+/// Secret lifecycle mirrors create: a typed password/passphrase is written to a
+/// fresh private credential (keyring key `ssh:<uuid>`); a `VaultEntry` just
+/// points the session at the shared row (no keyring write). Crucially, the old
+/// credential is cleaned up **only when it was private** — a shared vault entry
+/// (`reusable=1`) is never deleted or mutated here, so typing a new password on
+/// a vault-backed session detaches it into its own private secret while the
+/// vault entry stays intact for every other session using it.
+#[tauri::command]
+pub async fn set_session_credential(
+    state: State<'_, AppState>,
+    id: i64,
+    auth: AuthMethodArg,
+) -> Result<(), AppError> {
+    let session = state
+        .db
+        .get_session(id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let old_cred_id = session.credential_id;
+    let username = session.username.as_deref();
+    let portable = state.data_dir.is_portable();
+
+    // Derive the new (auth_method, credential_id, password_to_cache) using the
+    // same rules as create_saved_session. `key_path` is not a secret and keeps
+    // travelling through options_json via update_saved_session, so it is not
+    // handled here.
+    let (auth_method, new_credential_id, password_to_cache): (&str, Option<i64>, Option<String>) =
+        match auth {
+            AuthMethodArg::Password { password } => {
+                let keyring_key = format!("ssh:{}", Uuid::new_v4());
+                store_secret_in_keyring(&keyring_key, &password, portable)?;
+                let cred_id = state
+                    .db
+                    .create_credential(&session.name, "ssh_password", username, &keyring_key)
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+                ("password", Some(cred_id), Some(password))
+            }
+            AuthMethodArg::Key {
+                key_path: _,
+                passphrase,
+            } => {
+                let cred_id = match passphrase {
+                    Some(pp) if !pp.is_empty() => {
+                        let keyring_key = format!("ssh:{}", Uuid::new_v4());
+                        store_secret_in_keyring(&keyring_key, &pp, portable)?;
+                        Some(
+                            state
+                                .db
+                                .create_credential(&session.name, "ssh_key", username, &keyring_key)
+                                .map_err(|e| AppError::Internal(e.to_string()))?,
+                        )
+                    }
+                    _ => None,
+                };
+                ("key", cred_id, None)
+            }
+            AuthMethodArg::KeyboardInteractive => ("keyboard-interactive", None, None),
+            AuthMethodArg::Agent => ("agent", None, None),
+            AuthMethodArg::VaultEntry { credential_id } => ("password", Some(credential_id), None),
+        };
+
+    state
+        .db
+        .set_session_auth(id, new_credential_id, auth_method)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Purge the previous credential when it is no longer referenced and was
+    // private to this session. Reusable vault entries are shared — never delete
+    // them here; the session simply stops pointing at the row. (Same guard as
+    // delete_saved_session.)
+    if let Some(old_id) = old_cred_id {
+        if Some(old_id) != new_credential_id {
+            let reusable = state
+                .db
+                .get_credential(old_id)
+                .map(|c| c.reusable)
+                .unwrap_or(false);
+            if !reusable {
+                if let Ok(key) = state.db.get_credential_keyring_key(old_id) {
+                    core_vault::Vault::delete(&key).ok();
+                }
+                state.db.delete_credential_secret(old_id).ok();
+                state.db.delete_credential(old_id).ok();
+            }
+        }
+    }
+
+    // Refresh caches. Drop any stale in-memory secret first so a keyring-denied
+    // build can't authenticate the new credential with the old password; then
+    // re-seed for the typed-password case exactly as create_saved_session does.
+    state.password_cache.lock().unwrap().remove(&id);
+    if let Some(pw) = password_to_cache {
+        state.password_cache.lock().unwrap().insert(id, pw.clone());
+        if portable {
+            match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
+                Ok(blob) => {
+                    if let Err(e) = state.db.set_session_secret(id, &blob) {
+                        tracing::warn!(id, "persist portable session_secret failed: {e}");
+                    }
+                }
+                Err(e) => tracing::warn!(id, "encrypt portable session_secret failed: {e}"),
+            }
+        }
+    } else {
+        // No session-owned secret any more (vault entry, agent, key, or KI):
+        // drop a stale portable fallback blob so it can't shadow the new auth.
+        state.db.delete_session_secret(id).ok();
+    }
+
+    Ok(())
+}
+
 /// Move a saved session to a different folder (or to the root with `None`).
 #[tauri::command]
 pub async fn move_saved_session(
