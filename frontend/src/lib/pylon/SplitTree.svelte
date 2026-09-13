@@ -66,6 +66,7 @@
     {theme}
     pane={node.pane}
     focused={focusedPaneId === node.pane.id}
+    hasSiblings={path.length > 0}
     canClose={canClosePanes}
     onFocus={() => onFocus(node.pane.id)}
     onSplitH={() => onSplit(node.pane.id, 'h')}
