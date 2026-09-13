@@ -47,6 +47,10 @@
     theme: PylonTheme
     pane: PaneData
     focused: boolean
+    /** Whether this pane shares the tab with other panes (split or grid). The
+     *  focus ring only conveys information when there is more than one pane —
+     *  on a solo pane it is pure visual noise — so it is drawn only when true. */
+    hasSiblings?: boolean
     /** Whether closing this pane is allowed (false when the tab has a single leaf). */
     canClose?: boolean
     onFocus: () => void
@@ -61,6 +65,7 @@
     theme,
     pane,
     focused,
+    hasSiblings = false,
     canClose = false,
     onFocus,
     onSplitH,
@@ -299,15 +304,18 @@
   })
 </script>
 
-<!-- The terminal floats as a card: rounded, clipped, soft shadow. The
-     focused pane adds an accent inset ring on top of the card shadow. -->
+<!-- The terminal floats as a card: rounded, clipped, soft shadow. When the
+     tab holds several panes, the focused one adds a soft accent inset ring so
+     the keyboard target is obvious; a solo pane keeps the neutral border, since
+     a full-strength accent frame around the only terminal was the loudest
+     element on screen and signalled nothing. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="pane"
   style:background={theme.terminal.bg}
   style:border-radius="calc({theme.radius} + 4px)"
-  style:box-shadow={focused
-    ? `inset 0 0 0 1.5px ${theme.accent}, 0 1px 2px rgba(0,0,0,0.14), 0 8px 26px rgba(0,0,0,0.18)`
+  style:box-shadow={focused && hasSiblings
+    ? `inset 0 0 0 1px color-mix(in srgb, ${theme.accent} 60%, transparent), 0 1px 2px rgba(0,0,0,0.14), 0 8px 26px rgba(0,0,0,0.18)`
     : `inset 0 0 0 1px ${theme.border}, 0 1px 2px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.14)`}
   onclick={onFocus}
   onkeydown={(e) => {

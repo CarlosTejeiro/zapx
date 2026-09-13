@@ -81,6 +81,7 @@
           {theme}
           {pane}
           focused={focusedPaneId === pane.id}
+          hasSiblings={panes.length > 1}
           canClose={true}
           onFocus={() => onFocus(pane.id)}
           onClosePane={() => onClosePane(pane.id)}

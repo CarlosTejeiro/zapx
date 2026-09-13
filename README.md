@@ -104,9 +104,9 @@ The little things that add up across a long day:
 
 ### Make it yours
 
-- **7 full themes** — Parchment, Oxide, Fjord, Nocturne, Porcelain, Phosphor and
-  Amber — each restyling both the UI chrome and the terminal ANSI palette, with
-  bundled Geist / JetBrains Mono fonts.
+- **5 full themes** — Parchment, Oxide, Fjord, Nocturne and Porcelain — each
+  restyling both the UI chrome and the terminal ANSI palette, with bundled
+  Geist / JetBrains Mono fonts.
 - **Customizable shortcuts** for every action (**Settings → Shortcuts**).
 
 ### Take it anywhere
