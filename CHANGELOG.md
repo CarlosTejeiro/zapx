@@ -5,6 +5,16 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **The chosen theme now survives a restart.** The UI theme was never
+  persisted, so ZAPX came back on Parchment every launch no matter what you had
+  picked. Switching theme (View menu, command palette or the cycle shortcut) now
+  saves the choice as `ui.theme` and it is restored on start, following the same
+  settings path as the other preferences. A saved theme that no longer exists
+  (e.g. one removed in 0.21.1) is ignored and the default is used.
+
 ## [0.21.1] - 2026-09-13
 
 ### Changed

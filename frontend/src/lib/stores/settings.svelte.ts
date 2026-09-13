@@ -1,5 +1,6 @@
 import { getSetting, setSetting, setSshKeepalive, listColorSchemes } from '$lib/bridge/commands'
 import type { ColorScheme } from '$lib/bridge/types'
+import { setTheme } from '$lib/themes/store.svelte'
 
 // ── reactive global terminal settings ──────────────────────────────────────
 
@@ -55,6 +56,7 @@ export async function loadSettings(): Promise<void> {
     'ssh.keepalive_secs',
     'connection.autoReconnect',
     'ui.sidebar_width',
+    'ui.theme',
   ]
   try {
     const values = await Promise.all(keys.map((k) => getSetting(k)))
@@ -75,6 +77,9 @@ export async function loadSettings(): Promise<void> {
       const w = parseInt(values[8], 10)
       if (!Number.isNaN(w)) uiSettings.sidebarWidth = clampSidebarWidth(w)
     }
+    // UI theme: setTheme ignores unknown names, so a value saved by a build
+    // that still shipped a since-removed theme simply keeps the default.
+    if (values[9]) setTheme(values[9])
   } catch {
     // use defaults
   }

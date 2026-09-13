@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getTheme, setTheme } from '$lib/themes/store.svelte'
+  import { getTheme, applyTheme } from '$lib/themes/store.svelte'
   import { themes, themeLabels } from '$lib/themes/index'
   import MarkTile from '$lib/icons/MarkTile.svelte'
   import Icon from '$lib/icons/Icon.svelte'
@@ -156,7 +156,7 @@
   function toggleTheme() {
     const keys = Object.keys(themes)
     const idx = keys.indexOf(theme.name)
-    setTheme(keys[(idx + 1) % keys.length] ?? 'parchment')
+    applyTheme(keys[(idx + 1) % keys.length] ?? 'parchment')
   }
 
   // Publish the active theme as global `--zx-*` CSS custom properties on the
@@ -1340,7 +1340,7 @@
       label: `Tema · ${label}`,
       icon: 'contrast' as const,
       section: 'Themes' as const,
-      run: () => setTheme(key),
+      run: () => applyTheme(key),
     })),
   ])
 
@@ -1497,7 +1497,7 @@
     onSettings={() => (showSettings = true)}
     onSnippets={() => (showSnippets = true)}
     onCheckUpdates={handleCheckUpdates}
-    onSetTheme={(k) => setTheme(k)}
+    onSetTheme={(k) => applyTheme(k)}
     onAbout={() => (showAbout = true)}
     onExport={handleExport}
     onImport={handleImport}
