@@ -5,6 +5,25 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Calmer terminal pane** — the accent focus ring around the terminal pane is
+  now drawn only when a tab holds several panes (split or grid), where it marks
+  the pane that receives keyboard input, and it is softer (1 px at 60%). A solo
+  pane keeps a neutral border: the full-strength accent frame around the only
+  terminal signalled nothing and was the loudest element on screen, making the
+  saturated themes look garish.
+
+### Removed
+- **Phosphor, Amber and Onyx themes.** The two CRT themes collapsed the whole
+  ANSI palette into a single tint (in Amber even *blue* rendered amber), so the
+  vendor keyword highlighting lost its meaning — an error no longer looked
+  different from an OK. Onyx paired a pure-black background with neon colours
+  that were hard on the eyes. Five balanced themes remain: Parchment and
+  Porcelain (light), Fjord, Nocturne and Oxide (dark). The app still starts on
+  Parchment, so nothing changes for anyone who never switched theme.
+
 ## [0.21.0] - 2026-09-06
 
 ### Changed
