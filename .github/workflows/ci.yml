@@ -102,6 +102,15 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      # End-to-end SSH against a real OpenSSH server on the runner: host-key
+      # trust flow, every auth method, ProxyJump, -L/-R forwards and SFTP.
+      # The test is a no-op without ZAPX_SSH_TEST_PORT, which the script sets.
+      - name: Start test sshd
+        run: bash scripts/ci/ssh-test-server.sh
+
+      - name: SSH integration test
+        run: cargo test -p core-transport --test ssh_integration -- --nocapture
+
   deny:
     name: Supply chain (cargo deny)
     runs-on: ubuntu-latest

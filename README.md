@@ -178,7 +178,7 @@ with the `ZAPX_DATA_DIR` environment variable / `--data-dir <path>` CLI flag.
 
 ## Building from source
 
-Prerequisites: Rust stable ≥ 1.80, Node.js LTS, pnpm.
+Prerequisites: Rust stable ≥ 1.89, Node.js LTS, pnpm.
 
 ```sh
 # Install frontend dependencies (first time only)

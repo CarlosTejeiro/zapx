@@ -4,11 +4,11 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
-use russh::client;
-use russh::client::KeyboardInteractiveAuthResponse;
+use russh::client::{self, AuthResult, KeyboardInteractiveAuthResponse};
+use russh::keys::agent::client::AgentClient;
+use russh::keys::agent::AgentIdentity;
+use russh::keys::{self, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::ChannelMsg;
-use russh_keys::key;
 
 use crate::error::Error;
 use crate::SessionCmd;
@@ -136,7 +136,7 @@ impl AgentPriority {
 /// How to authenticate an SSH session.
 ///
 /// The key *path* (not the key bytes) is carried here: the file is not a secret
-/// to copy around, and `russh_keys::load_secret_key` reads from a path. Only the
+/// to copy around, and `russh::keys::load_secret_key` reads from a path. Only the
 /// passphrase is a secret and lives in the OS vault.
 #[derive(Clone)]
 pub enum SshAuth {
@@ -174,8 +174,21 @@ pub enum HostKeyStatus {
     Changed { fingerprint: String },
 }
 
-fn fingerprint(pubkey: &key::PublicKey) -> String {
-    format!("SHA256:{}", pubkey.fingerprint())
+/// `SHA256:<base64, unpadded>` — the OpenSSH display form. ssh-key's
+/// `Fingerprint` renders exactly that, so the strings the UI shows and compares
+/// are byte-identical to what earlier builds produced.
+fn fingerprint(pubkey: &PublicKey) -> String {
+    pubkey.fingerprint(HashAlg::Sha256).to_string()
+}
+
+/// The key to check against `known_hosts`. For a host *certificate* that is the
+/// key embedded in it — what OpenSSH falls back to when no `@cert-authority`
+/// line matches (russh's known_hosts support has no notion of a CA).
+fn host_key_of(presented: &PublicKeyOrCertificate) -> PublicKey {
+    match presented {
+        PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
+        PublicKeyOrCertificate::Certificate(cert) => PublicKey::from(cert.public_key().clone()),
+    }
 }
 
 /// Expand a leading `~/` to the user's home directory (`load_secret_key` opens
@@ -216,19 +229,20 @@ pub struct SshClientHandler {
     forwards: RemoteForwardRegistry,
 }
 
-#[async_trait]
 impl client::Handler for SshClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &key::PublicKey,
+        presented: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        match russh_keys::check_known_hosts(&self.host, self.port, server_public_key) {
+        let key = host_key_of(presented);
+        let server_public_key = &key;
+        match keys::check_known_hosts(&self.host, self.port, server_public_key) {
             // Recorded and matches → accept.
             Ok(true) => Ok(true),
             // Recorded but DIFFERENT → possible MITM; reject (fail closed).
-            Err(russh_keys::Error::KeyChanged { .. }) => Ok(false),
+            Err(keys::Error::KeyChanged { .. }) => Ok(false),
             // Unknown (not recorded) or unreadable known_hosts.
             _ => {
                 if !self.allow_tofu {
@@ -251,11 +265,8 @@ impl client::Handler for SshClientHandler {
                     fingerprint = %fingerprint(server_public_key),
                     "trusting unknown host key on first use (reachable only via jump host)"
                 );
-                let _ = russh_keys::known_hosts::learn_known_hosts(
-                    &self.host,
-                    self.port,
-                    server_public_key,
-                );
+                let _ =
+                    keys::known_hosts::learn_known_hosts(&self.host, self.port, server_public_key);
                 Ok(true)
             }
         }
@@ -264,8 +275,10 @@ impl client::Handler for SshClientHandler {
     /// Handle an incoming `forwarded-tcpip` channel — fired when something
     /// on the remote side connects to one of our active `-R` bind ports.
     /// Look up the local target in [`Self::forwards`] and bridge bytes.
-    /// Unknown entries are dropped on the floor (the server shouldn't be
-    /// forwarding ports we didn't register, but we tolerate it).
+    /// Unknown binds are refused (the server shouldn't be forwarding ports we
+    /// didn't register). The open must be answered through `reply` either
+    /// way — russh no longer confirms the channel on our behalf.
+    #[allow(clippy::too_many_arguments)]
     async fn server_channel_open_forwarded_tcpip(
         &mut self,
         channel: russh::Channel<client::Msg>,
@@ -273,6 +286,7 @@ impl client::Handler for SshClientHandler {
         connected_port: u32,
         _originator_address: &str,
         _originator_port: u32,
+        reply: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
         let key = (connected_address.to_string(), connected_port as u16);
@@ -282,12 +296,16 @@ impl client::Handler for SshClientHandler {
         };
         let Some(target) = target else {
             tracing::debug!(
-                "forwarded-tcpip for unknown bind {}:{}; dropping",
+                "forwarded-tcpip for unknown bind {}:{}; refusing",
                 connected_address,
                 connected_port
             );
+            reply
+                .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
             return Ok(());
         };
+        reply.accept().await;
         tokio::spawn(async move {
             let mut remote = channel.into_stream();
             match tokio::net::TcpStream::connect((target.host.as_str(), target.port)).await {
@@ -313,24 +331,23 @@ impl client::Handler for SshClientHandler {
 /// can inspect it) and accepts the connection so the KEX completes. It never
 /// authenticates.
 struct KeyCaptureHandler {
-    captured: Arc<Mutex<Option<key::PublicKey>>>,
+    captured: Arc<Mutex<Option<PublicKey>>>,
 }
 
-#[async_trait]
 impl client::Handler for KeyCaptureHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &key::PublicKey,
+        presented: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        *self.captured.lock().unwrap() = Some(server_public_key.clone());
+        *self.captured.lock().unwrap() = Some(host_key_of(presented));
         Ok(true)
     }
 }
 
 /// Open a throwaway connection, capture the host key, and return it.
-async fn capture_host_key(host: &str, port: u16) -> Result<key::PublicKey, Error> {
+async fn capture_host_key(host: &str, port: u16) -> Result<PublicKey, Error> {
     let captured = Arc::new(Mutex::new(None));
     let handler = KeyCaptureHandler {
         captured: Arc::clone(&captured),
@@ -355,9 +372,9 @@ async fn capture_host_key(host: &str, port: u16) -> Result<key::PublicKey, Error
 pub async fn preflight_host_key(host: String, port: u16) -> Result<HostKeyStatus, Error> {
     let key = capture_host_key(&host, port).await?;
     let fp = fingerprint(&key);
-    let status = match russh_keys::check_known_hosts(&host, port, &key) {
+    let status = match keys::check_known_hosts(&host, port, &key) {
         Ok(true) => HostKeyStatus::Known,
-        Err(russh_keys::Error::KeyChanged { .. }) => HostKeyStatus::Changed { fingerprint: fp },
+        Err(keys::Error::KeyChanged { .. }) => HostKeyStatus::Changed { fingerprint: fp },
         // Ok(false) = not recorded; any other error = unreadable known_hosts,
         // both treated as "unknown" so the user gets a TOFU prompt.
         _ => HostKeyStatus::Unknown { fingerprint: fp },
@@ -381,24 +398,79 @@ pub async fn trust_host_key(host: String, port: u16, expected_fp: String) -> Res
             fingerprint: actual_fp,
         });
     }
-    russh_keys::known_hosts::learn_known_hosts(&host, port, &key)
+    keys::known_hosts::learn_known_hosts(&host, port, &key)
         .map_err(|e| Error::KeyLoad(e.to_string()))?;
     Ok(())
 }
 
-/// The `known_hosts` file russh-keys actually reads/writes. Mirrors its private
-/// `known_hosts_path`, **including the Windows quirk**: russh uses
-/// `%USERPROFILE%\ssh\known_hosts` (no dot), NOT the OpenSSH-standard
-/// `.ssh\known_hosts`. That mismatch is why `ssh-keygen -R` (which edits the
-/// dotted path) appears not to work for ZAPX on Windows — so overwrite must
-/// target the same file russh uses.
+/// The `known_hosts` file russh reads/writes: the OpenSSH-standard
+/// `~/.ssh/known_hosts` on every platform (mirrors russh's private
+/// `known_hosts_path`). Older russh used `%USERPROFILE%\ssh\known_hosts` (no
+/// dot) on Windows — see [`migrate_legacy_known_hosts`] for the one-time move.
 fn known_hosts_file() -> Result<std::path::PathBuf, Error> {
     let home = home::home_dir().ok_or_else(|| Error::KeyLoad("no home directory".into()))?;
+    Ok(home.join(".ssh").join("known_hosts"))
+}
+
+/// Windows users of earlier ZAPX builds have their trusted hosts in
+/// `%USERPROFILE%\ssh\known_hosts` (the path the old SSH library used); the
+/// library now reads the standard `.ssh\known_hosts`, so without this every
+/// host would come back as "unknown" and need re-approval. Fold the legacy
+/// entries into the standard file once, then rename the legacy file so the
+/// merge never repeats. Never fatal: on any error the user just re-approves a
+/// key. No-op on other platforms and when there is nothing to migrate.
+pub fn migrate_legacy_known_hosts() {
     #[cfg(windows)]
-    let path = home.join("ssh").join("known_hosts");
-    #[cfg(not(windows))]
-    let path = home.join(".ssh").join("known_hosts");
-    Ok(path)
+    {
+        let Some(home) = home::home_dir() else { return };
+        let legacy = home.join("ssh").join("known_hosts");
+        if !legacy.is_file() {
+            return;
+        }
+        let target = home.join(".ssh").join("known_hosts");
+        match merge_known_hosts(&legacy, &target) {
+            Ok(added) => {
+                tracing::info!(added, "migrated legacy Windows known_hosts entries");
+                let parked = home.join("ssh").join("known_hosts.migrated-to-.ssh");
+                if let Err(e) = std::fs::rename(&legacy, &parked) {
+                    tracing::warn!("could not park legacy known_hosts: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("legacy known_hosts migration failed: {e}"),
+        }
+    }
+}
+
+/// Append every non-blank, non-comment line of `legacy` that `target` does not
+/// already contain verbatim. Creates `target` (and its directory) if missing.
+/// Returns how many lines were added. Platform-agnostic so it can be unit
+/// tested anywhere; the Windows-only caller decides the paths.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn merge_known_hosts(legacy: &std::path::Path, target: &std::path::Path) -> std::io::Result<usize> {
+    let old = std::fs::read_to_string(legacy)?;
+    let existing = std::fs::read_to_string(target).unwrap_or_default();
+    let have: std::collections::HashSet<&str> = existing.lines().map(str::trim).collect();
+    let mut out = existing.clone();
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    let mut added = 0usize;
+    for line in old.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') || have.contains(t) {
+            continue;
+        }
+        out.push_str(t);
+        out.push('\n');
+        added += 1;
+    }
+    if added > 0 {
+        if let Some(dir) = target.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(target, out)?;
+    }
+    Ok(added)
 }
 
 /// Drop every plaintext `known_hosts` entry for `host` (keyed `[host]:port` when
@@ -470,12 +542,12 @@ pub async fn overwrite_host_key(host: String, port: u16, expected_fp: String) ->
     let path = known_hosts_file()?;
     remove_known_hosts_lines(&path, &host, port)
         .map_err(|e| Error::KeyLoad(format!("known_hosts: {e}")))?;
-    russh_keys::known_hosts::learn_known_hosts(&host, port, &key)
+    keys::known_hosts::learn_known_hosts(&host, port, &key)
         .map_err(|e| Error::KeyLoad(e.to_string()))?;
     // Confirm the new key now validates. If a stale entry we couldn't match
     // (e.g. a hashed one) still lingers, russh reports KeyChanged again — fail
     // loudly with a manual next step instead of leaving a silently-broken host.
-    match russh_keys::check_known_hosts(&host, port, &key) {
+    match keys::check_known_hosts(&host, port, &key) {
         Ok(true) => Ok(()),
         _ => Err(Error::KeyLoad(format!(
             "the old host key entry could not be removed automatically \
@@ -745,6 +817,25 @@ async fn connect_only(
     Ok((handle, forwards, mss, watcher))
 }
 
+/// Which signature hashes to offer for an RSA key, in order. When the server
+/// advertised `server-sig-algs` (EXT_INFO) we use exactly what it prefers
+/// (`None` = it only speaks legacy `ssh-rsa`/SHA-1). When it didn't — typical
+/// of older network gear — try `rsa-sha2-256` first, then fall back to SHA-1,
+/// so both modern OpenSSH (which refuses SHA-1) and legacy devices (which
+/// only accept it) authenticate. Bounded so a server that never sends
+/// EXT_INFO can't stall the login.
+async fn rsa_hash_candidates(session: &client::Handle<SshClientHandler>) -> Vec<Option<HashAlg>> {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        session.best_supported_rsa_hash(),
+    )
+    .await
+    {
+        Ok(Ok(Some(best))) => vec![best],
+        _ => vec![Some(HashAlg::Sha256), None],
+    }
+}
+
 /// Authenticate `user` against an already-connected session using `auth`.
 /// Returns true on success, false if the server rejected every attempt.
 async fn perform_auth(
@@ -753,25 +844,43 @@ async fn perform_auth(
     auth: SshAuth,
 ) -> Result<bool, Error> {
     match auth {
-        SshAuth::Password(password) => session
-            .authenticate_password(user, password)
-            .await
-            .map_err(Error::Ssh),
+        SshAuth::Password(password) => Ok(matches!(
+            session
+                .authenticate_password(user, password)
+                .await
+                .map_err(Error::Ssh)?,
+            AuthResult::Success
+        )),
         SshAuth::PublicKey {
             key_path,
             passphrase,
         } => {
-            let key = russh_keys::load_secret_key(expand_tilde(&key_path), passphrase.as_deref())
+            let key = keys::load_secret_key(expand_tilde(&key_path), passphrase.as_deref())
                 .map_err(|e| match e {
-                // Encrypted key with no/empty passphrase, or a wrong one.
-                russh_keys::Error::KeyIsEncrypted => Error::KeyPassphrase,
-                _ if passphrase.is_some() => Error::KeyPassphrase,
-                other => Error::KeyLoad(other.to_string()),
-            })?;
-            session
-                .authenticate_publickey(user, Arc::new(key))
-                .await
-                .map_err(Error::Ssh)
+                    // Encrypted key with no/empty passphrase, or a wrong one.
+                    keys::Error::KeyIsEncrypted => Error::KeyPassphrase,
+                    _ if passphrase.is_some() => Error::KeyPassphrase,
+                    other => Error::KeyLoad(other.to_string()),
+                })?;
+            let key = Arc::new(key);
+            let candidates = if key.algorithm().is_rsa() {
+                rsa_hash_candidates(session).await
+            } else {
+                vec![None]
+            };
+            for hash_alg in candidates {
+                let result = session
+                    .authenticate_publickey(
+                        user.clone(),
+                        PrivateKeyWithHashAlg::new(Arc::clone(&key), hash_alg),
+                    )
+                    .await
+                    .map_err(Error::Ssh)?;
+                if matches!(result, AuthResult::Success) {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         SshAuth::KeyboardInteractive { responder } => {
             let mut response = session
@@ -781,7 +890,7 @@ async fn perform_auth(
             loop {
                 match response {
                     KeyboardInteractiveAuthResponse::Success => return Ok(true),
-                    KeyboardInteractiveAuthResponse::Failure => return Ok(false),
+                    KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
                     KeyboardInteractiveAuthResponse::InfoRequest {
                         name,
                         instructions,
@@ -964,8 +1073,6 @@ async fn agent_auth(
     // platform-agnostic. `_` to keep clippy quiet on Unix builds.
     _priority: AgentPriority,
 ) -> Result<bool, Error> {
-    use russh_keys::agent::client::AgentClient;
-
     let agent = AgentClient::connect_env()
         .await
         .map_err(|e| Error::Agent(format!("no SSH agent available: {e}")))?;
@@ -1034,7 +1141,6 @@ async fn try_windows_backend(
     session: &mut client::Handle<SshClientHandler>,
     user: String,
 ) -> Result<bool, Error> {
-    use russh_keys::agent::client::AgentClient;
     match backend {
         AgentBackend::OpenSsh => {
             // `$SSH_AUTH_SOCK` is the way Microsoft's port advertises its
@@ -1049,29 +1155,33 @@ async fn try_windows_backend(
             run_agent_auth(session, user, agent).await
         }
         AgentBackend::Pageant => {
-            // `connect_pageant` itself doesn't fail; the missing process
-            // surfaces on the first `request_identities()` call inside the
-            // shared helper.
-            let agent = AgentClient::connect_pageant().await;
+            // A missing Pageant process is reported here (or, for some
+            // failure modes, on the first `request_identities()` call inside
+            // the shared helper) — both surface as an `Agent` error naming
+            // the backend, so the caller's per-backend summary stays clear.
+            let agent = AgentClient::connect_pageant()
+                .await
+                .map_err(|e| Error::Agent(format!("Pageant: {e}")))?;
             run_agent_auth(session, user, agent).await
         }
     }
 }
 
 /// Identity-enumeration + signing loop shared by Unix and Windows agent
-/// front-ends. Generic over the `AgentClient<R>` concrete stream so we
-/// monomorphise once per platform without duplicating the body.
-async fn run_agent_auth<S>(
+/// front-ends. Generic over the agent's stream type so we monomorphise once
+/// per platform without duplicating the body. The `AgentClient` itself is the
+/// `Signer`: each attempt asks the agent to sign the auth challenge for one
+/// of its keys, so no private key ever leaves the agent.
+async fn run_agent_auth<R>(
     session: &mut client::Handle<SshClientHandler>,
     user: String,
-    mut agent: S,
+    mut agent: AgentClient<R>,
 ) -> Result<bool, Error>
 where
-    S: russh::Signer + Send,
-    S: AgentIdentities,
+    R: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
 {
     let identities = agent
-        .request_identities_dyn()
+        .request_identities()
         .await
         .map_err(|e| Error::Agent(format!("failed to list agent identities: {e}")))?;
 
@@ -1079,55 +1189,85 @@ where
         return Err(Error::Agent("ssh-agent has no identities loaded".into()));
     }
 
-    // `authenticate_future` consumes and returns the Signer so we can try
-    // the next identity on failure without reconnecting to the agent.
-    let mut signer = agent;
-    for key in identities {
-        let (next, result) = session.authenticate_future(user.clone(), key, signer).await;
-        signer = next;
-        if matches!(result, Ok(true)) {
-            return Ok(true);
+    // Resolved lazily: only needed if the agent holds an RSA key, and it
+    // costs a round-trip wait for the server's EXT_INFO.
+    let mut rsa_candidates: Option<Vec<Option<HashAlg>>> = None;
+    for identity in identities {
+        let key = match identity {
+            AgentIdentity::PublicKey { key, .. } => key,
+            // Certificate identities need `authenticate_certificate_with`;
+            // ZAPX has never supported user certificates, so skip them rather
+            // than fail the whole agent pass.
+            AgentIdentity::Certificate { .. } => continue,
+        };
+        let candidates = if key.algorithm().is_rsa() {
+            if rsa_candidates.is_none() {
+                rsa_candidates = Some(rsa_hash_candidates(session).await);
+            }
+            rsa_candidates.clone().unwrap_or_default()
+        } else {
+            vec![None]
+        };
+        for hash_alg in candidates {
+            match session
+                .authenticate_publickey_with(user.clone(), key.clone(), hash_alg, &mut agent)
+                .await
+            {
+                Ok(AuthResult::Success) => return Ok(true),
+                // Rejected: try the next hash / identity.
+                Ok(AuthResult::Failure { .. }) => {}
+                // The agent refused to sign (locked, key removed, IPC error):
+                // that identity is unusable, but another may still work.
+                Err(e) => tracing::debug!("agent signing failed for one identity: {e}"),
+            }
         }
     }
     Ok(false)
 }
 
-/// Thin async-trait shim that wraps `AgentClient::request_identities()` so the
-/// generic `run_agent_auth` can list keys without referring to the concrete
-/// stream type. The error type is erased to `String` so all platforms surface
-/// agent failures the same way.
-trait AgentIdentities {
-    fn request_identities_dyn(
-        &mut self,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>>
-                + Send
-                + '_,
-        >,
-    >;
-}
-
-impl<R> AgentIdentities for russh_keys::agent::client::AgentClient<R>
-where
-    R: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
-{
-    fn request_identities_dyn(
-        &mut self,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<russh_keys::key::PublicKey>, String>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move { self.request_identities().await.map_err(|e| e.to_string()) })
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{remove_known_hosts_lines, AgentPriority};
+    use super::{merge_known_hosts, remove_known_hosts_lines, AgentPriority};
+
+    /// The legacy-Windows migration merges only lines the standard file lacks,
+    /// skips blanks/comments, creates the target (and its directory) when
+    /// missing, and is idempotent.
+    #[test]
+    fn merge_known_hosts_appends_only_missing_entries() {
+        let dir = std::env::temp_dir().join(format!("zapx-kh-merge-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = dir.join("legacy_known_hosts");
+        let target = dir.join("dotssh").join("known_hosts");
+        std::fs::write(
+            &legacy,
+            "# old file\n\
+             10.0.0.1 ssh-ed25519 AAAAONE\n\
+             \n\
+             10.0.0.2 ssh-ed25519 AAAATWO\n",
+        )
+        .unwrap();
+
+        // Target doesn't exist yet: both entries land, directory is created.
+        assert_eq!(merge_known_hosts(&legacy, &target).unwrap(), 2);
+        let after = std::fs::read_to_string(&target).unwrap();
+        assert_eq!(
+            after,
+            "10.0.0.1 ssh-ed25519 AAAAONE\n10.0.0.2 ssh-ed25519 AAAATWO\n"
+        );
+
+        // Second run adds nothing (idempotent), file untouched.
+        assert_eq!(merge_known_hosts(&legacy, &target).unwrap(), 0);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), after);
+
+        // A target that already has one of the lines only gains the other.
+        std::fs::write(&target, "10.0.0.2 ssh-ed25519 AAAATWO").unwrap(); // no trailing newline
+        assert_eq!(merge_known_hosts(&legacy, &target).unwrap(), 1);
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "10.0.0.2 ssh-ed25519 AAAATWO\n10.0.0.1 ssh-ed25519 AAAAONE\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// `remove_known_hosts_lines` drops exactly the entries for the target host
     /// (plain and `host,ip` forms), keeps everything else, and preserves

@@ -165,14 +165,27 @@ impl SftpClient {
         Ok(bytes.len() as u64)
     }
 
-    /// Upload `local_path` to the remote `remote_path`. Returns the byte count.
+    /// Upload `local_path` to the remote `remote_path`, creating or truncating
+    /// it. Returns the byte count.
+    ///
+    /// Opens with `CREATE | TRUNCATE` explicitly: russh-sftp's convenience
+    /// `write()` opens with `WRITE` only, which the server answers with
+    /// `NO_SUCH_FILE` for a file that doesn't exist yet — so this method could
+    /// never upload a *new* file. The UI uses [`Self::upload_streaming`] and
+    /// was unaffected; the integration test caught it.
     pub async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<u64, Error> {
         let bytes = tokio::fs::read(local_path).await.map_err(Error::Io)?;
         let len = bytes.len() as u64;
-        self.session
-            .write(remote_path, &bytes)
+        let mut remote = self
+            .session
+            .create(remote_path.to_string())
             .await
             .map_err(map_err)?;
+        remote.write_all(&bytes).await.map_err(Error::Io)?;
+        remote.flush().await.map_err(Error::Io)?;
+        // Await the SFTP CLOSE so the write is acknowledged before we report
+        // success (see `upload_streaming`).
+        remote.shutdown().await.map_err(Error::Io)?;
         Ok(len)
     }
 

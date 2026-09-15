@@ -7,7 +7,7 @@
 
 ## Development setup
 
-1. **Rust** ≥ 1.80 via [rustup](https://rustup.rs). Components: `rustfmt`, `clippy`.
+1. **Rust** ≥ 1.89 via [rustup](https://rustup.rs). Components: `rustfmt`, `clippy`.
 2. **Node.js** LTS + **pnpm** (`corepack enable && corepack prepare pnpm@latest --activate`).
 3. **MSVC Build Tools** on Windows (required by `rusqlite` and `portable-pty`).
 4. Clone the repo and run:

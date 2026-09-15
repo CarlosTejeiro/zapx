@@ -22,7 +22,7 @@ authors    = ["Carlos Tejeiro and ZAPX contributors"]
 license    = "GPL-3.0-or-later"
 publish    = false
 repository = "https://github.com/CarlosTejeiro/zapx"
-rust-version = "1.80"
+rust-version = "1.89"
 
 # ---------------------------------------------------------------------------
 # Workspace-level dependency pins.
@@ -58,8 +58,11 @@ vte          = "0.13"
 uuid         = { version = "1", features = ["v4"] }
 
 # Bloque 2 — SSH transport
-russh      = "0.46"
-russh-keys = "0.46"
+# `ring` (not the default aws-lc-rs) so no cmake/nasm C build joins the
+# release matrix — it is also the backend rustls already uses here. `des`
+# keeps `3des-cbc` for legacy network gear (unconditional in older russh).
+# russh-keys was merged into russh (`russh::keys`) from 0.50.
+russh      = { version = "0.63", default-features = false, features = ["flate2", "ring", "rsa", "des"] }
 russh-sftp = "2.1"
 home       = "0.5"
 

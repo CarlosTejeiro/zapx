@@ -8,14 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **SSH library upgraded: `russh` 0.46 → 0.63.** Closes RUSTSEC-2026-0153 and
+  RUSTSEC-2026-0154 (unchecked buffer growth a malicious or compromised server
+  could use to exhaust the client's memory) — the one real vulnerability that
+  was left in the SSH stack after the audit below, tracked in #46. The upgrade
+  keeps every key-exchange and cipher the old version offered for legacy
+  network gear (`aes*-cbc`, `3des-cbc`, `diffie-hellman-group1/14-sha1`) and
+  adds newer ones (`diffie-hellman-group-exchange`, `mlkem768x25519-sha256`,
+  `aes128-gcm`). RSA keys now negotiate the signature hash with the server:
+  `rsa-sha2-256/512` where advertised, with an automatic fall-back to legacy
+  `ssh-rsa` (SHA-1) for devices that only accept that — so both current
+  OpenSSH (which refuses SHA-1) and old switches keep working. Host
+  certificates presented by a server are checked against `known_hosts` via the
+  key inside them, as OpenSSH does without a matching CA line.
 - **Dependency advisories are now checked on every pull request** (`cargo deny`
   in CI), and the ones it found on day one are addressed: `rustls` updated to
   0.23.45 (RUSTSEC-2026-0285, TLS 1.3 handshake state confusion — used by the
   update check), `anyhow` to 1.0.104 (RUSTSEC-2026-0190) and the `plist` /
-  `quick-xml` chain to fixed versions. Two advisories in the SSH library
-  (`russh` 0.46, memory-exhaustion from a malicious server) need an API
-  migration rather than an update; they are tracked in #46 and carry an
-  explicit, temporary exception until it lands.
+  `quick-xml` chain to fixed versions. The two `russh` advisories are closed by
+  the library upgrade above; no temporary exceptions remain in `deny.toml`.
+
+### Changed
+- **Windows: `known_hosts` now lives in the standard `%USERPROFILE%\.ssh\`**
+  (the SSH library dropped its old `\ssh\` path). Trusted hosts from earlier
+  builds are folded into the standard file **automatically on first launch**,
+  so nothing needs re-approving; the old file is left renamed alongside. A
+  welcome side effect: `ssh-keygen -R host` now edits the same file ZAPX reads.
+- **Building from source needs Rust ≥ 1.89** (was 1.80), required by the new
+  SSH library. Downloaded builds are unaffected.
 
 ## [0.21.2] - 2026-09-15
 
