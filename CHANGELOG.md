@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Themes: legibility pass driven by a contrast audit.** Every theme was
+  measured (WCAG contrast of each text token and each ANSI colour against its
+  background, plus hue separation between the chromatic ANSI slots) and the
+  failures fixed with the smallest lightness/hue nudge that crosses the
+  threshold, keeping each theme's character:
+  - the dimmed text (`textDim`), the terminal's dim text and the ANSI
+    `brightBlack` grey — used by CLIs for comments and secondary output — sat
+    at 2.2–2.8:1 in all five themes, near-invisible; they now reach ≥3.4:1
+    while still reading as "dim";
+  - on the light themes (Parchment, Porcelain) the amber "connecting" status
+    colour was 2.7:1 on the sidebar; it and the green "connected" are slightly
+    deeper now (≥3.2:1);
+  - Oxide's cyan was a green (26° from the ANSI green) and its yellow sat too
+    close to red; Fjord's blue and cyan were 21° apart. Their hues are now
+    clearly separated, so IPv6 addresses, VLAN tags and "up" states no longer
+    blur into one another.
+
 ### Fixed
 - **The chosen theme now survives a restart.** The UI theme was never
   persisted, so ZAPX came back on Parchment every launch no matter what you had
