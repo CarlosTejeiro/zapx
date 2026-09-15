@@ -441,6 +441,13 @@ pub fn migrate_legacy_known_hosts() {
     }
 }
 
+/// Where the user's `known_hosts` lives (`~/.ssh/known_hosts`), or `None`
+/// when the home directory can't be resolved. Exposed so the encrypted
+/// backup can carry the trusted host keys along with the sessions.
+pub fn known_hosts_path() -> Option<std::path::PathBuf> {
+    known_hosts_file().ok()
+}
+
 /// Append every non-blank, non-comment line of `legacy` that `target` does not
 /// already contain verbatim. Creates `target` (and its directory) if missing.
 /// Returns how many lines were added. Platform-agnostic so it can be unit
@@ -448,6 +455,13 @@ pub fn migrate_legacy_known_hosts() {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn merge_known_hosts(legacy: &std::path::Path, target: &std::path::Path) -> std::io::Result<usize> {
     let old = std::fs::read_to_string(legacy)?;
+    merge_known_hosts_text(&old, target)
+}
+
+/// Line-level merge behind [`merge_known_hosts`]: fold `known_hosts`-formatted
+/// `old` text into `target`, adding only the lines it lacks. Creates `target`
+/// (and its directory) if missing. Returns how many lines were added.
+pub fn merge_known_hosts_text(old: &str, target: &std::path::Path) -> std::io::Result<usize> {
     let existing = std::fs::read_to_string(target).unwrap_or_default();
     let have: std::collections::HashSet<&str> = existing.lines().map(str::trim).collect();
     let mut out = existing.clone();

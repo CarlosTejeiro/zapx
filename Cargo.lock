@@ -143,6 +143,7 @@ dependencies = [
  "core-persistence",
  "core-transport",
  "core-vault",
+ "gethostname",
  "notify",
  "regex",
  "serde",
@@ -160,6 +161,7 @@ dependencies = [
  "uuid",
  "window-vibrancy",
  "winreg 0.52.0",
+ "zeroize",
 ]
 
 [[package]]
@@ -789,6 +791,7 @@ name = "core-vault"
 version = "0.0.1"
 dependencies = [
  "aes-gcm 0.10.3",
+ "argon2",
  "keyring",
  "rand 0.8.6",
  "sha2 0.10.9",

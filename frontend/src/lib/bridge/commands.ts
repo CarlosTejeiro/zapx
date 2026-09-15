@@ -775,6 +775,61 @@ export async function getDataDirInfo(): Promise<DataDirInfo> {
   return invoke<DataDirInfo>('get_data_dir_info')
 }
 
+// ── Encrypted backup (.zapxb) ─────────────────────────────────────────────
+
+/** File extension of a sealed bundle. */
+export const BACKUP_EXTENSION = 'zapxb'
+/** Minimum passphrase length the backend accepts (mirrors Rust). */
+export const BACKUP_MIN_PASSPHRASE = 8
+
+export interface BundleInfo {
+  app_version: string
+  created_at: string
+  device_name: string
+  sessions: number
+  folders: number
+  groups: number
+  snippets: number
+  rules: number
+  vault_entries: number
+  session_credentials: number
+  settings: number
+  known_hosts_lines: number
+}
+
+export interface BackupExportSummary {
+  path: string
+  info: BundleInfo
+  warnings: string[]
+}
+
+export interface RestoreSummary {
+  environment: ImportSummary
+  vault_added: number
+  vault_updated: number
+  credentials_linked: number
+  settings_applied: number
+  known_hosts_added: number
+  warnings: string[]
+}
+
+// Write the whole environment — including credentials, settings and trusted
+// host keys — sealed under `passphrase` (Argon2id + AES-256-GCM) at `path`.
+export async function backupExport(path: string, passphrase: string): Promise<BackupExportSummary> {
+  return invoke<BackupExportSummary>('backup_export', { path, passphrase })
+}
+
+// Decrypt a bundle and describe its contents (counts only) without applying it.
+export async function backupInspect(path: string, passphrase: string): Promise<BundleInfo> {
+  return invoke<BundleInfo>('backup_inspect', { path, passphrase })
+}
+
+// Merge a bundle into this install. Idempotent for sessions; vault entries are
+// matched by name; credentials attach only to sessions that have none here.
+export async function backupRestore(path: string, passphrase: string): Promise<RestoreSummary> {
+  return invoke<RestoreSummary>('backup_restore', { path, passphrase })
+}
+
 // Migrate data to `newDir`, write the startup pointer and return a summary.
 // Takes effect on next launch — pair with `restartApp()`.
 export async function setDataDir(newDir: string): Promise<string> {
