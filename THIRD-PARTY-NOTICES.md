@@ -5,10 +5,15 @@ ZAPX is free software licensed under the GNU GPL v3 or later (see
 components that remain under their own licenses; this file collects the
 required attributions.
 
-All bundled dependencies are under **permissive** licenses (MIT, Apache-2.0,
-BSD-2/3-Clause, ISC, Zlib, Unicode, CC0). This is enforced in CI by
-`cargo deny` (see [deny.toml](deny.toml)); no copyleft (GPL/LGPL/AGPL/MPL)
-code is statically bundled.
+Almost all bundled dependencies are under **permissive** licenses (MIT,
+Apache-2.0, BSD-2/3-Clause, ISC, Zlib, Unicode, CC0, BSL-1.0,
+CDLA-Permissive-2.0). A few are under the **MPL-2.0** — a file-level weak
+copyleft that is fully compatible with the GPL-3.0-or-later ZAPX itself uses,
+and that imposes no obligations on ZAPX beyond keeping those files' own notices:
+`serialport` (serial console support), Servo's `cssparser` / `selectors` /
+`dtoa-short` (pulled in by Tauri's HTML handling) and `option-ext` (via `dirs`).
+No GPL/LGPL/AGPL third-party code is bundled. The allow-list is enforced in CI
+by `cargo deny` (see [deny.toml](deny.toml)).
 
 ## Rust crates
 

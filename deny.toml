@@ -2,8 +2,10 @@
 targets = []
 
 # ---------------------------------------------------------------------------
-# Licenses — dependencies must be permissive. ZAPX's own crates are
-# GPL-3.0-or-later (publish = false) and are skipped via `private`.
+# Licenses — third-party code must be permissive (plus MPL-2.0, see below).
+# ZAPX's own crates are GPL-3.0-or-later; they are never published
+# (`publish = false`, inherited by every workspace member) and are skipped via
+# `private`, so this allow-list applies to dependencies only.
 # ---------------------------------------------------------------------------
 [licenses]
 allow = [
@@ -13,10 +15,18 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
     "Zlib",
+    # Boost — permissive. clipboard-win, error-code (Windows clipboard).
+    "BSL-1.0",
+    # Permissive data license — webpki-root-certs (Mozilla root store).
+    "CDLA-Permissive-2.0",
+    # File-level weak copyleft, GPL-compatible; imposes nothing on ZAPX beyond
+    # keeping those files' own notices. serialport (direct dependency), Servo's
+    # cssparser / selectors / dtoa-short (via Tauri), option-ext (via dirs).
+    # Listed in THIRD-PARTY-NOTICES.md.
+    "MPL-2.0",
 ]
 confidence-threshold = 0.8
 # Don't license-check our own workspace crates — they're `publish = false`
@@ -25,11 +35,35 @@ confidence-threshold = 0.8
 private = { ignore = true }
 
 # ---------------------------------------------------------------------------
-# Security advisories — deny all; exceptions require explicit justification
+# Security advisories — deny all; every exception below carries its reason.
+# Re-run `cargo deny check` before removing one; CI runs it on every PR.
 # ---------------------------------------------------------------------------
 [advisories]
 version = 2
-ignore = []
+ignore = [
+    # russh 0.46: unbounded / unchecked CryptoVec allocation — memory DoS from
+    # a malicious server. Fixed in russh >= 0.60.3, which is an API migration
+    # of core-transport (russh-keys was merged into russh), not a cargo update.
+    # TEMPORARY — tracked in #46; remove both entries when the upgrade lands.
+    { id = "RUSTSEC-2026-0154", reason = "russh >= 0.60.3 upgrade tracked in #46" },
+    { id = "RUSTSEC-2026-0153", reason = "russh >= 0.60.3 upgrade tracked in #46" },
+    # rsa: Marvin timing side-channel. No patched release exists (upstream keeps
+    # `patched = []` deliberately). Reached only through russh-keys for RSA key
+    # auth, where the private-key operation runs locally on the user's machine —
+    # an attacker would have to time our own decryption.
+    { id = "RUSTSEC-2023-0071", reason = "no upstream fix; client-side RSA key operations only" },
+    # Unmaintained (not vulnerable), build-time only: proc-macro-error via
+    # glib-macros — the GTK 0.18 bindings have no alternative.
+    { id = "RUSTSEC-2024-0370", reason = "build-time proc macro via glib-macros (GTK bindings)" },
+    # Unmaintained (not vulnerable): `serial` via portable-pty 0.8 (local PTY).
+    { id = "RUSTSEC-2017-0008", reason = "transitive via portable-pty 0.8; revisit on portable-pty 0.9" },
+    # Unmaintained (not vulnerable): unic-* via urlpattern (Tauri's URL scopes).
+    { id = "RUSTSEC-2025-0081", reason = "unic-* via urlpattern (Tauri); no alternative" },
+    { id = "RUSTSEC-2025-0075", reason = "unic-* via urlpattern (Tauri); no alternative" },
+    { id = "RUSTSEC-2025-0080", reason = "unic-* via urlpattern (Tauri); no alternative" },
+    { id = "RUSTSEC-2025-0100", reason = "unic-* via urlpattern (Tauri); no alternative" },
+    { id = "RUSTSEC-2025-0098", reason = "unic-* via urlpattern (Tauri); no alternative" },
+]
 
 # ---------------------------------------------------------------------------
 # Banned crates
@@ -37,6 +71,9 @@ ignore = []
 [bans]
 multiple-versions = "warn"
 wildcards         = "deny"
+# Our crates depend on each other by `path` without a version; cargo-deny counts
+# those as wildcards. They are private workspace members, so allow exactly that.
+allow-wildcard-paths = true
 
 # ---------------------------------------------------------------------------
 # Sources — only crates.io and our own workspace

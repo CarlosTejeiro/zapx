@@ -1,8 +1,13 @@
 name: CI
 
 # Quality gate: runs on every push and pull request that isn't a release tag.
-# The release workflow only *builds* the bundles; this one is what actually
-# guards correctness — frontend lint/type-check/tests and Rust fmt/clippy/tests.
+# Guards correctness — frontend lint/type-check/tests and Rust fmt/clippy/tests —
+# plus two things that used to be checked only at tag time or not at all:
+#   · `build`: the app actually bundles (same tauri-action + project path as
+#     release.yml, minus the release upload), so a broken bundle surfaces on the
+#     PR instead of on the tag push;
+#   · `deny`: cargo-deny (RustSec advisories, license allow-list, banned crates,
+#     registry sources — everything deny.toml describes).
 # Keep it green before tagging a release.
 
 on:
@@ -96,3 +101,72 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace
+
+  deny:
+    name: Supply chain (cargo deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # deny.toml has always configured advisories (deny), the permissive
+      # license allow-list, bans and sources — but nothing ran it. The official
+      # action ships a prebuilt cargo-deny, so this job takes seconds and needs
+      # no toolchain or system libraries.
+      - name: cargo deny check
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  build:
+    name: App bundle (tauri build · Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Release profile like the real release, so the cache is separate from
+      # the debug-profile clippy/test cache above.
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-linux
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            libudev-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # Same action, project path and target flag as release.yml, but with no
+      # tagName/releaseName: tauri-action then only builds — it never creates
+      # or touches a GitHub Release. Frontend build + Rust release build +
+      # deb/AppImage bundling all run here, on every PR.
+      - name: Build with Tauri (no release)
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: crates/app
+          args: --target x86_64-unknown-linux-gnu
