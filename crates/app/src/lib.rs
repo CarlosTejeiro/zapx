@@ -185,6 +185,12 @@ pub fn run() {
                 data_dir::migrate_session_secrets(&db, &legacy_seed, &vault_seed);
             }
 
+            // The SSH library used to keep `known_hosts` under
+            // `%USERPROFILE%\ssh\` on Windows; it now uses the standard
+            // `.ssh\`. Fold the old file in once so the user's trusted hosts
+            // don't all come back as "unknown" after the update.
+            core_transport::ssh::migrate_legacy_known_hosts();
+
             app.manage(AppState {
                 data_dir: resolved,
                 sessions: Mutex::new(HashMap::new()),

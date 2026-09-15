@@ -41,12 +41,6 @@ private = { ignore = true }
 [advisories]
 version = 2
 ignore = [
-    # russh 0.46: unbounded / unchecked CryptoVec allocation — memory DoS from
-    # a malicious server. Fixed in russh >= 0.60.3, which is an API migration
-    # of core-transport (russh-keys was merged into russh), not a cargo update.
-    # TEMPORARY — tracked in #46; remove both entries when the upgrade lands.
-    { id = "RUSTSEC-2026-0154", reason = "russh >= 0.60.3 upgrade tracked in #46" },
-    { id = "RUSTSEC-2026-0153", reason = "russh >= 0.60.3 upgrade tracked in #46" },
     # rsa: Marvin timing side-channel. No patched release exists (upstream keeps
     # `patched = []` deliberately). Reached only through russh-keys for RSA key
     # auth, where the private-key operation runs locally on the user's machine —
