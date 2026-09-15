@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Dependency advisories are now checked on every pull request** (`cargo deny`
+  in CI), and the ones it found on day one are addressed: `rustls` updated to
+  0.23.45 (RUSTSEC-2026-0285, TLS 1.3 handshake state confusion — used by the
+  update check), `anyhow` to 1.0.104 (RUSTSEC-2026-0190) and the `plist` /
+  `quick-xml` chain to fixed versions. Two advisories in the SSH library
+  (`russh` 0.46, memory-exhaustion from a malicious server) need an API
+  migration rather than an update; they are tracked in #46 and carry an
+  explicit, temporary exception until it lands.
+
 ## [0.21.2] - 2026-09-15
 
 ### Changed
