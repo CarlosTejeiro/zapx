@@ -114,6 +114,10 @@ The little things that add up across a long day:
 - **Encrypted backup** — one `.zapxb` file with *everything*, credentials
   included, sealed under a passphrase (Argon2id + AES-256-GCM). Drop it in any
   cloud-synced folder and restore it on another device (**Settings → Backup**).
+- **Sync folder** — point ZAPX at a folder your cloud client already syncs and
+  every install stays up to date: local changes are published automatically,
+  other devices' changes are offered for merging, conflicts are yours to
+  settle. No provider account, no server: the provider only sees ciphertext.
 - **Export / import** — one JSON file with your sessions, folders, groups,
   snippets and highlight rules (never passwords, never the vault). Import is
   idempotent, so it's safe for migration and team sharing.

@@ -99,6 +99,8 @@
   import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import { getVersion } from '@tauri-apps/api/app'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+  import { SYNC_EVENT, type SyncStatus } from '$lib/bridge/commands'
+  import { handleSyncStatus } from '$lib/backup/sync'
   import {
     loadSettings,
     uiSettings,
@@ -1466,6 +1468,21 @@
       unlistenEditError = fn
     })
 
+    // Sync folder: the background checker emits when another device
+    // published changes, on a conflict, or on an error. Each distinct remote
+    // bundle is offered once — declining it doesn't nag every few minutes.
+    let unlistenSync: UnlistenFn | null = null
+    let lastSyncOffer = ''
+    listen<SyncStatus>(SYNC_EVENT, (e) => {
+      const st = e.payload
+      const key = `${st.state}|${st.remote?.written_at ?? ''}|${st.detail ?? ''}`
+      if (key === lastSyncOffer) return
+      lastSyncOffer = key
+      handleSyncStatus(st).catch((err) => console.error('sync', err))
+    }).then((fn) => {
+      unlistenSync = fn
+    })
+
     return () => {
       document.removeEventListener('keydown', onKeydown)
       if (unlistenStats) unlistenStats()
@@ -1473,6 +1490,7 @@
       if (unlistenMss) unlistenMss()
       if (unlistenEditSaved) unlistenEditSaved()
       if (unlistenEditError) unlistenEditError()
+      if (unlistenSync) unlistenSync()
     }
   })
 </script>

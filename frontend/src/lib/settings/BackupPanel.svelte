@@ -1,22 +1,123 @@
 <script lang="ts">
   import { ask, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+  import { onMount } from 'svelte'
   import {
     BACKUP_EXTENSION,
     BACKUP_MIN_PASSPHRASE,
     backupExport,
     backupInspect,
     backupRestore,
+    backupSyncConfigure,
+    backupSyncDisable,
+    backupSyncNow,
+    backupSyncStatus,
     restartApp,
     type BundleInfo,
+    type SyncStatus,
   } from '$lib/bridge/commands'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PassphraseDialog from '$lib/ui/PassphraseDialog.svelte'
+  import { SYNC_STATE_LABELS, handleSyncStatus } from '$lib/backup/sync'
 
   let busy = $state(false)
 
-  /// Which passphrase prompt is open, and the file it applies to.
-  type Prompt = { mode: 'export' | 'restore'; path: string }
+  /// Which passphrase prompt is open, and the file/folder it applies to.
+  type Prompt = { mode: 'export' | 'restore' | 'sync'; path: string }
   let prompt = $state<Prompt | null>(null)
+
+  // ── sync folder ──────────────────────────────────────────────────────────
+
+  let sync = $state<SyncStatus | null>(null)
+  let syncBusy = $state(false)
+
+  onMount(refreshSync)
+
+  async function refreshSync() {
+    try {
+      sync = await backupSyncStatus()
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+    }
+  }
+
+  function fmt(ts: string | null): string {
+    if (!ts) return 'never'
+    const d = new Date(ts)
+    return isNaN(d.getTime()) ? ts : d.toLocaleString()
+  }
+
+  /// Pick the folder; ask for a passphrase unless one is already stored (a
+  /// folder change keeps it).
+  async function chooseSyncFolder() {
+    if (syncBusy) return
+    const dir = await openDialog({
+      directory: true,
+      title: 'Sync folder (inside your cloud folder)',
+    })
+    if (typeof dir !== 'string' || !dir) return
+    if (sync?.has_passphrase) {
+      await applySync(dir, null)
+    } else {
+      prompt = { mode: 'sync', path: dir }
+    }
+  }
+
+  function changeSyncPassphrase() {
+    if (syncBusy || !sync?.dir) return
+    prompt = { mode: 'sync', path: sync.dir }
+  }
+
+  async function applySync(dir: string, passphrase: string | null) {
+    syncBusy = true
+    try {
+      const st = await backupSyncConfigure(dir, passphrase)
+      sync = st
+      if (st.state === 'local_changes') {
+        // Fresh folder: publish right away so the other devices have something to pull.
+        sync = await backupSyncNow()
+        showToast({ kind: 'success', title: 'Sync', detail: `Published to ${dir}` })
+      } else {
+        sync = await handleSyncStatus(st)
+      }
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+    } finally {
+      syncBusy = false
+    }
+  }
+
+  async function syncNow() {
+    if (syncBusy) return
+    syncBusy = true
+    try {
+      const st = await backupSyncNow()
+      sync = await handleSyncStatus(st)
+      if (sync.state === 'in_sync') {
+        showToast({ kind: 'success', title: 'Sync', detail: 'Everything is up to date.' })
+      }
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+    } finally {
+      syncBusy = false
+    }
+  }
+
+  async function disableSync() {
+    if (syncBusy) return
+    const yes = await ask(
+      'Stop syncing? The bundle already in the folder is left as it is; the stored passphrase is forgotten on this device.',
+      { title: 'Disable sync', kind: 'warning' },
+    )
+    if (!yes) return
+    syncBusy = true
+    try {
+      sync = await backupSyncDisable()
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+    } finally {
+      syncBusy = false
+    }
+  }
 
   function defaultFileName(): string {
     const d = new Date()
@@ -70,6 +171,10 @@
     const p = prompt
     prompt = null
     if (!p) return
+    if (p.mode === 'sync') {
+      await applySync(p.path, passphrase)
+      return
+    }
     busy = true
     try {
       if (p.mode === 'export') await doExport(p.path, passphrase)
@@ -163,24 +268,98 @@
   </section>
 
   <section>
+    <h3>Sync folder</h3>
+    <p class="hint">
+      Keep the same backup automatically up to date in a folder your cloud client already syncs
+      (Dropbox, Drive, iCloud, OneDrive, Syncthing, a NAS…). ZAPX publishes your changes there every
+      few minutes and tells you when another device published theirs, so every install ends up with
+      the same sessions, credentials and settings. Use the same passphrase on every device.
+    </p>
+
+    {#if !sync}
+      <p class="hint">Loading…</p>
+    {:else if sync.state === 'disabled'}
+      <div class="actions">
+        <button type="button" class="ok-btn" disabled={syncBusy} onclick={chooseSyncFolder}>
+          Choose sync folder…
+        </button>
+      </div>
+    {:else}
+      <code class="path">{sync.dir}</code>
+      <p class="hint">
+        Status: <strong>{SYNC_STATE_LABELS[sync.state]}</strong>
+        {#if sync.detail}
+          · {sync.detail}{/if}
+      </p>
+      <p class="hint">
+        Last published: {fmt(sync.last_push)} · last applied: {fmt(sync.last_pull)}
+        {#if sync.remote}
+          · in folder: from <strong>{sync.remote.device_name}</strong>, {fmt(
+            sync.remote.written_at,
+          )}
+        {/if}
+      </p>
+      {#if !sync.has_passphrase}
+        <p class="notice">
+          The passphrase for this folder is not stored on this device. Set it to start syncing.
+        </p>
+      {/if}
+      <div class="actions">
+        <button
+          type="button"
+          class="ok-btn"
+          disabled={syncBusy || !sync.has_passphrase}
+          onclick={syncNow}
+        >
+          Sync now
+        </button>
+        <button type="button" class="ghost-btn" disabled={syncBusy} onclick={changeSyncPassphrase}>
+          {sync.has_passphrase ? 'Change passphrase…' : 'Set passphrase…'}
+        </button>
+        <button type="button" class="ghost-btn" disabled={syncBusy} onclick={chooseSyncFolder}>
+          Change folder…
+        </button>
+        <button type="button" class="ghost-btn" disabled={syncBusy} onclick={disableSync}>
+          Disable
+        </button>
+      </div>
+    {/if}
+    <p class="hint">
+      Sync adds and updates; it never deletes. A session removed or renamed on one device comes back
+      from the other on the next merge. Applying another device's changes is always confirmed first
+      and needs a restart.
+    </p>
+  </section>
+
+  <section>
     <h3>Moving to another device</h3>
     <p class="hint">
-      Create a backup here, let your cloud folder (Dropbox, Drive, iCloud, OneDrive, a NAS…) carry
-      it, install ZAPX on the other device and restore it with the same passphrase. The passphrase
-      is never stored anywhere — if you forget it, the backup cannot be opened.
+      Either restore a backup file on the new device, or point it at the same sync folder with the
+      same passphrase. The passphrase is never written to the folder — if you forget it, the backup
+      cannot be opened.
     </p>
   </section>
 </div>
 
 {#if prompt}
   <PassphraseDialog
-    title={prompt.mode === 'export' ? 'Protect the backup' : 'Open the backup'}
+    title={prompt.mode === 'export'
+      ? 'Protect the backup'
+      : prompt.mode === 'sync'
+        ? 'Sync passphrase'
+        : 'Open the backup'}
     message={prompt.mode === 'export'
       ? `Choose a passphrase (at least ${BACKUP_MIN_PASSPHRASE} characters). You will need it to restore the backup — it cannot be recovered.`
-      : 'Enter the passphrase the backup was created with.'}
-    confirm={prompt.mode === 'export'}
-    minLength={prompt.mode === 'export' ? BACKUP_MIN_PASSPHRASE : 0}
-    submitLabel={prompt.mode === 'export' ? 'Create backup' : 'Open'}
+      : prompt.mode === 'sync'
+        ? `The passphrase that seals the bundle in the sync folder (at least ${BACKUP_MIN_PASSPHRASE} characters). Use the same one on every device. It is kept in this device's keyring.`
+        : 'Enter the passphrase the backup was created with.'}
+    confirm={prompt.mode !== 'restore'}
+    minLength={prompt.mode === 'restore' ? 0 : BACKUP_MIN_PASSPHRASE}
+    submitLabel={prompt.mode === 'export'
+      ? 'Create backup'
+      : prompt.mode === 'sync'
+        ? 'Start syncing'
+        : 'Open'}
     onSubmit={onPassphrase}
     onCancel={() => (prompt = null)}
   />
@@ -218,6 +397,26 @@
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    flex-wrap: wrap;
+  }
+  .path {
+    font-family: var(--zx-font-mono);
+    font-size: 0.72rem;
+    color: var(--zx-text-muted);
+    background: color-mix(in srgb, var(--zx-text) 6%, transparent);
+    padding: 0.3rem 0.5rem;
+    border-radius: 3px;
+    word-break: break-all;
+  }
+  .notice {
+    font-size: 0.72rem;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--zx-warn) 45%, transparent);
+    background: color-mix(in srgb, var(--zx-warn) 10%, transparent);
+    border-radius: var(--zx-radius);
+    color: var(--zx-text);
   }
   .ok-btn {
     background: var(--zx-accent);

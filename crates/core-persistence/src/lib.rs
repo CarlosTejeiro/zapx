@@ -1223,6 +1223,13 @@ impl Database {
         Ok(())
     }
 
+    /// Remove a setting. A missing key is not an error.
+    pub fn delete_setting(&self, key: &str) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM settings WHERE key=?1", rusqlite::params![key])?;
+        Ok(())
+    }
+
     pub fn get_all_settings(&self) -> Result<std::collections::HashMap<String, String>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
