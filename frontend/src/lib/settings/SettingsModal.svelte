@@ -8,6 +8,7 @@
   import LoggingPanel from './LoggingPanel.svelte'
   import SshPanel from './SshPanel.svelte'
   import DataPanel from './DataPanel.svelte'
+  import BackupPanel from './BackupPanel.svelte'
   import {
     SHORTCUT_ACTIONS,
     bindings,
@@ -23,7 +24,15 @@
 
   let { onClose }: Props = $props()
 
-  type Tab = 'appearance' | 'highlight' | 'hints' | 'logging' | 'ssh' | 'data' | 'shortcuts'
+  type Tab =
+    | 'appearance'
+    | 'highlight'
+    | 'hints'
+    | 'logging'
+    | 'ssh'
+    | 'data'
+    | 'backup'
+    | 'shortcuts'
   let activeTab = $state<Tab>('appearance')
 
   /// While recording, swallow keys instead of dispatching them globally.
@@ -127,6 +136,13 @@
         </button>
         <button
           class="tab-btn"
+          class:active={activeTab === 'backup'}
+          onclick={() => (activeTab = 'backup')}
+        >
+          Backup
+        </button>
+        <button
+          class="tab-btn"
           class:active={activeTab === 'shortcuts'}
           onclick={() => (activeTab = 'shortcuts')}
         >
@@ -147,6 +163,8 @@
           <SshPanel />
         {:else if activeTab === 'data'}
           <DataPanel />
+        {:else if activeTab === 'backup'}
+          <BackupPanel />
         {:else}
           <div class="shortcuts-list">
             <p class="hint">

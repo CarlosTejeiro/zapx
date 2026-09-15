@@ -14,3 +14,5 @@ keyring   = { workspace = true }
 aes-gcm   = "0.10"
 sha2      = "0.10"
 rand      = "0.8"
+# Passphrase-based sealing of backup bundles (Argon2id KDF).
+argon2    = { version = "0.6", default-features = false, features = ["alloc"] }

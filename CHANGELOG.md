@@ -5,6 +5,22 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Encrypted backup (`.zapxb`) — Settings → Backup.** One file with the
+  whole environment: sessions, folders, groups, snippets and macros, highlight
+  rules, settings, trusted host keys **and** the passwords and vault entries
+  the plain export leaves out. It is sealed under a passphrase you choose
+  (Argon2id key derivation + AES-256-GCM, header bound as associated data), so
+  it can live in any cloud-synced folder — Dropbox, Drive, iCloud, OneDrive, a
+  NAS — without trusting the provider, and a fresh install on another device
+  restores everything from it. Restore merges: existing sessions keep their
+  own passwords, vault entries are matched by name, settings are replaced,
+  host keys are added; nothing is deleted. Secrets the OS keyring refuses to
+  hand over are reported as warnings instead of failing the backup. Ground
+  work for automatic sync through a shared folder.
+
 ## [0.22.0] - 2026-09-15
 
 ### Security

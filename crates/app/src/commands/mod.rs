@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod data_dir;
 pub mod folders;
 pub mod forwards;

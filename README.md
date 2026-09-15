@@ -111,9 +111,12 @@ The little things that add up across a long day:
 
 ### Take it anywhere
 
+- **Encrypted backup** — one `.zapxb` file with *everything*, credentials
+  included, sealed under a passphrase (Argon2id + AES-256-GCM). Drop it in any
+  cloud-synced folder and restore it on another device (**Settings → Backup**).
 - **Export / import** — one JSON file with your sessions, folders, groups,
   snippets and highlight rules (never passwords, never the vault). Import is
-  idempotent, so it's safe for backup, migration and team sharing.
+  idempotent, so it's safe for migration and team sharing.
 - **Import from what you already use** — `~/.ssh/config`, PuTTY, MobaXterm and
   SecureCRT.
 - **Portable mode** — a Windows portable `.exe` and a user-selectable data

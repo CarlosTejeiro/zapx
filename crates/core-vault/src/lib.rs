@@ -7,8 +7,10 @@
 //! `keyring_key` reference — the secret itself never enters SQLite or logs.
 
 pub mod error;
+pub mod sealed;
 
 pub use error::Error;
+pub use sealed::{open, seal};
 
 const SERVICE: &str = "zapx";
 

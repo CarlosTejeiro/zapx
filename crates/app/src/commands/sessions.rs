@@ -815,7 +815,11 @@ fn reader_loop(
 /// keyring failure there is logged and tolerated rather than aborting session
 /// creation. On non-portable installs the keyring is primary, so a failure is
 /// fatal.
-fn store_secret_in_keyring(key: &str, secret: &str, portable: bool) -> Result<(), AppError> {
+pub(crate) fn store_secret_in_keyring(
+    key: &str,
+    secret: &str,
+    portable: bool,
+) -> Result<(), AppError> {
     match core_vault::Vault::store(key, secret) {
         Ok(()) => Ok(()),
         Err(e) if portable => {

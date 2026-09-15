@@ -75,6 +75,11 @@ pub struct ImportSummary {
     pub snippets_added: usize,
     pub rules_added: usize,
     pub warnings: Vec<String>,
+    /// File-local session id → id in this database, for every session in the
+    /// file (created *or* matched to an existing one). Internal: lets the
+    /// backup restore re-attach credentials after the environment import.
+    #[serde(skip)]
+    pub session_map: HashMap<i64, i64>,
 }
 
 // ── export ──────────────────────────────────────────────────────────────────
@@ -345,6 +350,7 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         summary.rules_added += 1;
     }
 
+    summary.session_map = session_map;
     Ok(summary)
 }
 
