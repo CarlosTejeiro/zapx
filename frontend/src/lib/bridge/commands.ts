@@ -830,6 +830,76 @@ export async function backupRestore(path: string, passphrase: string): Promise<R
   return invoke<RestoreSummary>('backup_restore', { path, passphrase })
 }
 
+// ── Sync folder ───────────────────────────────────────────────────────────
+
+/** Tauri event carrying a `SyncStatus` when the background check finds news. */
+export const SYNC_EVENT = 'backup-sync'
+
+export interface SyncMeta {
+  zapx_sync: number
+  device_id: string
+  device_name: string
+  written_at: string
+  app_version: string
+}
+
+export type SyncState =
+  | 'disabled'
+  | 'no_passphrase'
+  | 'in_sync'
+  | 'local_changes'
+  | 'remote_changes'
+  | 'conflict'
+  | 'error'
+
+export interface SyncStatus {
+  state: SyncState
+  dir: string | null
+  has_passphrase: boolean
+  last_push: string | null
+  last_pull: string | null
+  remote: SyncMeta | null
+  detail: string | null
+  checked_at: string
+}
+
+export interface SyncPullResult {
+  restore: RestoreSummary
+  status: SyncStatus
+}
+
+export async function backupSyncStatus(): Promise<SyncStatus> {
+  return invoke<SyncStatus>('backup_sync_status')
+}
+
+// Point sync at `dir` (created if missing); `passphrase` sets/replaces the
+// stored one. Bookkeeping is reset when the folder changes.
+export async function backupSyncConfigure(
+  dir: string,
+  passphrase: string | null,
+): Promise<SyncStatus> {
+  return invoke<SyncStatus>('backup_sync_configure', { dir, passphrase })
+}
+
+export async function backupSyncDisable(): Promise<SyncStatus> {
+  return invoke<SyncStatus>('backup_sync_disable')
+}
+
+// Push if only the local side changed; otherwise just report.
+export async function backupSyncNow(): Promise<SyncStatus> {
+  return invoke<SyncStatus>('backup_sync_now')
+}
+
+// Overwrite the remote bundle with this device's environment.
+export async function backupSyncPush(): Promise<SyncStatus> {
+  return invoke<SyncStatus>('backup_sync_push')
+}
+
+// Merge the remote bundle in, then publish the merged result if it differs.
+export async function backupSyncPull(): Promise<SyncPullResult> {
+  return invoke<SyncPullResult>('backup_sync_pull')
+}
+
 // Migrate data to `newDir`, write the startup pointer and return a summary.
 // Takes effect on next launch — pair with `restartApp()`.
 export async function setDataDir(newDir: string): Promise<string> {

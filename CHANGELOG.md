@@ -18,8 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restores everything from it. Restore merges: existing sessions keep their
   own passwords, vault entries are matched by name, settings are replaced,
   host keys are added; nothing is deleted. Secrets the OS keyring refuses to
-  hand over are reported as warnings instead of failing the backup. Ground
-  work for automatic sync through a shared folder.
+  hand over are reported as warnings instead of failing the backup.
+- **Sync folder — Settings → Backup.** Point ZAPX at a folder your cloud
+  client already syncs (Dropbox, Drive, iCloud, OneDrive, Syncthing, a NAS…)
+  and it keeps one sealed bundle there, `zapx-sync.zapxb`, plus a small
+  plaintext sidecar saying which device wrote it and when. Local changes are
+  published automatically every few minutes; when another device published
+  theirs, ZAPX asks before merging them in (settings from the other device
+  win, then a restart). If both sides changed, you choose: merge theirs first
+  and republish, or overwrite with yours. Change detection is a canonical
+  fingerprint of the content — ids, ordering and timestamps stripped — so two
+  devices holding the same environment agree and stop republishing once they
+  converge. The passphrase lives in each device's keyring (with the encrypted
+  local fallback). Sync is additive: renames and deletions don't propagate.
 
 ## [0.22.0] - 2026-09-15
 

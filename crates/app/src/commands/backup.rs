@@ -220,7 +220,7 @@ pub(crate) struct BackupCtx<'a> {
 }
 
 impl<'a> BackupCtx<'a> {
-    fn from_state(state: &'a AppState, secrets: &'a dyn SecretStore) -> Self {
+    pub(crate) fn from_state(state: &'a AppState, secrets: &'a dyn SecretStore) -> Self {
         Self {
             db: &state.db,
             secrets,
@@ -542,7 +542,7 @@ pub(crate) fn apply_bundle(
 
 // ── file I/O ────────────────────────────────────────────────────────────────
 
-fn validate_passphrase(passphrase: &str) -> Result<(), AppError> {
+pub(crate) fn validate_passphrase(passphrase: &str) -> Result<(), AppError> {
     if passphrase.chars().count() < MIN_PASSPHRASE_CHARS {
         return Err(AppError::Internal(format!(
             "the passphrase must be at least {MIN_PASSPHRASE_CHARS} characters"

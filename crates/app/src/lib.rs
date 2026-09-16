@@ -205,6 +205,10 @@ pub fn run() {
                 sftp_cancellations: Arc::new(Mutex::new(HashMap::new())),
                 hint_watcher,
             });
+
+            // Sync folder: periodic push of local changes + notification of
+            // remote ones. No-op until the user configures a folder.
+            commands::sync::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -301,6 +305,12 @@ pub fn run() {
             commands::backup::backup_export,
             commands::backup::backup_inspect,
             commands::backup::backup_restore,
+            commands::sync::backup_sync_status,
+            commands::sync::backup_sync_configure,
+            commands::sync::backup_sync_disable,
+            commands::sync::backup_sync_now,
+            commands::sync::backup_sync_push,
+            commands::sync::backup_sync_pull,
             commands::triggers::get_session_triggers,
             commands::triggers::set_session_triggers,
             commands::data_dir::get_data_dir_info,

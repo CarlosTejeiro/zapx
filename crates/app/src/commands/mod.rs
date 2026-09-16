@@ -12,6 +12,7 @@ pub mod settings;
 pub mod sftp;
 pub mod shell;
 pub mod snippets;
+pub mod sync;
 pub mod transfer;
 pub mod triggers;
 pub mod vault;
