@@ -76,7 +76,9 @@
     <div class="header">
       <h2>Active tunnels</h2>
       <div class="header-right">
-        <button class="btn" onclick={refresh} title="Refresh">↻</button>
+        <button class="btn" onclick={refresh} title="Refresh"
+          ><Icon name="refresh" size={12} /></button
+        >
         <button class="btn" onclick={onClose} title="Close"><Icon name="x" size={12} /></button>
       </div>
     </div>

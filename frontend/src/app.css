@@ -24,7 +24,7 @@
   --zx-surface-2: #efebdf;
   --zx-text: #2c2924;
   --zx-text-muted: #6c6354;
-  --zx-text-dim: #a09684;
+  --zx-text-dim: #887d69;
   --zx-accent: #564ca0;
   --zx-accent-2: #b3793a;
   --zx-on-accent: #faf8f3;
@@ -33,14 +33,18 @@
   --zx-hover-bg: rgba(82, 68, 40, 0.06);
   --zx-active-bg: color-mix(in srgb, #564ca0 10%, transparent);
   --zx-active-border: #564ca0;
-  --zx-ok: #3e8f60;
-  --zx-warn: #b88528;
+  --zx-ok: #3b885b;
+  --zx-warn: #a77924;
   --zx-err: #b13a3a;
   --zx-font-ui: 'Geist Variable', 'Geist', 'SF Pro Text', system-ui, sans-serif;
   --zx-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   --zx-shadow: 0 24px 70px rgba(0, 0, 0, 0.15);
   --zx-term-bg: #20212b;
   --zx-term-fg: #d6d8e0;
+  --zx-term-dim: #70748e;
+  --zx-term-ok: #5fb784;
+  --zx-term-warn: #d8a85e;
+  --zx-term-err: #e07474;
 
   /* Spacing scale (base-8). */
   --zx-space-1: 4px;

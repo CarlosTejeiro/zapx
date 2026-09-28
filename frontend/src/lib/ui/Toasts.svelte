@@ -1,37 +1,43 @@
 <script lang="ts">
   import { fly } from 'svelte/transition'
   import Icon from '$lib/icons/Icon.svelte'
+  import type { IconName } from '$lib/icons/icons'
   import { toasts, dismissToast, type Toast } from './toast-store.svelte'
 
-  function colorFor(kind: Toast['kind']): { fg: string; bg: string; border: string; icon: string } {
+  function colorFor(kind: Toast['kind']): {
+    fg: string
+    bg: string
+    border: string
+    icon: IconName
+  } {
     switch (kind) {
       case 'success':
         return {
           fg: 'var(--zx-ok)',
           bg: 'color-mix(in srgb, var(--zx-ok) 12%, var(--zx-surface))',
           border: 'color-mix(in srgb, var(--zx-ok) 45%, transparent)',
-          icon: '✓',
+          icon: 'check',
         }
       case 'warning':
         return {
           fg: 'var(--zx-warn)',
           bg: 'color-mix(in srgb, var(--zx-warn) 12%, var(--zx-surface))',
           border: 'color-mix(in srgb, var(--zx-warn) 45%, transparent)',
-          icon: '⚠',
+          icon: 'alert',
         }
       case 'error':
         return {
           fg: 'var(--zx-err)',
           bg: 'color-mix(in srgb, var(--zx-err) 12%, var(--zx-surface))',
           border: 'color-mix(in srgb, var(--zx-err) 45%, transparent)',
-          icon: '⨯',
+          icon: 'x',
         }
       default:
         return {
           fg: 'var(--zx-accent)',
           bg: 'color-mix(in srgb, var(--zx-accent) 12%, var(--zx-surface))',
           border: 'color-mix(in srgb, var(--zx-accent) 40%, transparent)',
-          icon: 'ℹ',
+          icon: 'info',
         }
     }
   }
@@ -48,7 +54,7 @@
       role="status"
       aria-live="polite"
     >
-      <span class="icon" style:color={c.fg}>{c.icon}</span>
+      <span class="icon" style:color={c.fg}><Icon name={c.icon} size={15} /></span>
       <div class="body">
         <div class="title">{toast.title}</div>
         {#if toast.detail}<div class="detail">{toast.detail}</div>{/if}
@@ -92,7 +98,7 @@
   }
 
   .icon {
-    font-size: 0.95rem;
+    display: flex;
     margin-top: 1px;
     flex-shrink: 0;
   }
