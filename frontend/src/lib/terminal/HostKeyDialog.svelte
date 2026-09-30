@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '$lib/icons/Icon.svelte'
+
   interface Props {
     host: string
     port: number
@@ -19,7 +21,7 @@
 <div class="overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={onKeydown}>
   <div class="dialog" class:danger={changed}>
     {#if changed}
-      <h2 class="title danger-text">⚠ Host key changed</h2>
+      <h2 class="title danger-text"><Icon name="alert" size={15} /> Host key changed</h2>
       <p class="msg">
         The host key for <strong>{host}:{port}</strong> does not match the one recorded in
         <code>known_hosts</code>. This could indicate a man-in-the-middle attack, or the server was
@@ -95,6 +97,9 @@
 
   .danger-text {
     color: var(--zx-err);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   .msg {

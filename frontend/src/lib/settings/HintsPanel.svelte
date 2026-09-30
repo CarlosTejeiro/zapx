@@ -159,7 +159,8 @@
         <Icon name="folder" size={13} /> Open catalogs folder
       </button>
       <button type="button" class="catalog-btn" onclick={reloadCatalogs} disabled={reloading}>
-        {reloading ? '↻ Reloading…' : '↻ Reload catalogs'}
+        <Icon name="refresh" size={13} />
+        {reloading ? 'Reloading…' : 'Reload catalogs'}
       </button>
     </div>
     {#if catalogStatus}
@@ -177,7 +178,8 @@
       or tokens never enters the history.
     </p>
     <button type="button" class="danger-btn" onclick={clearAllHistory} disabled={clearingHistory}>
-      {#if cleared}✓ History cleared{:else if clearingHistory}Clearing…{:else}Clear entire history{/if}
+      {#if cleared}<Icon name="check" size={13} /> History cleared{:else if clearingHistory}Clearing…{:else}Clear
+        entire history{/if}
     </button>
   </section>
 </div>
@@ -248,6 +250,9 @@
     font-weight: 600;
     font-family: inherit;
     align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
   }
   .danger-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--zx-err) 25%, transparent);

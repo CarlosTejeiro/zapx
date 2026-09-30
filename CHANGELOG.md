@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   converge. The passphrase lives in each device's keyring (with the encrypted
   local fallback). Sync is additive: renames and deletions don't propagate.
 
+### Changed
+- **The last hard-coded dark surfaces now follow the theme.** The Run &
+  compare panel and the multi-line paste confirmation were always zinc-dark,
+  even on Parchment and Porcelain; they now use the same surface, border,
+  accent and shadow as every other dialog. The in-terminal bars — find,
+  reverse-i-search, session log history, "Connection lost" and connection
+  errors — are tinted from the active theme's terminal palette instead of
+  fixed grey/blue/amber, and focus and toggle states use the theme accent.
+  Compared outputs and the diff render on terminal-coloured cards so device
+  output reads the same as in a session.
+- **Text glyphs and emoji replaced by the SVG icon set** in toasts, the
+  host-key warning, refresh buttons (tunnels, SFTP, hint catalogs), the
+  broadcast warning, the theme checkmark and the hint popup, so icons render
+  the same on Windows, macOS and Linux instead of depending on the system
+  emoji font.
+
 ## [0.22.0] - 2026-09-15
 
 ### Security

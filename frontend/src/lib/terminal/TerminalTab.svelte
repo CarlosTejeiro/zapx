@@ -1354,7 +1354,7 @@
 
   {#if disconnected}
     <div class="disconnected-bar">
-      <span class="disconnected-icon">⚠</span>
+      <span class="disconnected-icon"><Icon name="alert" size={14} /></span>
       <span class="disconnected-text">
         {#if reconnecting}Reconnecting…{:else}Connection lost{/if}
       </span>
@@ -1366,7 +1366,7 @@
 
   {#if errorMsg && !disconnected}
     <div class="error">
-      <span class="error-icon">⚠</span>
+      <span class="error-icon"><Icon name="alert" size={14} /></span>
       <pre class="error-text">{errorMsg}</pre>
     </div>
   {/if}
@@ -1547,47 +1547,54 @@
     border-color: rgba(239, 68, 68, 0.4);
   }
 
-  /* Multi-line paste confirmation */
+  /* Multi-line paste confirmation — a regular dialog, so it takes the chrome
+     tokens like the other dialogs do. */
   .paste-confirm-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 140;
   }
   .paste-confirm {
-    background: #18181b;
-    border: 1px solid #3f3f46;
-    border-radius: 0.5rem;
-    padding: 1rem 1.2rem 1.1rem;
+    background: var(--zx-surface);
+    border: 1px solid var(--zx-border);
+    border-radius: 10px;
+    box-shadow: var(--zx-shadow);
+    color: var(--zx-text);
+    font-family: var(--zx-font-ui);
+    padding: var(--zx-space-4);
     width: 34rem;
     max-width: 95vw;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: var(--zx-space-2);
   }
   .paste-confirm h3 {
     margin: 0;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #fbbf24;
+    color: var(--zx-warn);
   }
   .paste-confirm-hint {
     margin: 0;
     font-size: 0.78rem;
-    color: #a1a1aa;
+    color: var(--zx-text-muted);
     line-height: 1.4;
   }
   .paste-confirm-preview {
-    background: #09090b;
-    border: 1px solid #27272a;
-    border-radius: 0.3rem;
-    padding: 0.6rem 0.7rem;
+    background: var(--zx-term-bg);
+    border: 1px solid var(--zx-border);
+    border-radius: 5px;
+    padding: var(--zx-space-2) var(--zx-space-3);
+    font-family: var(--zx-font-mono);
     font-size: 0.78rem;
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
     overflow: auto;
     max-height: 40vh;
     white-space: pre-wrap;
@@ -1596,64 +1603,71 @@
   .paste-confirm-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 0.5rem;
+    gap: var(--zx-space-1);
     margin-top: 0.2rem;
   }
   .paste-confirm-actions .btn {
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
-    border-radius: 0.25rem;
-    border: 1px solid #3f3f46;
-    background: #27272a;
-    color: #e4e4e7;
+    padding: var(--zx-space-1) var(--zx-space-3);
+    font-size: 0.8rem;
+    border-radius: 5px;
+    border: 0;
+    background: var(--zx-hover-bg);
+    color: var(--zx-text-muted);
     cursor: pointer;
     font-family: inherit;
+    transition:
+      background 0.1s,
+      color 0.1s;
   }
   .paste-confirm-actions .btn:hover {
-    background: #3f3f46;
+    color: var(--zx-text);
+    background: color-mix(in srgb, var(--zx-text) 10%, transparent);
   }
   .paste-confirm-actions .btn.primary {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: #fff;
+    background: var(--zx-accent);
+    color: var(--zx-on-accent);
+    font-weight: 600;
   }
   .paste-confirm-actions .btn.primary:hover {
-    background: #2563eb;
+    filter: brightness(1.08);
   }
 
+  /* In-terminal bars (search, reverse-i-search, log history) sit on the
+     terminal card, so they are tinted from the theme's terminal palette —
+     dark in every theme — with the theme accent for focus/active states. */
   .search-bar {
     display: flex;
     align-items: center;
     gap: 0.25rem;
     padding: 0.2rem 0.5rem;
-    background: #18181b;
-    border-bottom: 1px solid #27272a;
+    background: color-mix(in srgb, var(--zx-term-fg) 6%, var(--term-bg, var(--zx-term-bg)));
+    border-bottom: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
     flex-shrink: 0;
   }
 
   .search-input {
     flex: 1;
-    background: #27272a;
-    border: 1px solid #3f3f46;
-    border-radius: 0.25rem;
+    background: var(--term-bg, var(--zx-term-bg));
+    border: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
+    border-radius: 5px;
     padding: 0.1rem 0.4rem;
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
     font-size: 0.8rem;
     outline: none;
-    font-family: monospace;
+    font-family: var(--zx-font-mono);
   }
 
   .search-input:focus {
-    border-color: #3b82f6;
+    border-color: var(--zx-accent);
   }
 
   .search-input.no-match {
-    border-color: #ef4444;
+    border-color: var(--zx-term-err);
   }
 
   .search-count {
     font-size: 0.7rem;
-    color: #a1a1aa;
+    color: color-mix(in srgb, var(--zx-term-fg) 62%, transparent);
     font-variant-numeric: tabular-nums;
     min-width: 3.5rem;
     text-align: right;
@@ -1671,15 +1685,19 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.15rem 0.5rem;
-    background: rgba(24, 24, 27, 0.97);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    background: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--zx-term-fg) 6%, var(--term-bg, var(--zx-term-bg))) 97%,
+      transparent
+    );
+    border-top: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
     font-size: 0.82rem;
     line-height: 1.5;
   }
 
   .rev-label,
   .rev-sep {
-    color: #a1a1aa;
+    color: color-mix(in srgb, var(--zx-term-fg) 62%, transparent);
     white-space: nowrap;
   }
 
@@ -1689,7 +1707,7 @@
     background: transparent;
     border: none;
     outline: none;
-    color: #fbbf24;
+    color: var(--zx-term-warn);
     font: inherit;
     padding: 0;
   }
@@ -1697,18 +1715,18 @@
   .rev-match {
     flex: 1;
     min-width: 0;
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .rev-match.no-match {
-    color: #ef4444;
+    color: var(--zx-term-err);
   }
 
   .rev-count {
-    color: #71717a;
+    color: var(--zx-term-dim);
     font-size: 0.72rem;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -1717,7 +1735,7 @@
   .rev-close {
     background: transparent;
     border: none;
-    color: #71717a;
+    color: var(--zx-term-dim);
     cursor: pointer;
     padding: 0 0.15rem;
     display: flex;
@@ -1725,47 +1743,47 @@
   }
 
   .rev-close:hover {
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
   }
 
   .search-toggle {
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 0.25rem;
+    border-radius: 4px;
     cursor: pointer;
-    color: #71717a;
+    color: var(--zx-term-dim);
     padding: 0.05rem 0.3rem;
     font-size: 0.72rem;
-    font-family: monospace;
+    font-family: var(--zx-font-mono);
     line-height: 1.4;
   }
 
   .search-toggle:hover {
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
   }
 
   .search-toggle.active {
-    color: #e4e4e7;
-    background: #3b82f6;
-    border-color: #3b82f6;
+    color: var(--zx-on-accent);
+    background: var(--zx-accent);
+    border-color: var(--zx-accent);
   }
 
   .search-nav {
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #71717a;
+    color: var(--zx-term-dim);
     padding: 0.1rem 0.3rem;
     font-size: 0.75rem;
   }
 
   .search-nav:hover {
-    color: #e4e4e7;
+    color: var(--zx-term-fg);
   }
 
   .logs-panel {
-    background: #18181b;
-    border-bottom: 1px solid #27272a;
+    background: color-mix(in srgb, var(--zx-term-fg) 6%, var(--term-bg, var(--zx-term-bg)));
+    border-bottom: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
     max-height: 8rem;
     overflow-y: auto;
     flex-shrink: 0;
@@ -1774,7 +1792,7 @@
   .logs-empty {
     padding: 0.5rem 0.75rem;
     font-size: 0.75rem;
-    color: #71717a;
+    color: var(--zx-term-dim);
   }
 
   .logs-list {
@@ -1789,30 +1807,30 @@
     gap: 0.5rem;
     padding: 0.2rem 0.75rem;
     font-size: 0.72rem;
-    color: #a1a1aa;
+    color: color-mix(in srgb, var(--zx-term-fg) 62%, transparent);
   }
 
   .log-entry:hover {
-    background: #27272a;
+    background: color-mix(in srgb, var(--zx-term-fg) 6%, transparent);
   }
 
   .log-date {
-    color: #71717a;
+    color: var(--zx-term-dim);
     flex-shrink: 0;
   }
   .log-size {
-    color: #52525b;
+    color: var(--zx-term-dim);
     flex-shrink: 0;
   }
   .log-path {
     flex: 1;
-    font-family: monospace;
+    font-family: var(--zx-font-mono);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .log-active {
-    color: #22c55e;
+    color: var(--zx-term-ok);
     font-size: 0.65rem;
     flex-shrink: 0;
   }
@@ -1872,15 +1890,15 @@
     align-items: center;
     gap: 0.6rem;
     padding: 0.4rem 0.75rem;
-    background: rgba(245, 158, 11, 0.12);
-    border-left: 3px solid #f59e0b;
-    color: #fbbf24;
+    background: color-mix(in srgb, var(--zx-term-warn) 12%, var(--term-bg, var(--zx-term-bg)));
+    border-bottom: 1px solid color-mix(in srgb, var(--zx-term-warn) 30%, transparent);
+    color: var(--zx-term-warn);
     font-size: 0.8rem;
     flex-shrink: 0;
   }
 
   .disconnected-icon {
-    font-size: 0.95rem;
+    display: flex;
   }
 
   .disconnected-text {
@@ -1888,18 +1906,19 @@
   }
 
   .reconnect-btn {
-    background: #f59e0b;
-    color: #1c1917;
+    background: var(--zx-term-warn);
+    color: var(--term-bg, var(--zx-term-bg));
     border: none;
-    border-radius: 0.25rem;
+    border-radius: 5px;
     padding: 0.2rem 0.7rem;
     font-size: 0.78rem;
     font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
   }
 
   .reconnect-btn:hover {
-    background: #fbbf24;
+    filter: brightness(1.1);
   }
 
   .reconnect-btn:disabled {
@@ -1911,19 +1930,19 @@
     display: flex;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
-    color: #ef4444;
+    color: var(--zx-term-err);
     font-family: var(--zx-font-mono, 'JetBrains Mono', ui-monospace, monospace);
     font-size: 0.8rem;
-    background: rgba(239, 68, 68, 0.07);
-    border-left: 3px solid #ef4444;
+    background: color-mix(in srgb, var(--zx-term-err) 8%, var(--term-bg, var(--zx-term-bg)));
+    border-bottom: 1px solid color-mix(in srgb, var(--zx-term-err) 30%, transparent);
     flex-shrink: 0;
     line-height: 1.6;
   }
 
   .error-icon {
-    font-size: 1rem;
+    display: flex;
     flex-shrink: 0;
-    margin-top: 0.1rem;
+    margin-top: 0.2rem;
   }
 
   .error-text {

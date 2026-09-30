@@ -175,14 +175,16 @@
 </script>
 
 <div class="overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={onKeydown}>
-  <div class="panel" style:background="#18181b" style:font-family={theme.fontUi}>
+  <div class="panel" style:font-family={theme.fontUi}>
     <div class="header">
       <div class="title">
         <span class="cmd" style:color={theme.accent}>$ {command || '—'}</span>
         {#if running}
           <span class="badge running">running…</span>
         {:else if allSame}
-          <span class="badge ok">✓ {hosts.length} hosts identical</span>
+          <span class="badge ok"
+            ><Icon name="check" size={11} /> {hosts.length} hosts identical</span
+          >
         {:else}
           <span class="badge warn"
             >{groups.length} variants{timedOut.length ? ` · ${timedOut.length} no reply` : ''}</span
@@ -256,7 +258,9 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -264,9 +268,12 @@
   }
 
   .panel {
-    border: 1px solid #3f3f46;
-    border-radius: 0.5rem;
-    padding: 1rem 1.2rem 1.2rem;
+    background: var(--zx-surface);
+    border: 1px solid var(--zx-border);
+    border-radius: 10px;
+    box-shadow: var(--zx-shadow);
+    color: var(--zx-text);
+    padding: var(--zx-space-4) var(--zx-space-4) var(--zx-space-4);
     width: 52rem;
     max-width: 96vw;
     height: 40rem;
@@ -298,7 +305,7 @@
   }
 
   .cmd {
-    font-family: monospace;
+    font-family: var(--zx-font-mono);
     font-size: 0.9rem;
     font-weight: 600;
     overflow: hidden;
@@ -307,6 +314,9 @@
   }
 
   .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     font-size: 0.7rem;
     font-weight: 600;
     padding: 0.1rem 0.45rem;
@@ -314,22 +324,22 @@
     flex-shrink: 0;
   }
   .badge.ok {
-    background: rgba(34, 197, 94, 0.18);
-    color: #4ade80;
+    background: color-mix(in srgb, var(--zx-ok) 15%, transparent);
+    color: var(--zx-ok);
   }
   .badge.warn {
-    background: rgba(251, 191, 36, 0.18);
-    color: #fbbf24;
+    background: color-mix(in srgb, var(--zx-warn) 15%, transparent);
+    color: var(--zx-warn);
   }
   .badge.running {
-    background: rgba(96, 165, 250, 0.18);
-    color: #60a5fa;
+    background: color-mix(in srgb, var(--zx-accent) 15%, transparent);
+    color: var(--zx-accent);
   }
 
   .hint {
     margin: 0;
     font-size: 0.75rem;
-    color: #71717a;
+    color: var(--zx-text-muted);
   }
 
   .groups {
@@ -341,20 +351,23 @@
     min-height: 0;
   }
 
+  /* Each group is a small terminal card: device output reads best on the
+     theme's terminal palette, in both light and dark themes. */
   .group {
-    background: #0a0a0b;
-    border: 1px solid #27272a;
-    border-radius: 0.3rem;
+    background: var(--zx-term-bg);
+    color: var(--zx-term-fg);
+    border: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
+    border-radius: var(--zx-radius);
     overflow: hidden;
   }
   .group.diff-a {
-    border-color: #ef4444;
+    border-color: var(--zx-term-err);
   }
   .group.diff-b {
-    border-color: #22c55e;
+    border-color: var(--zx-term-ok);
   }
   .group.timeout {
-    border-color: #52525b;
+    border-style: dashed;
   }
 
   .group-head {
@@ -367,29 +380,32 @@
   .caret {
     background: none;
     border: none;
-    color: #a1a1aa;
+    color: var(--zx-term-dim);
     cursor: pointer;
-    font-size: 0.8rem;
     padding: 0;
+    display: flex;
+  }
+  .caret:hover {
+    color: var(--zx-term-fg);
   }
 
   .count {
     font-size: 0.72rem;
     font-weight: 700;
-    color: #0a0a0b;
+    color: var(--zx-on-accent);
     border-radius: 0.5rem;
     padding: 0.05rem 0.4rem;
     flex-shrink: 0;
   }
   .count.to {
-    background: #52525b;
-    color: #e4e4e7;
+    background: color-mix(in srgb, var(--zx-term-fg) 18%, transparent);
+    color: var(--zx-term-fg);
   }
 
   .hostnames {
     flex: 1;
     font-size: 0.78rem;
-    color: #d4d4d8;
+    color: var(--zx-term-fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -397,17 +413,17 @@
 
   .to-label {
     font-size: 0.72rem;
-    color: #71717a;
+    color: var(--zx-term-dim);
     flex-shrink: 0;
   }
 
   .output {
     margin: 0;
     padding: 0.5rem 0.7rem;
-    border-top: 1px solid #27272a;
-    font-family: monospace;
+    border-top: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
+    font-family: var(--zx-font-mono);
     font-size: 0.75rem;
-    color: #cbd5e1;
+    color: var(--zx-term-fg);
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 14rem;
@@ -416,12 +432,13 @@
 
   .empty {
     font-size: 0.8rem;
-    color: #52525b;
+    color: var(--zx-text-dim);
   }
 
   .diff {
-    border: 1px solid #3f3f46;
-    border-radius: 0.3rem;
+    background: var(--zx-term-bg);
+    border: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
+    border-radius: var(--zx-radius);
     max-height: 12rem;
     overflow-y: auto;
     flex-shrink: 0;
@@ -429,18 +446,18 @@
 
   .diff-head {
     font-size: 0.72rem;
-    color: #a1a1aa;
+    color: var(--zx-term-dim);
     padding: 0.35rem 0.6rem;
-    border-bottom: 1px solid #27272a;
+    border-bottom: 1px solid color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
     position: sticky;
     top: 0;
-    background: #18181b;
+    background: var(--zx-term-bg);
   }
 
   .diff-body {
     margin: 0;
     padding: 0.4rem 0.6rem;
-    font-family: monospace;
+    font-family: var(--zx-font-mono);
     font-size: 0.74rem;
   }
 
@@ -450,46 +467,60 @@
     word-break: break-word;
   }
   .dl.same {
-    color: #71717a;
+    color: var(--zx-term-dim);
   }
   .dl.a {
-    color: #f87171;
-    background: rgba(239, 68, 68, 0.08);
+    color: var(--zx-term-err);
+    background: color-mix(in srgb, var(--zx-term-err) 10%, transparent);
   }
   .dl.b {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 0.08);
+    color: var(--zx-term-ok);
+    background: color-mix(in srgb, var(--zx-term-ok) 10%, transparent);
   }
 
   .btn {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    background: #27272a;
-    border: 1px solid #3f3f46;
-    border-radius: 0.25rem;
-    color: #d4d4d8;
+    background: transparent;
+    border: 1px solid var(--zx-border);
+    border-radius: 5px;
+    color: var(--zx-text-muted);
     font-size: 0.78rem;
     padding: 0.25rem 0.55rem;
     cursor: pointer;
     font-family: inherit;
     flex-shrink: 0;
+    transition:
+      background 0.1s,
+      color 0.1s;
   }
 
   .btn:disabled {
     opacity: 0.45;
     cursor: default;
   }
-  .btn:hover {
-    background: #3f3f46;
+  .btn:hover:not(:disabled) {
+    background: var(--zx-hover-bg);
+    color: var(--zx-text);
   }
   .btn.small {
     font-size: 0.7rem;
     padding: 0.15rem 0.45rem;
   }
-  .btn.active {
-    background: #1d4ed8;
-    border-color: #2563eb;
-    color: #fff;
+  /* "diff" toggles live inside the terminal-coloured group cards. */
+  .group .btn {
+    border-color: color-mix(in srgb, var(--zx-term-fg) 12%, transparent);
+    color: var(--zx-term-dim);
+  }
+  .group .btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--zx-term-fg) 8%, transparent);
+    color: var(--zx-term-fg);
+  }
+  .btn.active,
+  .group .btn.active {
+    background: var(--zx-accent);
+    border-color: var(--zx-accent);
+    color: var(--zx-on-accent);
   }
 </style>

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { HintController } from './controller.svelte'
   import type { Hint } from '$lib/bridge/types'
+  import Icon from '$lib/icons/Icon.svelte'
+  import type { IconName } from '$lib/icons/icons'
 
   interface Props {
     controller: HintController
@@ -10,16 +12,16 @@
 
   let { controller, fontFamily, accentColor = '#22d3ee' }: Props = $props()
 
-  function sourceIcon(h: Hint): string {
+  function sourceIcon(h: Hint): IconName {
     switch (h.source.kind) {
       case 'snippet':
-        return '⭐'
+        return 'bolt'
       case 'history':
-        return '⟳'
+        return 'clock'
       case 'catalog':
-        return '📘'
+        return 'book'
       case 'sequence':
-        return '↪'
+        return 'chevron'
     }
   }
 
@@ -115,7 +117,7 @@
         role="option"
         aria-selected={i === controller.selected}
       >
-        <span class="icon">{sourceIcon(hint)}</span>
+        <span class="icon"><Icon name={sourceIcon(hint)} size={12} /></span>
         <span class="text">
           {#if head}<span class="hl">{head}</span>{/if}<span>{tail}</span>
         </span>
@@ -185,7 +187,8 @@
 
   .icon {
     width: 1.1rem;
-    text-align: center;
+    display: flex;
+    justify-content: center;
     opacity: 0.85;
     flex-shrink: 0;
   }

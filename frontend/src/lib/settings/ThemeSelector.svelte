@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icons/Icon.svelte'
   import { terminalSettings, colorSchemes, applyColorScheme } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
 
@@ -34,7 +35,7 @@
       </div>
       <span class="theme-name">{scheme.name}</span>
       {#if terminalSettings.activeColorScheme === scheme.name}
-        <span class="check">✓</span>
+        <span class="check"><Icon name="check" size={11} sw={2} /></span>
       {/if}
     </button>
   {/each}
@@ -113,7 +114,6 @@
     position: absolute;
     top: 0.2rem;
     right: 0.3rem;
-    font-size: 0.65rem;
     color: var(--zx-accent);
   }
 </style>

@@ -193,6 +193,10 @@
     set('--zx-shadow', theme.windowShadow)
     set('--zx-term-bg', theme.terminal.bg)
     set('--zx-term-fg', theme.terminal.fg)
+    set('--zx-term-dim', theme.terminal.dim)
+    set('--zx-term-ok', theme.terminal.ok)
+    set('--zx-term-warn', theme.terminal.warn)
+    set('--zx-term-err', theme.terminal.err)
   })
 
   // ── state ────────────────────────────────────────────────────────────────────

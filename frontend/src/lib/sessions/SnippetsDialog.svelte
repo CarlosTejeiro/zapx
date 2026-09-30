@@ -204,7 +204,8 @@
 
     {#if broadcast.enabled}
       <p class="hint broadcast">
-        ⚠ MultiExec broadcast is ON — sending will dispatch to <strong>all</strong> open sessions.
+        <Icon name="alert" size={12} /> MultiExec broadcast is ON — sending will dispatch to
+        <strong>all</strong> open sessions.
       </p>
     {:else}
       <p class="hint">Click ▶ to send the snippet to the focused terminal.</p>
@@ -409,6 +410,9 @@
 
   .hint.broadcast {
     color: var(--zx-warn);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .form {

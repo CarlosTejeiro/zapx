@@ -43,6 +43,15 @@ export const ICON_PATHS = {
   /** Half-filled circle — theme cycle toggle. */
   contrast:
     '<circle cx="8" cy="8" r="5.8" /><path d="M8 2.2v11.6A5.8 5.8 0 0 0 8 2.2z" fill="currentColor" stroke="none" />',
+  /** Warning — triangle with an exclamation mark. */
+  alert:
+    '<path d="M8 2.2 14.2 13H1.8z" /><path d="M8 6.5v3" /><circle cx="8" cy="11.2" r="0.4" fill="currentColor" />',
+  /** Info — circle with an "i". */
+  info: '<circle cx="8" cy="8" r="5.8" /><path d="M8 7.3v3.7" /><circle cx="8" cy="5.1" r="0.4" fill="currentColor" />',
+  /** Success / selected — a single check stroke. */
+  check: '<path d="M3.2 8.4 6.5 11.5 12.8 4.8" />',
+  /** Refresh / reload — an open circular arrow. */
+  refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.6" /><path d="M13 2.5v3.2H9.8" />',
 } as const
 
 export type IconName = keyof typeof ICON_PATHS
