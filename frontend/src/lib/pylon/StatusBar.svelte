@@ -120,11 +120,15 @@
   <!-- Left segments -->
   <div class="sb-left">
     <span class="sb-seg">
+      <!-- Static glow, no pulse: an infinite animation here ran for as long as
+           a session stayed connected, forcing WebKitGTK to repaint every frame
+           forever (constant WebKitWebProcess CPU on Linux, and the trigger for
+           the DMABUF busy-repaint loop on affected GPU drivers). Same reason
+           the cursor glow in app.css is static. -->
       <span
         class="sb-led"
         style:background={statusColor}
         style:box-shadow={status === 'connected' ? `0 0 5px ${statusColor}` : 'none'}
-        style:animation={status === 'connected' ? 'pylon-glow-pulse 2s ease infinite' : 'none'}
       ></span>
       <span style:color={statusColor}>{statusLabel}</span>
     </span>
