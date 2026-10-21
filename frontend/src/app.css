@@ -101,16 +101,6 @@ body {
   height: 100%;
 }
 
-@keyframes pylon-glow-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
 @keyframes pylon-cursor-blink {
   0%,
   100% {
