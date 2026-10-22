@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   everywhere broke ARM and some hybrid laptops (see 0.20.4) — and a
   `WEBKIT_DISABLE_DMABUF_RENDERER` value you set yourself, even `0`, always
   wins; `ZAPX_NO_LAUNCH_ENV=1` still skips all launch fixups.
+- **Snippet buttons couldn't be edited or deleted from the bar on Linux.**
+  The row's horizontal scrollbar (drawn by WebKitGTK as an overlay) covered
+  the buttons on hover, and the scroll container clipped the pencil that
+  opens a button's editor. The scrollbar is now hidden — the mouse wheel
+  scrolls the row instead — the pencil has room to show, and right-clicking
+  a button also opens its editor (edit or **Delete**). Tools → Snippets…
+  (Ctrl+Shift+S) still lists every snippet with its own delete.
 
 ## [0.23.1] - 2026-10-22
 
