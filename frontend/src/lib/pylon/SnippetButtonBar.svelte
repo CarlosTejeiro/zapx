@@ -179,6 +179,17 @@
   }
 
   let collapsed = $state(false)
+
+  /// The button row scrolls sideways with a hidden scrollbar (on Linux the
+  /// GTK overlay scrollbar was drawn over the buttons), so map a plain
+  /// vertical wheel onto horizontal scroll. Trackpads that already send
+  /// deltaX keep their native behaviour.
+  function onBarWheel(e: WheelEvent) {
+    const el = e.currentTarget as HTMLElement
+    if (e.deltaX !== 0 || e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return
+    e.preventDefault()
+    el.scrollLeft += e.deltaY
+  }
 </script>
 
 {#if collapsed}
@@ -208,7 +219,6 @@
     style:--ok={theme.ok}
     style:--err={theme.err}
     style:--pill-bg="color-mix(in srgb, {theme.textPrimary} 10%, transparent)"
-    style:--scroll="color-mix(in srgb, {theme.textPrimary} 22%, transparent)"
   >
     <button
       class="collapse-toggle"
@@ -217,10 +227,11 @@
       title="Hide button bar">▾</button
     >
 
-    <div class="snippets">
+    <div class="snippets" onwheel={onBarWheel}>
       {#each visibleSnippets as s, i (s.id)}
-        <!-- Each button: click fires it; a hover pencil opens the editor;
-             drag to reorder. The optional color paints a left accent stripe. -->
+        <!-- Each button: click fires it; a hover pencil or a right-click opens
+             the editor (edit / delete); drag to reorder. The optional color
+             paints a left accent stripe. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span
           class="btn-wrap"
@@ -254,7 +265,11 @@
             style:border-color={s.color ?? theme.border}
             style:border-left={s.color ? `3px solid ${s.color}` : `1px solid ${theme.border}`}
             onclick={() => fireSnippet(s)}
-            title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1} — ` : ''}${s.content}`}
+            oncontextmenu={(e) => {
+              e.preventDefault()
+              editing = s
+            }}
+            title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1} — ` : ''}${s.content}\nRight-click to edit or delete`}
           >
             {#if i < SNIPPET_BAR_LIMIT}
               <span class="key-pill" style:color={theme.accent2}>{i + 1}</span>
@@ -334,7 +349,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
+    /* Vertical room comes from .snippets' padding instead, so the edit dot
+       that pokes 5px above each button stays inside the scroll container. */
+    padding: 0 8px;
     border-top: 1px solid;
     border-bottom: 1px solid;
     min-height: 28px;
@@ -425,23 +442,22 @@
     background: var(--hover);
   }
 
+  /* overflow-x: auto also clips vertically, so the padding gives the edit dot
+     (top/right -5px) room to show. The scrollbar is hidden: WebKitGTK draws
+     its overlay scrollbar across the buttons, hiding them and the dot; the
+     wheel scrolls the row instead (onBarWheel). */
   .snippets {
     display: flex;
     align-items: center;
     gap: 4px;
     overflow-x: auto;
     flex: 1;
-    padding: 0 2px;
-    scrollbar-width: thin;
+    padding: 6px 6px 4px 2px;
+    scrollbar-width: none;
   }
 
   .snippets::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .snippets::-webkit-scrollbar-thumb {
-    background: var(--scroll);
-    border-radius: 2px;
+    display: none;
   }
 
   .snippet-btn {
