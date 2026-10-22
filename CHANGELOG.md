@@ -5,7 +5,7 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.1] - 2026-10-22
 
 ### Fixed
 - **Constant WebKitWebProcess CPU on Linux while a session is connected.**
@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.9.1) a continuous redraw like this can tip the web process into high CPU,
   flicker and unstable text rendering. The LED now keeps its
   glow but no longer pulses — the same fix the cursor glow got in 0.9.1.
+
+### Security
+- **Dependency advisories addressed** (all reached only through
+  `tauri-plugin-updater`, which ZAPX ships disabled): `rustls` 0.23.46,
+  `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10 close
+  RUSTSEC-2026-0346/0347/0348/0349/0382/0383. The three new `zip` advisories
+  (RUSTSEC-2026-0367/0368/0369, archive extraction) have no updater release on
+  a fixed `zip` yet; they are documented exceptions in `deny.toml` until one
+  ships, since the updater never extracts anything while disabled.
+
+### Changed
+- `async-trait` 0.1.92, so the workspace builds clean under the
+  `clippy::double_must_use` lint added in Rust 1.99.
 
 ## [0.23.0] - 2026-09-30
 
