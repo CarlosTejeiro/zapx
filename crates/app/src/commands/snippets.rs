@@ -34,16 +34,9 @@ pub async fn list_snippets_for_platform(
 ) -> Result<Vec<Snippet>, AppError> {
     // Skip seeding when the session has no recognised platform (Generic).
     if !platform.is_empty() && platform != "generic" {
-        let already = state
-            .db
-            .snippets_exist_for_platform(&platform)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        if !already {
-            for (name, content) in default_snippets_for(&platform) {
-                let _ = state
-                    .db
-                    .create_snippet(name, content, Some(&platform), None);
-            }
+        if let Err(e) = seed_platform_defaults(&state.db, &platform) {
+            // Non-fatal: the bar still lists what the user already has.
+            tracing::warn!("seeding default snippets for {platform} failed: {e}");
         }
     }
     state
@@ -351,11 +344,123 @@ pub async fn import_macros(
     apply_macro_import(&state.db, &file)
 }
 
-/// Curated default snippet set per platform — what most users would benefit
-/// from on day one. Seeded the first time the platform is observed.
+/// Settings key recording how many default batches (see
+/// [`default_snippet_batches`]) have been seeded for `platform`.
+fn defaults_version_key(platform: &str) -> String {
+    format!("snippets.defaults_version.{platform}")
+}
+
+/// Seed the curated defaults for `platform`, one batch at a time.
 ///
-/// Returns `(name, content_with_trailing_newline)` pairs. Empty `Vec` for
-/// platforms we don't have curated defaults for.
+/// A fresh platform (no snippets, no recorded version) gets every batch. An
+/// install that already holds snippets for the platform but predates
+/// versioning is treated as having seeded batch 1 — the only one that existed
+/// — so an upgrade adds just the newer batches. Already-seeded batches are
+/// never replayed, so a default the user deleted doesn't come back; and a
+/// default whose content the user already has on this platform is skipped.
+fn seed_platform_defaults(db: &Database, platform: &str) -> Result<(), core_persistence::Error> {
+    let batches = default_snippet_batches(platform);
+    if batches.is_empty() {
+        return Ok(());
+    }
+    let key = defaults_version_key(platform);
+    let seeded = match db.get_setting(&key)?.and_then(|v| v.parse::<usize>().ok()) {
+        Some(v) => v,
+        None if db.snippets_exist_for_platform(platform)? => 1,
+        None => 0,
+    };
+    if seeded >= batches.len() {
+        return Ok(());
+    }
+    let existing: Vec<String> = db
+        .list_snippets_for_platform(platform)?
+        .into_iter()
+        .filter(|s| s.platform.as_deref() == Some(platform))
+        .map(|s| s.content)
+        .collect();
+    for (name, content) in batches[seeded..].iter().flat_map(|b| b.iter()) {
+        if !existing.iter().any(|c| c == content) {
+            db.create_snippet(name, content, Some(platform), None)?;
+        }
+    }
+    db.set_setting(&key, &batches.len().to_string())
+}
+
+/// Curated default snippets per platform, as successive batches: index 0 is
+/// the original set, each later entry holds only the defaults added in that
+/// release. Append a new batch to ship more defaults to existing installs;
+/// never edit an earlier one (installs that already seeded it won't see the
+/// change). Empty for platforms without curated defaults.
+fn default_snippet_batches(platform: &str) -> Vec<Vec<(&'static str, &'static str)>> {
+    let mut batches = vec![default_snippets_for(platform)];
+    // 0.24: more FortiGate / FortiManager operations. Every command was
+    // checked against Fortinet's CLI reference / administration guides.
+    // Commands that need arguments carry no trailing newline.
+    match platform {
+        "fortigate" => batches.push(vec![
+            (
+                "get system performance status",
+                "get system performance status\n",
+            ),
+            ("get system ha status", "get system ha status\n"),
+            ("get system interface", "get system interface\n"),
+            ("get system arp", "get system arp\n"),
+            (
+                "get router info bgp summary",
+                "get router info bgp summary\n",
+            ),
+            ("diagnose vpn tunnel list", "diagnose vpn tunnel list\n"),
+            (
+                "diagnose vpn ike gateway list",
+                "diagnose vpn ike gateway list\n",
+            ),
+            ("diagnose sys session stat", "diagnose sys session stat\n"),
+            ("diagnose sys top", "diagnose sys top\n"),
+            (
+                "diagnose sys sdwan health-check",
+                "diagnose sys sdwan health-check\n",
+            ),
+            (
+                "get system fortiguard-service status",
+                "get system fortiguard-service status\n",
+            ),
+            (
+                "execute revision list config",
+                "execute revision list config\n",
+            ),
+            (
+                "Stop debug (disable + reset)",
+                "diagnose debug disable\ndiagnose debug reset\n",
+            ),
+        ]),
+        "fortimanager" => batches.push(vec![
+            ("get system ha", "get system ha\n"),
+            ("diagnose dvm adom list", "diagnose dvm adom list\n"),
+            (
+                "diagnose dvm check-integrity",
+                "diagnose dvm check-integrity\n",
+            ),
+            // Can offer to fix the DB after a y/n prompt — left for the user
+            // to confirm with Enter.
+            (
+                "diagnose cdb check policy-packages",
+                "diagnose cdb check policy-packages",
+            ),
+            (
+                "diagnose fmupdate view-serverlist fds",
+                "diagnose fmupdate view-serverlist fds\n",
+            ),
+            ("diagnose dvm task list ", "diagnose dvm task list "),
+        ]),
+        _ => {}
+    }
+    batches.retain(|b| !b.is_empty());
+    batches
+}
+
+/// The original (batch 1) curated set — what most users would benefit from on
+/// day one. Returns `(name, content_with_trailing_newline)` pairs; empty for
+/// platforms without curated defaults.
 fn default_snippets_for(platform: &str) -> Vec<(&'static str, &'static str)> {
     fn nl(commands: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
         // The newline is appended by callers via `&'static str` interpolation;
@@ -479,6 +584,89 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         (Database::open(&path).expect("open temp db"), path)
+    }
+
+    fn platform_contents(db: &Database, platform: &str) -> Vec<String> {
+        db.list_snippets()
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.platform.as_deref() == Some(platform))
+            .map(|s| s.content)
+            .collect()
+    }
+
+    /// A never-seen platform gets every batch, and seeding twice is a no-op.
+    #[test]
+    fn seed_fresh_platform_gets_all_batches_once() {
+        let (db, path) = temp_db("seed-fresh");
+        seed_platform_defaults(&db, "fortigate").unwrap();
+        let total: usize = default_snippet_batches("fortigate")
+            .iter()
+            .map(|b| b.len())
+            .sum();
+        assert_eq!(platform_contents(&db, "fortigate").len(), total);
+        assert!(platform_contents(&db, "fortigate").contains(&"get system ha status\n".to_string()));
+        assert_eq!(
+            db.get_setting(&defaults_version_key("fortigate"))
+                .unwrap()
+                .as_deref(),
+            Some("2")
+        );
+
+        seed_platform_defaults(&db, "fortigate").unwrap();
+        assert_eq!(platform_contents(&db, "fortigate").len(), total);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// An install from before versioning (batch-1 defaults present, no version
+    /// key) receives only the new batch, and a batch-1 default the user deleted
+    /// is not resurrected.
+    #[test]
+    fn seed_upgrade_adds_only_new_batch_and_respects_deletions() {
+        let (db, path) = temp_db("seed-upgrade");
+        // Simulate the pre-0.24 seeding: batch 1 only, no version key.
+        for (name, content) in default_snippets_for("fortigate") {
+            db.create_snippet(name, content, Some("fortigate"), None)
+                .unwrap();
+        }
+        // The user deleted one of the original defaults.
+        let deleted = db
+            .list_snippets()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.content == "execute backup config flash\n")
+            .unwrap();
+        db.delete_snippet(deleted.id).unwrap();
+
+        seed_platform_defaults(&db, "fortigate").unwrap();
+        let contents = platform_contents(&db, "fortigate");
+        assert!(!contents.contains(&"execute backup config flash\n".to_string()));
+        for (_, content) in &default_snippet_batches("fortigate")[1] {
+            assert!(
+                contents.contains(&content.to_string()),
+                "missing {content:?}"
+            );
+        }
+        // No duplicates of batch-1 entries.
+        let n = contents
+            .iter()
+            .filter(|c| *c == "get system status\n")
+            .count();
+        assert_eq!(n, 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// A platform without a newer batch is unaffected beyond the version key.
+    #[test]
+    fn seed_single_batch_platform_unchanged() {
+        let (db, path) = temp_db("seed-linux");
+        seed_platform_defaults(&db, "linux").unwrap();
+        let first = platform_contents(&db, "linux").len();
+        assert_eq!(first, default_snippets_for("linux").len());
+        seed_platform_defaults(&db, "linux").unwrap();
+        assert_eq!(platform_contents(&db, "linux").len(), first);
+        assert!(default_snippet_batches("generic").is_empty());
+        let _ = std::fs::remove_file(path);
     }
 
     /// Macro export envelope round-trips: a macro survives export → import into a
