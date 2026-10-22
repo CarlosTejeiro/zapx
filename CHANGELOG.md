@@ -5,6 +5,21 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **WebKitWebProcess pinned at 100% CPU over remote desktop (xrdp).** An
+  xrdp session's X server has no GPU, so WebKitGTK's DMABUF renderer
+  composites every frame in software — and ZAPX repaints every second even
+  at rest (cursor blink, uptime counter). Reported on an Ubuntu VM reached
+  over xrdp: 100% of a core, down to ~17% with the DMABUF renderer off. ZAPX
+  now turns it off automatically when it detects an xrdp session
+  (`XRDP_SESSION` set), through the same one-time relaunch it already uses
+  for the Wayland and IME fixes. Other setups are unchanged — forcing it off
+  everywhere broke ARM and some hybrid laptops (see 0.20.4) — and a
+  `WEBKIT_DISABLE_DMABUF_RENDERER` value you set yourself, even `0`, always
+  wins; `ZAPX_NO_LAUNCH_ENV=1` still skips all launch fixups.
+
 ## [0.23.1] - 2026-10-22
 
 ### Fixed

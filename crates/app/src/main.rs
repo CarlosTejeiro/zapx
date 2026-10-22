@@ -30,12 +30,18 @@ fn main() {
     //    part. Forced off by default; a user who needs composed/CJK/emoji input
     //    opts out with ZAPX_ENABLE_IME=1.
     //
-    // We deliberately do NOT force WEBKIT_DISABLE_DMABUF_RENDERER. Disabling the
-    // DMABUF renderer was a workaround for a busy-repaint/high-CPU issue on the
-    // NVIDIA *proprietary* driver, but forcing it off broke rendering on other
-    // setups (ARM, and x86_64 hybrid laptops on Intel/nouveau). It's opt-in: a
-    // user hitting the high-CPU issue exports WEBKIT_DISABLE_DMABUF_RENDERER=1
-    // themselves (it's inherited into the re-exec'd child).
+    // 3. DMABUF renderer — off only inside an xrdp session. We do NOT force
+    //    WEBKIT_DISABLE_DMABUF_RENDERER everywhere: it was a workaround for a
+    //    busy-repaint/high-CPU issue on the NVIDIA *proprietary* driver, but
+    //    forcing it off broke rendering on other setups (ARM, and x86_64 hybrid
+    //    laptops on Intel/nouveau). An xrdp session is different: its X server
+    //    has no GPU (no DRI3), so the DMABUF path composites every frame in
+    //    software. Measured on an xrdp VM: WebKitWebProcess at 100% of a core
+    //    with it, ~17% without. xrdp marks its sessions with XRDP_SESSION, so we
+    //    key on that alone. Elsewhere it stays opt-in: a user hitting the
+    //    high-CPU issue exports WEBKIT_DISABLE_DMABUF_RENDERER=1 themselves (it's
+    //    inherited into the re-exec'd child), and a value they set — even "0" —
+    //    is never overridden.
     //
     // Escape hatch: ZAPX_NO_LAUNCH_ENV=1 skips ALL of the above (no re-exec, no
     // env overrides), so a user can isolate whether one of these fixups is
@@ -44,27 +50,8 @@ fn main() {
     if std::env::var_os("ZAPX_REEXEC").is_none() && std::env::var_os("ZAPX_NO_LAUNCH_ENV").is_none()
     {
         // Collect the (name, value) env changes we need for this launch.
-        let mut planned: Vec<(&str, &str)> = Vec::new();
-
-        // GDK backend: force XWayland on a Wayland session unless the user set
-        // GDK_BACKEND themselves or opted back into native Wayland.
-        let on_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
-            || std::env::var("XDG_SESSION_TYPE")
-                .map(|v| v.eq_ignore_ascii_case("wayland"))
-                .unwrap_or(false);
-        if on_wayland
-            && std::env::var_os("GDK_BACKEND").is_none()
-            && std::env::var_os("ZAPX_ENABLE_WAYLAND").is_none()
-        {
-            planned.push(("GDK_BACKEND", "x11"));
-        }
-
-        // IME (all Linux arches): force direct keyboard input unless the user
-        // opted back into their session IME via ZAPX_ENABLE_IME.
-        if std::env::var_os("ZAPX_ENABLE_IME").is_none() {
-            planned.push(("GTK_IM_MODULE", ""));
-            planned.push(("QT_IM_MODULE", ""));
-        }
+        let planned =
+            launch_env_plan(|k| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned()));
 
         if !planned.is_empty() {
             use std::os::unix::process::CommandExt;
@@ -92,4 +79,104 @@ fn main() {
     }
 
     app::run();
+}
+
+/// The (name, value) env changes this launch needs, decided from the current
+/// environment as seen through `var` (name → value if set). Pure, so the rules
+/// above are unit-testable without touching the real process environment.
+#[cfg(target_os = "linux")]
+fn launch_env_plan(var: impl Fn(&str) -> Option<String>) -> Vec<(&'static str, &'static str)> {
+    let mut planned = Vec::new();
+
+    // GDK backend: force XWayland on a Wayland session unless the user set
+    // GDK_BACKEND themselves or opted back into native Wayland.
+    let on_wayland = var("WAYLAND_DISPLAY").is_some()
+        || var("XDG_SESSION_TYPE").is_some_and(|v| v.eq_ignore_ascii_case("wayland"));
+    if on_wayland && var("GDK_BACKEND").is_none() && var("ZAPX_ENABLE_WAYLAND").is_none() {
+        planned.push(("GDK_BACKEND", "x11"));
+    }
+
+    // IME (all Linux arches): force direct keyboard input unless the user
+    // opted back into their session IME via ZAPX_ENABLE_IME.
+    if var("ZAPX_ENABLE_IME").is_none() {
+        planned.push(("GTK_IM_MODULE", ""));
+        planned.push(("QT_IM_MODULE", ""));
+    }
+
+    // DMABUF: off inside xrdp (software-only X server), unless the user set
+    // the variable themselves.
+    if var("XRDP_SESSION").is_some() && var("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        planned.push(("WEBKIT_DISABLE_DMABUF_RENDERER", "1"));
+    }
+
+    planned
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::launch_env_plan;
+
+    fn plan(vars: &[(&str, &str)]) -> Vec<(&'static str, &'static str)> {
+        launch_env_plan(|k| {
+            vars.iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        })
+    }
+
+    const DMABUF: (&str, &str) = ("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+
+    #[test]
+    fn xrdp_session_disables_dmabuf() {
+        // The variables an xrdp session on Ubuntu actually exports.
+        let p = plan(&[
+            ("XRDP_SESSION", "1"),
+            ("XDG_SESSION_TYPE", "x11"),
+            ("DISPLAY", ":10.0"),
+        ]);
+        assert!(p.contains(&DMABUF));
+        assert!(
+            !p.iter().any(|(k, _)| *k == "GDK_BACKEND"),
+            "x11 session needs no backend override"
+        );
+    }
+
+    #[test]
+    fn local_sessions_keep_dmabuf() {
+        assert!(!plan(&[("XDG_SESSION_TYPE", "x11"), ("DISPLAY", ":0")]).contains(&DMABUF));
+        assert!(!plan(&[
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0")
+        ])
+        .contains(&DMABUF));
+    }
+
+    #[test]
+    fn user_set_dmabuf_value_is_never_overridden() {
+        let p = plan(&[
+            ("XRDP_SESSION", "1"),
+            ("WEBKIT_DISABLE_DMABUF_RENDERER", "0"),
+        ]);
+        assert!(!p
+            .iter()
+            .any(|(k, _)| *k == "WEBKIT_DISABLE_DMABUF_RENDERER"));
+    }
+
+    #[test]
+    fn existing_rules_unchanged() {
+        let p = plan(&[("WAYLAND_DISPLAY", "wayland-0")]);
+        assert!(p.contains(&("GDK_BACKEND", "x11")));
+        assert!(p.contains(&("GTK_IM_MODULE", "")));
+        assert!(
+            !plan(&[("WAYLAND_DISPLAY", "w"), ("GDK_BACKEND", "wayland")])
+                .contains(&("GDK_BACKEND", "x11"))
+        );
+        assert!(
+            !plan(&[("WAYLAND_DISPLAY", "w"), ("ZAPX_ENABLE_WAYLAND", "1")])
+                .contains(&("GDK_BACKEND", "x11"))
+        );
+        assert!(!plan(&[("ZAPX_ENABLE_IME", "1")])
+            .iter()
+            .any(|(k, _)| *k == "GTK_IM_MODULE"));
+    }
 }
