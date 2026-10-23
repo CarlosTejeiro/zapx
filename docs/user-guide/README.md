@@ -123,6 +123,9 @@ A macro is a saved **expect / send / wait** sequence you run against the focused
 session with one click — for logins, jump-host hops, and repetitive command
 flows. Macros live in the **MACROS** zone of the sidebar.
 
+> Need conditions, loops or several devices? Write a Python script instead —
+> see [Python scripting](scripting.md).
+
 <!-- CAPTURE: images/macros-zone.png — the sidebar MACROS section with a couple
 of folders and macros, and the header icons (import ↓ / export ↑ / MobaXterm /
 new +). -->

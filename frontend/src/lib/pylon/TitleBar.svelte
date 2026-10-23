@@ -23,6 +23,8 @@
     onQuickConnect?: () => void
     onSettings?: () => void
     onSnippets?: () => void
+    onRunScript?: () => void
+    onScriptExamples?: () => void
     onCheckUpdates?: () => void
     onSetTheme?: (key: string) => void
     onAbout?: () => void
@@ -44,6 +46,8 @@
     onQuickConnect,
     onSettings,
     onSnippets,
+    onRunScript,
+    onScriptExamples,
     onCheckUpdates,
     onSetTheme,
     onAbout,
@@ -141,6 +145,20 @@
         label: 'Snippets…',
         action: () => {
           onSnippets?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Run Python script…',
+        action: () => {
+          onRunScript?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Script examples…',
+        action: () => {
+          onScriptExamples?.()
           openMenu = null
         },
       },

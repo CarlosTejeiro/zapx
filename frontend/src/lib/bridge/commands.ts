@@ -343,6 +343,12 @@ export async function setSnippetFolder(id: number, folder: string | null): Promi
   return invoke<void>('set_snippet_folder', { id, folder })
 }
 
+/** The Python script examples folder (created and filled on first use);
+ *  `reveal` also opens it in the system file manager. */
+export async function scriptExamplesDir(reveal: boolean): Promise<string> {
+  return invoke<string>('script_examples_dir', { reveal })
+}
+
 /** Set or clear (null) the keyboard shortcut that fires a snippet or macro. */
 export async function setSnippetShortcut(id: number, shortcut: string | null): Promise<void> {
   return invoke<void>('set_snippet_shortcut', { id, shortcut })

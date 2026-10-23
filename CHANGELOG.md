@@ -5,6 +5,30 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-10-23
+
+### Added
+- **Python scripting.** Tools → **Run Python script…** runs a `.py` file that
+  drives your terminal tabs through a small `zapx` module: open saved
+  sessions, run commands and get their output, wait for text, poll until a
+  condition holds, type vault credentials (the script never sees them), ask
+  for confirmation and fill a summary table. ZAPX types every command in the
+  real tab, so you watch it happen; the script only holds the logic. A
+  **dry run** (ticked by default) sends and opens nothing and lists every
+  command it would type, which also catches Python errors before anything
+  touches a device. Needs Python 3.9+ on the machine (`py -3`, `python3` or
+  `python` is found automatically, or set the path in the run dialog). See
+  `docs/user-guide/scripting.md`.
+- **Script examples.** Tools → **Script examples…** opens a folder with
+  `hello.py` and `sase_reset.py` (reset the SASE IPsec tunnels found down on
+  a folder of FortiGates, with VDOM / missing-tunnel safety checks), plus a
+  copy of `zapx.py` for editor autocomplete. Your edits there are kept.
+
+### Fixed
+- **Status bar stuck on "CONNECTING…" after closing a tab.** Closing the tab
+  that held the focused pane left the focus pointing at a pane that no longer
+  existed; it now moves to the newly active tab.
+
 ## [0.24.0] - 2026-10-23
 
 ### Added
