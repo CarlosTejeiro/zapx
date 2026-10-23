@@ -129,6 +129,10 @@ pub fn run() {
             let data_dir = resolved.dir.clone();
             std::fs::create_dir_all(&data_dir)?;
 
+            // A notebook connection never outlives the app: drop a file left
+            // behind by a crash so notebooks don't chase a dead port.
+            let _ = std::fs::remove_file(data_dir.join("scripting").join("connection.json"));
+
             let db_path = data_dir.join("zapx.db");
             let log_dir = data_dir.join("session_logs");
             std::fs::create_dir_all(&log_dir)?;
@@ -253,6 +257,7 @@ pub fn run() {
             commands::scripts::script_reply,
             commands::scripts::script_stop,
             commands::scripts::script_python_info,
+            commands::scripts::notebook_enable,
             commands::scripts::script_examples_dir,
             commands::snippets::set_snippet_positions,
             commands::snippets::export_macros,

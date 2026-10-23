@@ -38,7 +38,13 @@
   import SnippetsDialog from '$lib/sessions/SnippetsDialog.svelte'
   import ScriptPanel from '$lib/scripting/ScriptPanel.svelte'
   import ScriptStartDialog from '$lib/scripting/ScriptStartDialog.svelte'
-  import { initScriptHost, scriptRun, startScript } from '$lib/scripting/scriptHost.svelte'
+  import {
+    hostBusy,
+    initScriptHost,
+    scriptRun,
+    startNotebook,
+    startScript,
+  } from '$lib/scripting/scriptHost.svelte'
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
   import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
   import Toasts from '$lib/ui/Toasts.svelte'
@@ -46,7 +52,12 @@
   import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
   import PromptDialog from '$lib/ui/PromptDialog.svelte'
-  import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
+  import {
+    ask,
+    message,
+    open as openFileDialog,
+    save as saveFileDialog,
+  } from '@tauri-apps/plugin-dialog'
   import {
     exportSessions,
     importSessions,
@@ -711,6 +722,16 @@
   const savedPlatformCache = new Map<number, string | null>()
 
   async function chooseScript() {
+    if (hostBusy()) {
+      scriptRun.visible = true
+      await message(
+        scriptRun.mode === 'notebook'
+          ? 'Turn off the notebook connection first (Turn off, in the panel).'
+          : 'A script is already running — wait for it or stop it.',
+        { title: 'Run Python script', kind: 'info' },
+      )
+      return
+    }
     // Start in the examples folder (created on first use) so there is always
     // something ready to dry-run and edit.
     const examples = await scriptExamplesDir(false).catch(() => undefined)
@@ -721,6 +742,24 @@
       filters: [{ name: 'Python script', extensions: ['py'] }],
     })
     if (typeof picked === 'string') scriptPending = picked
+  }
+
+  /// Tools → Allow notebook connection: turn it on, or show the panel if it
+  /// already is.
+  async function openNotebookConnection() {
+    if (scriptRun.mode === 'notebook' && hostBusy()) {
+      scriptRun.visible = true
+      return
+    }
+    if (hostBusy()) {
+      scriptRun.visible = true
+      await message('A script is running — wait for it or stop it first.', {
+        title: 'Notebook connection',
+        kind: 'info',
+      })
+      return
+    }
+    await startNotebook()
   }
 
   /// Pane id + tab of the pane whose live session is `sessionId`.
@@ -1318,6 +1357,13 @@
       run: chooseScript,
     },
     {
+      id: 'act-notebook',
+      label: 'Allow notebook connection',
+      icon: 'term' as const,
+      section: 'Actions' as const,
+      run: () => void openNotebookConnection(),
+    },
+    {
       id: 'act-script-examples',
       label: 'Open script examples folder',
       icon: 'folder' as const,
@@ -1631,6 +1677,17 @@
         const sid = paneToSession.get(focusedPaneId)
         return sid ? describeSession(sid) : null
       },
+      openTabs: () => {
+        const out = []
+        for (const t of tabs) {
+          for (const p of tabPanes(t)) {
+            const sid = paneToSession.get(p.id)
+            const d = sid ? describeSession(sid) : null
+            if (d) out.push(d)
+          }
+        }
+        return out
+      },
       describe: describeSession,
       savedNames: savedSessionNames,
       openSaved: (name) => {
@@ -1688,6 +1745,7 @@
     onSnippets={() => (showSnippets = true)}
     onRunScript={chooseScript}
     onScriptExamples={() => scriptExamplesDir(true).catch(() => {})}
+    onNotebook={() => void openNotebookConnection()}
     onCheckUpdates={handleCheckUpdates}
     onSetTheme={(k) => applyTheme(k)}
     onAbout={() => (showAbout = true)}

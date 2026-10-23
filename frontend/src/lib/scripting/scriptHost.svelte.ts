@@ -10,6 +10,10 @@
 //
 // App.svelte supplies the few things only it knows (focused tab, opening a
 // saved session into a tab, closing one, confirmations) through `ScriptHostApi`.
+//
+// The same host serves a notebook connection (Tools → Allow notebook
+// connection): instead of a script ZAPX started, a notebook kernel attaches
+// with `zapx.connect()`; its calls arrive the same way.
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -38,6 +42,8 @@ export interface SessionInfo {
 export interface ScriptHostApi {
   /** The focused tab's live session, or null. */
   focusedSession(): SessionInfo | null
+  /** Every open tab's live session, in tab order. */
+  openTabs(): SessionInfo[]
   /** Name + platform of a live session the script uses. */
   describe(sessionId: string): SessionInfo | null
   /** Saved session names, optionally only those under `folder`. */
@@ -52,7 +58,9 @@ export interface ScriptHostApi {
   confirm(message: string): Promise<boolean>
 }
 
-export type RunStatus = 'running' | 'done' | 'failed' | 'stopped'
+/** Script: running → done / failed / stopped. Notebook connection:
+ *  waiting ⇄ connected → off. */
+export type RunStatus = 'running' | 'done' | 'failed' | 'stopped' | 'waiting' | 'connected' | 'off'
 
 export interface LogLine {
   stream: 'stdout' | 'stderr' | 'zapx'
@@ -67,6 +75,7 @@ export interface ReportRow {
 
 /** Reactive state of the current (or last) run, read by ScriptPanel. */
 export const scriptRun = $state({
+  mode: 'script' as 'script' | 'notebook',
   runId: null as string | null,
   path: '',
   dryRun: false,
@@ -76,7 +85,21 @@ export const scriptRun = $state({
   log: [] as LogLine[],
   report: [] as ReportRow[],
   visible: false,
+  /** Notebook connection: where `zapx.connect()` finds it, the folder with
+   *  `zapx.py`, and the idle limit (minutes, 0 = never). */
+  connectionFile: '',
+  moduleDir: '',
+  idleMinutes: 0,
 })
+
+/** A script running or a notebook connection on: only one at a time. */
+export function hostBusy(): boolean {
+  return (
+    scriptRun.status === 'running' ||
+    scriptRun.status === 'waiting' ||
+    scriptRun.status === 'connected'
+  )
+}
 
 /** Thrown inside the host to send a `{kind, message, output}` error back. */
 class ApiError extends Error {
@@ -101,6 +124,10 @@ let unlisteners: UnlistenFn[] = []
 const taps = new Map<string, Tap>()
 const platforms = new Map<string, string>()
 let aborted = false
+/** Requests being carried out, and those the client gave up on (a stopped
+ *  notebook cell sends `cancel`, a dropped connection cancels them all). */
+const inFlight = new Set<number>()
+const cancelled = new Set<number>()
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -109,8 +136,9 @@ function log(line: string, stream: LogLine['stream'] = 'zapx') {
   if (scriptRun.log.length > 5000) scriptRun.log.splice(0, scriptRun.log.length - 5000)
 }
 
-function checkAborted() {
+function checkAborted(reqId?: number) {
   if (aborted) throw new ApiError('error', 'script stopped')
+  if (reqId !== undefined && cancelled.has(reqId)) throw new ApiError('error', 'cancelled')
 }
 
 /** Install the host once (App.svelte onMount). Returns the teardown. */
@@ -142,8 +170,26 @@ export async function initScriptHost(hostApi: ScriptHostApi): Promise<() => void
         if (e.payload.run_id === scriptRun.runId) log(e.payload.line, e.payload.stream)
       },
     ),
+    await listen<{ run_id: string; status: 'connected' | 'waiting' }>('script-status', (e) => {
+      if (e.payload.run_id !== scriptRun.runId) return
+      if (e.payload.status === 'connected') {
+        scriptRun.status = 'connected'
+        log('Notebook connected.')
+      } else {
+        scriptRun.status = 'waiting'
+        for (const id of inFlight) cancelled.add(id)
+        log('Notebook disconnected — waiting for a notebook…')
+      }
+    }),
     await listen<{ run_id: string; code: number | null }>('script-exit', (e) => {
       if (e.payload.run_id !== scriptRun.runId) return
+      if (scriptRun.mode === 'notebook') {
+        aborted = true
+        scriptRun.status = 'off'
+        log('Notebook connection turned off.')
+        taps.clear()
+        return
+      }
       scriptRun.exitCode = e.payload.code
       if (scriptRun.status === 'running') {
         scriptRun.status = e.payload.code === 0 ? 'done' : 'failed'
@@ -165,11 +211,13 @@ export async function initScriptHost(hostApi: ScriptHostApi): Promise<() => void
 
 /** Start `path`. Opens the panel; progress arrives through events. */
 export async function startScript(path: string, dryRun: boolean): Promise<void> {
-  if (scriptRun.status === 'running') throw new Error('a script is already running')
+  if (hostBusy()) throw new Error('a script or a notebook connection is already active')
   if (!path) throw new Error('no script chosen')
   taps.clear()
   aborted = false
+  cancelled.clear()
   Object.assign(scriptRun, {
+    mode: 'script',
     runId: null,
     path,
     dryRun,
@@ -205,6 +253,56 @@ export async function stopScript(): Promise<void> {
   await invoke('script_stop', { runId: scriptRun.runId }).catch(() => {})
 }
 
+/** Turn on the notebook connection and show the panel with how to connect. */
+export async function startNotebook(): Promise<void> {
+  if (hostBusy()) throw new Error('a script or a notebook connection is already active')
+  taps.clear()
+  aborted = false
+  cancelled.clear()
+  Object.assign(scriptRun, {
+    mode: 'notebook',
+    runId: null,
+    path: '',
+    dryRun: false,
+    python: '',
+    status: 'waiting',
+    exitCode: null,
+    log: [],
+    report: [],
+    visible: true,
+    connectionFile: '',
+    moduleDir: '',
+    idleMinutes: 0,
+  })
+  try {
+    const started = await invoke<{
+      run_id: string
+      connection_file: string
+      module_dir: string
+      idle_minutes: number
+    }>('notebook_enable')
+    scriptRun.runId = started.run_id
+    scriptRun.connectionFile = started.connection_file
+    scriptRun.moduleDir = started.module_dir
+    scriptRun.idleMinutes = started.idle_minutes
+    log('Notebook connection on — waiting for a notebook…')
+  } catch (e) {
+    scriptRun.status = 'off'
+    log(
+      String(e instanceof Error ? e.message : e).replace(/^\{"Internal":"(.*)"\}$/, '$1'),
+      'stderr',
+    )
+  }
+}
+
+/** Turn the notebook connection off (disconnects a connected notebook). */
+export async function stopNotebook(): Promise<void> {
+  if (scriptRun.mode !== 'notebook' || !scriptRun.runId) return
+  if (scriptRun.status !== 'waiting' && scriptRun.status !== 'connected') return
+  aborted = true
+  await invoke('script_stop', { runId: scriptRun.runId }).catch(() => {})
+}
+
 // ── request dispatch ─────────────────────────────────────────────────────────
 
 async function handle(
@@ -216,9 +314,10 @@ async function handle(
   let ok = true
   let result: unknown = null
   let error: unknown = null
+  inFlight.add(reqId)
   try {
-    checkAborted()
-    result = await dispatch(method, params)
+    checkAborted(reqId)
+    result = await dispatch(method, params, reqId)
   } catch (e) {
     ok = false
     error =
@@ -226,6 +325,8 @@ async function handle(
         ? { kind: e.kind, message: e.message, output: e.output }
         : { kind: 'error', message: e instanceof Error ? e.message : String(e) }
   }
+  inFlight.delete(reqId)
+  cancelled.delete(reqId)
   await invoke('script_reply', { runId, reqId, ok, result, error }).catch(() => {})
 }
 
@@ -236,9 +337,32 @@ const str = (v: unknown, name: string): string => {
 const secs = (v: unknown, dflt: number): number =>
   typeof v === 'number' && v > 0 ? v * 1000 : dflt * 1000
 
-async function dispatch(method: string, p: Record<string, unknown>): Promise<unknown> {
+async function dispatch(
+  method: string,
+  p: Record<string, unknown>,
+  reqId: number,
+): Promise<unknown> {
   if (!api) throw new ApiError('error', 'ZAPX is not ready')
   switch (method) {
+    case 'cancel':
+      // A stopped notebook cell: abandon the call it was waiting on.
+      if (typeof p.id === 'number' && inFlight.has(p.id)) cancelled.add(p.id)
+      return null
+    case 'tabs':
+      return api.openTabs().map((t) => info(t.id) ?? t)
+    case 'tab': {
+      const wanted = str(p.name, 'name')
+      const all = api.openTabs()
+      const t =
+        all.find((x) => x.name === wanted) ??
+        all.find((x) => x.name.toLowerCase() === wanted.toLowerCase())
+      if (!t) {
+        const names = all.map((x) => JSON.stringify(x.name)).join(', ') || 'none'
+        throw new ApiError('error', `no open tab called ${JSON.stringify(wanted)} (open: ${names})`)
+      }
+      attach(t.id)
+      return info(t.id) ?? t
+    }
     case 'session': {
       const s = api.focusedSession()
       if (!s) throw new ApiError('error', 'no focused session — click a terminal tab first')
@@ -248,9 +372,9 @@ async function dispatch(method: string, p: Record<string, unknown>): Promise<unk
     case 'sessions':
       return api.savedNames(typeof p.folder === 'string' ? p.folder : null)
     case 'open':
-      return openSaved(str(p.name, 'name'), secs(p.timeout, 60))
+      return openSaved(str(p.name, 'name'), secs(p.timeout, 60), reqId)
     case 'run':
-      return run(str(p.session, 'session'), str(p.command, 'command'), secs(p.timeout, 30))
+      return run(str(p.session, 'session'), str(p.command, 'command'), secs(p.timeout, 30), reqId)
     case 'send': {
       const sid = str(p.session, 'session')
       const text = str(p.text, 'text')
@@ -268,6 +392,7 @@ async function dispatch(method: string, p: Record<string, unknown>): Promise<unk
         str(p.pattern, 'pattern'),
         p.regex === true,
         secs(p.timeout, 30),
+        reqId,
       )
     case 'send_secret': {
       const sid = str(p.session, 'session')
@@ -351,7 +476,11 @@ async function sendText(sessionId: string, text: string) {
   await invoke('send_input', { sessionId, data })
 }
 
-async function openSaved(sessionName: string, timeoutMs: number): Promise<SessionInfo> {
+async function openSaved(
+  sessionName: string,
+  timeoutMs: number,
+  reqId: number,
+): Promise<SessionInfo> {
   if (!api) throw new ApiError('error', 'ZAPX is not ready')
   const all = api.savedNames(null)
   if (!all.includes(sessionName)) {
@@ -367,7 +496,7 @@ async function openSaved(sessionName: string, timeoutMs: number): Promise<Sessio
   // 1. Wait for the tab's backend session and a connected status.
   let sid: string | undefined
   while (Date.now() < deadline) {
-    checkAborted()
+    checkAborted(reqId)
     sid = paneToSession.get(paneId)
     // Listen from the start: a fast device can print its banner and prompt
     // before the tab reports connected.
@@ -383,7 +512,7 @@ async function openSaved(sessionName: string, timeoutMs: number): Promise<Sessio
   const tap = attach(sid)
   // 2. Let the banner / login script finish: a recognised prompt, or silence.
   while (Date.now() < deadline) {
-    checkAborted()
+    checkAborted(reqId)
     const quiet = Date.now() - tap.lastData
     const platform = info(sid)?.platform ?? null
     if (quiet >= PROMPT_QUIET_MS && platform && tap.raw) {
@@ -397,7 +526,12 @@ async function openSaved(sessionName: string, timeoutMs: number): Promise<Sessio
   return info(sid) ?? { id: sid, name: sessionName, platform: null }
 }
 
-async function run(sessionId: string, command: string, timeoutMs: number): Promise<string> {
+async function run(
+  sessionId: string,
+  command: string,
+  timeoutMs: number,
+  reqId: number,
+): Promise<string> {
   if (scriptRun.dryRun || sessionId.startsWith('dry:')) {
     log(`[dry-run] ${name(sessionId)}: would run ${JSON.stringify(command)}`)
     return ''
@@ -412,7 +546,7 @@ async function run(sessionId: string, command: string, timeoutMs: number): Promi
   const deadline = Date.now() + timeoutMs
   let lastPagerAt = -1
   while (Date.now() < deadline) {
-    checkAborted()
+    checkAborted(reqId)
     await sleep(50)
     const out = extractRunOutput(tap.raw, command)
     if (out === null) continue // echo not back yet
@@ -448,6 +582,7 @@ async function expect(
   pattern: string,
   regex: boolean,
   timeoutMs: number,
+  reqId: number,
 ): Promise<string> {
   if (scriptRun.dryRun || sessionId.startsWith('dry:')) {
     log(`[dry-run] ${name(sessionId)}: would wait for ${JSON.stringify(pattern)}`)
@@ -464,7 +599,7 @@ async function expect(
   }
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    checkAborted()
+    checkAborted(reqId)
     let end = -1
     if (re) {
       const m = re.exec(tap.raw)

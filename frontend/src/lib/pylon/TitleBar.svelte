@@ -25,6 +25,7 @@
     onSnippets?: () => void
     onRunScript?: () => void
     onScriptExamples?: () => void
+    onNotebook?: () => void
     onCheckUpdates?: () => void
     onSetTheme?: (key: string) => void
     onAbout?: () => void
@@ -48,6 +49,7 @@
     onSnippets,
     onRunScript,
     onScriptExamples,
+    onNotebook,
     onCheckUpdates,
     onSetTheme,
     onAbout,
@@ -159,6 +161,13 @@
         label: 'Script examples…',
         action: () => {
           onScriptExamples?.()
+          openMenu = null
+        },
+      },
+      {
+        label: 'Allow notebook connection…',
+        action: () => {
+          onNotebook?.()
           openMenu = null
         },
       },

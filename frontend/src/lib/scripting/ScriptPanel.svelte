@@ -3,12 +3,25 @@
   /// rows the script reported, and its live log. Non-modal, so the terminal
   /// tabs the script is driving stay visible and usable.
   import Icon from '$lib/icons/Icon.svelte'
-  import { scriptRun, startScript, stopScript } from './scriptHost.svelte'
+  import {
+    scriptRun,
+    startNotebook,
+    startScript,
+    stopNotebook,
+    stopScript,
+  } from './scriptHost.svelte'
 
   let logEl = $state<HTMLPreElement | null>(null)
   let collapsed = $state(false)
+  let copied = $state(false)
 
-  const fileName = $derived(scriptRun.path.split(/[\\/]/).pop() ?? scriptRun.path)
+  const notebook = $derived(scriptRun.mode === 'notebook')
+  const notebookOn = $derived(
+    notebook && (scriptRun.status === 'waiting' || scriptRun.status === 'connected'),
+  )
+  const fileName = $derived(
+    notebook ? 'Notebook connection' : (scriptRun.path.split(/[\\/]/).pop() ?? scriptRun.path),
+  )
   const statusLabel = $derived(
     scriptRun.status === 'running'
       ? scriptRun.dryRun
@@ -18,8 +31,28 @@
         ? 'Finished'
         : scriptRun.status === 'stopped'
           ? 'Stopped'
-          : 'Failed',
+          : scriptRun.status === 'waiting'
+            ? 'Waiting for a notebook…'
+            : scriptRun.status === 'connected'
+              ? 'Notebook connected'
+              : scriptRun.status === 'off'
+                ? 'Off'
+                : 'Failed',
   )
+  /** What to paste in the notebook's first cell. */
+  const connectSnippet = $derived(
+    `import sys; sys.path.insert(0, r"${scriptRun.moduleDir}")\n` + `import zapx; zapx.connect()`,
+  )
+
+  async function copySnippet() {
+    try {
+      await navigator.clipboard.writeText(connectSnippet)
+      copied = true
+      setTimeout(() => (copied = false), 1500)
+    } catch {
+      /* clipboard unavailable: the text is selectable */
+    }
+  }
 
   // Follow the log as it grows (unless the user scrolled up to read).
   $effect(() => {
@@ -42,7 +75,13 @@
     <span class="status">{statusLabel}</span>
     {#if scriptRun.dryRun}<span class="badge">dry run</span>{/if}
     <span class="spacer"></span>
-    {#if scriptRun.status === 'running'}
+    {#if notebook}
+      {#if notebookOn}
+        <button class="btn stop" onclick={() => stopNotebook()}>Turn off</button>
+      {:else}
+        <button class="btn" onclick={() => void startNotebook()}>Turn on</button>
+      {/if}
+    {:else if scriptRun.status === 'running'}
       <button class="btn stop" onclick={() => stopScript()}>Stop</button>
     {:else}
       {#if scriptRun.dryRun}
@@ -59,7 +98,7 @@
       aria-label={collapsed ? 'Expand' : 'Collapse'}
       ><Icon name="chevron" size={12} open={!collapsed} /></button
     >
-    {#if scriptRun.status !== 'running'}
+    {#if scriptRun.status !== 'running' && !notebookOn}
       <button
         class="icon"
         onclick={() => (scriptRun.visible = false)}
@@ -70,6 +109,23 @@
   </div>
 
   {#if !collapsed}
+    {#if notebookOn && scriptRun.moduleDir}
+      <div class="connect">
+        <p>
+          In your notebook (VS Code, JupyterLab) or a <code>python</code> prompt, run:
+        </p>
+        <div class="snippet">
+          <pre>{connectSnippet}</pre>
+          <button class="btn" onclick={copySnippet}>{copied ? 'Copied' : 'Copy'}</button>
+        </div>
+        <p class="hint">
+          Then <code>zapx.tab("name")</code> for an open tab or
+          <code>zapx.open("saved session")</code>.
+          {#if scriptRun.idleMinutes > 0}Turns itself off after {scriptRun.idleMinutes} min without notebook
+            calls.{/if}
+        </p>
+      </div>
+    {/if}
     {#if scriptRun.report.length > 0}
       <table class="report">
         <tbody>
@@ -92,6 +148,10 @@
 </span>{/each}</pre>
     {#if scriptRun.python}
       <p class="foot">{scriptRun.python}</p>
+    {:else if notebookOn && scriptRun.connectionFile}
+      <p class="foot" title="zapx.connect(path=…) if it isn't found">
+        {scriptRun.connectionFile}
+      </p>
     {/if}
   {/if}
 </div>
@@ -133,8 +193,12 @@
     flex-shrink: 0;
     background: var(--zx-text-dim);
   }
-  .dot.running {
+  .dot.running,
+  .dot.waiting {
     background: var(--zx-warn);
+  }
+  .dot.connected {
+    background: var(--zx-ok);
   }
   .dot.done {
     background: var(--zx-ok);
@@ -191,6 +255,41 @@
   }
   .icon:hover {
     color: var(--zx-text);
+  }
+  .connect {
+    margin: 8px 10px 0;
+    font-size: 12px;
+    color: var(--zx-text-muted);
+  }
+  .connect p {
+    margin: 0 0 6px;
+  }
+  .connect code {
+    font-family: var(--zx-font-mono);
+    font-size: 11.5px;
+    color: var(--zx-text);
+  }
+  .snippet {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .snippet pre {
+    flex: 1;
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--zx-term-bg);
+    color: var(--zx-term-fg);
+    font-family: var(--zx-font-mono);
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+  }
+  .hint {
+    font-size: 11.5px;
   }
   .report {
     border-collapse: collapse;

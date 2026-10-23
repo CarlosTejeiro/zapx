@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-10-23
+
+### Added
+- **Notebook connection.** Tools → **Allow notebook connection…** lets a
+  notebook (VS Code, JupyterLab) or any Python you started yourself drive
+  ZAPX's tabs with the same `zapx` module as scripts: `zapx.connect()`, then
+  run a command in one cell and work on its real output in the next, with
+  variables and tabs kept between cells. New `zapx.tabs()` and
+  `zapx.tab(name)` reach tabs that are already open. Stopping a cell makes
+  ZAPX abandon what that call was waiting on. Local only (`127.0.0.1`), off by
+  default, a new token each time it's turned on, one notebook at a time, and
+  it turns itself off after 60 idle minutes and when ZAPX closes. New example:
+  `explore.ipynb`. See `docs/user-guide/scripting.md`.
+
 ## [0.25.1] - 2026-10-23
 
 ### Fixed
