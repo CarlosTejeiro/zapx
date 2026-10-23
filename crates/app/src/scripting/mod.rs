@@ -870,6 +870,23 @@ print(zapx.session().name)
     }
 
     #[tokio::test]
+    async fn re_running_connect_in_the_same_notebook_works() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let nb = notebook(None).await;
+        // A notebook re-runs its first cell: connect() while already connected.
+        let body = format!(
+            "import zapx\nfor _ in range(3):\n    zapx.connect(path={:?})\n    print(zapx.session().name)\n",
+            nb.file.to_string_lossy()
+        );
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert_eq!(out.trim(), "fw1\nfw1\nfw1", "{out}");
+        nb.run.stop();
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[tokio::test]
     async fn a_second_notebook_is_refused_while_one_is_connected() {
         let Some(python) = python_or_skip() else {
             return;

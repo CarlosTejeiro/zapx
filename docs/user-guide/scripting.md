@@ -95,7 +95,7 @@ file:
    Opened from the examples folder (`explore.ipynb`), `import zapx` finds the
    copy there. Anywhere else, paste the `sys.path.insert(…)` line the panel
    shows first.
-4. Then, cell by cell: `fw = zapx.tab("fw-branch-1")` (a tab already open) or
+4. Then, cell by cell: `fw = zapx.tab("FGT-60F-01")` (a tab already open) or
    `zapx.open("saved session")`, `out = fw.run("get vpn ipsec tunnel summary")`,
    and work on `out` in the next cell.
 
