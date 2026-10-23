@@ -105,7 +105,7 @@ pub fn find_python(configured: Option<&str>) -> Result<Vec<String>, String> {
     Err(match configured.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("\"{c}\" is not a working Python 3 interpreter"),
         None => "Python 3 not found — install it (python.org) or set its path in \
-                 Settings → Scripts"
+                 the Run Python script dialog"
             .into(),
     })
 }

@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Macro and session names cut short in a narrow sidebar.** Every row kept
+  room for its clone / export / edit icons even while they were invisible, so
+  names ended in "…" with space to spare. The icons now take room only while
+  the row is hovered or active.
+- **MACROS header buttons pushed out in a narrow sidebar.** The import /
+  export buttons now show when you hover the header ("+" is always there),
+  and the title shortens instead of pushing the buttons out of view.
+- The "Python 3 not found" message pointed to a Settings section that
+  doesn't exist; it now points to the Run Python script dialog.
+
 ## [0.25.0] - 2026-10-23
 
 ### Added

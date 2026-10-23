@@ -847,7 +847,7 @@
           </button>
           {#if onExportMacros && macroList.length > 0}
             <button
-              class="sb-add-btn"
+              class="sb-add-btn sb-secondary"
               title="Export all macros to a JSON file"
               style:color={theme.textDim}
               onclick={onExportMacros}><Icon name="upload" size={13} /></button
@@ -855,7 +855,7 @@
           {/if}
           {#if onImportMacrosJson}
             <button
-              class="sb-add-btn"
+              class="sb-add-btn sb-secondary"
               title="Import macros from a JSON file"
               style:color={theme.textDim}
               onclick={onImportMacrosJson}><Icon name="download" size={13} /></button
@@ -863,7 +863,7 @@
           {/if}
           {#if onImportMacro}
             <button
-              class="sb-add-btn"
+              class="sb-add-btn sb-secondary"
               title="Import from a MobaXterm macro"
               style:color={theme.textDim}
               onclick={onImportMacro}><Icon name="transfer" size={13} /></button
@@ -1119,6 +1119,23 @@
     margin-left: 2px;
   }
 
+  /* A narrow sidebar ellipses the title rather than pushing the buttons out. */
+  .sb-section-header {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* Import / export are occasional: shown on hover so the header stays clean;
+     "+" is always visible. */
+  .sb-section-row .sb-secondary {
+    display: none;
+  }
+  .sb-section-row:hover .sb-secondary,
+  .sb-section-row:focus-within .sb-secondary {
+    display: flex;
+  }
+
   .sb-row {
     width: 100%;
     display: flex;
@@ -1223,8 +1240,15 @@
       opacity 0.1s,
       background 0.1s;
   }
+  /* Row action icons take no room until the row is hovered / active, so
+     names use the full width instead of ellipsing next to invisible icons. */
+  .sb-row .sb-edit {
+    display: none;
+  }
   .sb-row:hover .sb-edit,
-  .sb-row.active .sb-edit {
+  .sb-row.active .sb-edit,
+  .sb-row:focus-within .sb-edit {
+    display: inline-flex;
     opacity: 0.6;
   }
   .sb-edit:hover {
