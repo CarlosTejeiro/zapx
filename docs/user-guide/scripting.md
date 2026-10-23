@@ -49,6 +49,8 @@ fills on first use:
 - `hello.py` — the focused tab: runs a command and reports it.
 - `sase_reset.py` — resets the SASE IPsec tunnels found down on a folder of
   FortiGates (see below).
+- `explore.ipynb` — a notebook to explore a FortiGate cell by cell (see
+  [Notebooks](#notebooks-vs-code-jupyterlab)).
 
 Edit them in place or copy them: ZAPX only writes an example that is missing,
 so your changes are kept. A copy of `zapx.py` sits next to them, refreshed on
@@ -69,6 +71,50 @@ the others.
 
 Run it as a dry run first: it lists every command it would send, per device.
 
+## Notebooks (VS Code, JupyterLab)
+
+To work out a script step by step — run a command, look at the real output,
+write the next bit against it — connect a notebook to ZAPX instead of running a
+file:
+
+1. In ZAPX: **Tools → Allow notebook connection…**. The script panel shows
+   "Waiting for a notebook…" and the lines to paste.
+2. In the notebook's Python, install `ipykernel` once (VS Code offers to when
+   you pick an interpreter without it).
+3. First cell:
+
+   ```python
+   import zapx
+   zapx.connect()
+   zapx.tabs()          # what is open in ZAPX
+   ```
+
+   Opened from the examples folder (`explore.ipynb`), `import zapx` finds the
+   copy there. Anywhere else, paste the `sys.path.insert(…)` line the panel
+   shows first.
+4. Then, cell by cell: `fw = zapx.tab("fw-branch-1")` (a tab already open) or
+   `zapx.open("saved session")`, `out = fw.run("get vpn ipsec tunnel summary")`,
+   and work on `out` in the next cell.
+
+How it behaves:
+
+- Same API as scripts. `zapx.session()` is the tab focused *now*.
+- **Not a dry run**: every `run()` / `send()` is typed on the device.
+- One notebook at a time; a second `connect()` is refused while one is
+  connected.
+- Stopping a cell (■) makes ZAPX abandon what that call was waiting on; the
+  next cell starts clean.
+- **Turn off** in the panel ends it. It also turns itself off after 60 minutes
+  without notebook calls (setting `notebook.idle_minutes`, `0` = never) and
+  when ZAPX closes. After it is turned on again, the next call fails once with
+  "ZAPX closed the connection"; run the cell again and it reconnects.
+- The connection is local only (`127.0.0.1`), with a new random token each time
+  it is turned on, kept in `<data dir>/scripting/connection.json` (readable by
+  your user only).
+
+The example `explore.ipynb` (Tools → Script examples…) walks through it on a
+FortiGate: list tabs, `get system status`, tunnel summary, parse the selectors.
+
 ## API
 
 ```python
@@ -83,9 +129,12 @@ if "HA mode: standalone" in out:
 | Call | What it does |
 |---|---|
 | `zapx.dry_run` | `True` when started as a dry run. |
-| `zapx.session()` | The tab focused when the script started. |
+| `zapx.session()` | The focused tab (in a script, call it first to get the one focused when it started). |
 | `zapx.open(name, timeout=60)` | Opens the saved session `name` in a new tab, waits until it is connected and its output settles, returns it. |
 | `zapx.sessions(folder=None)` | Saved session names, or those in `folder` and its sub-folders. |
+| `zapx.tabs()` | The tabs open in ZAPX now. |
+| `zapx.tab(name)` | An open tab by its name (as shown on the tab). |
+| `zapx.connect(path=None)` | Notebook only: connect to the running ZAPX (see above). |
 | `s.run(command, timeout=30)` | Types `command` + Enter, returns what the device printed after the echo, up to the prompt. |
 | `s.send(text, enter=True)` | Types `text` without waiting. |
 | `s.expect(pattern, timeout=30, regex=False)` | Waits for `pattern` in new output, returns the text up to and including it. |

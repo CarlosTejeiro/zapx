@@ -17,15 +17,26 @@ type a credential from its vault straight into the session.
 With **Dry run** ticked in ZAPX, ``zapx.dry_run`` is True: nothing is sent or
 opened, ``run()``/``expect()`` return an empty string and every action is
 logged as "would …" instead.
+
+From a notebook (VS Code, JupyterLab) or a Python prompt you started yourself,
+turn on **Tools → Allow notebook connection** in ZAPX, then::
+
+    import zapx
+    zapx.connect()
+    fw = zapx.tab("fw-branch-1")             # a tab already open, or zapx.open(...)
+    print(fw.run("get vpn ipsec tunnel summary"))
 """
 
 from __future__ import annotations
 
 import json
 import os
+import random
 import socket
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 __all__ = [
@@ -33,7 +44,10 @@ __all__ = [
     "Timeout",
     "Session",
     "dry_run",
+    "connect",
     "session",
+    "tab",
+    "tabs",
     "open",
     "sessions",
     "report",
@@ -66,18 +80,118 @@ class Timeout(Error):
 _lock = threading.Lock()
 _sock: Optional[socket.socket] = None
 _reader = None
-_next_id = 0
+# Random start: replies left over from an interrupted call (or an earlier
+# connection) can never be taken for a new call's reply.
+_next_id = random.randrange(1, 2**31) * 1000
+#: How to reconnect after the connection drops (notebook mode): the arguments
+#: of the last ``connect()``, or None for a script started by ZAPX.
+_notebook: Optional[dict] = None
+
+
+def _open(port: int, token: str) -> None:
+    """Open the channel and present the token; raises Error if refused."""
+    global _sock, _reader
+    _close()
+    try:
+        sock = socket.create_connection(("127.0.0.1", int(port)), timeout=10)
+    except OSError:
+        raise Error(
+            "ZAPX isn't accepting notebooks (is it open, with Tools → Allow "
+            "notebook connection on?)"
+        ) from None
+    reader = sock.makefile("r", encoding="utf-8", newline="\n")
+    sock.sendall((json.dumps({"token": token}) + "\n").encode("utf-8"))
+    line = reader.readline()
+    hello = json.loads(line) if line.strip() else {}
+    if hello.get("hello") is not True:
+        sock.close()
+        raise Error(
+            hello.get("error")
+            or "ZAPX refused the connection (token out of date? turn the "
+            "notebook connection off and on, then connect() again)"
+        )
+    sock.settimeout(None)
+    _sock, _reader = sock, reader
+
+
+def _close() -> None:
+    global _sock, _reader
+    if _sock is not None:
+        try:
+            _sock.close()
+        except OSError:
+            pass
+    _sock = _reader = None
+
+
+def _connection_candidates(path: Optional[str]) -> List[Path]:
+    if path:
+        return [Path(path).expanduser()]
+    found = []
+    if os.environ.get("ZAPX_CONNECTION"):
+        found.append(Path(os.environ["ZAPX_CONNECTION"]).expanduser())
+    # This file is a copy ZAPX keeps in <data dir>/scripting (and /examples).
+    here = Path(__file__).resolve().parent
+    found += [here / "connection.json", here.parent / "connection.json"]
+    # ZAPX's default data folder on each system.
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    found.append(base / "app.zapx.client" / "scripting" / "connection.json")
+    return found
+
+
+def _connect_notebook() -> None:
+    args = _notebook or {}
+    port, token = args.get("port"), args.get("token")
+    if port is None or token is None:
+        tried = _connection_candidates(args.get("path"))
+        for candidate in tried:
+            if candidate.is_file():
+                info = json.loads(candidate.read_text(encoding="utf-8"))
+                port, token = info["port"], info["token"]
+                break
+        else:
+            raise Error(
+                "ZAPX isn't accepting notebooks: turn on Tools → Allow notebook "
+                "connection in ZAPX (looked for "
+                + ", ".join(str(t) for t in tried)
+                + ")"
+            )
+    _open(port, token)
 
 
 def _connect() -> None:
-    global _sock, _reader
+    if _notebook is not None:
+        _connect_notebook()
+        return
     port = os.environ.get("ZAPX_PORT")
     token = os.environ.get("ZAPX_TOKEN")
     if not port or not token:
-        raise Error("not started by ZAPX (run it from Tools → Run script…)")
-    _sock = socket.create_connection(("127.0.0.1", int(port)))
-    _reader = _sock.makefile("r", encoding="utf-8", newline="\n")
-    _sock.sendall((json.dumps({"token": token}) + "\n").encode("utf-8"))
+        raise Error(
+            "not connected to ZAPX: in a notebook call zapx.connect() first; "
+            "a script must be started from ZAPX (Tools → Run Python script…)"
+        )
+    _open(int(port), token)
+
+
+def connect(path: Optional[str] = None, port: Optional[int] = None, token: Optional[str] = None) -> None:
+    """Connect a notebook (or any Python you started yourself) to a running
+    ZAPX. Turn on **Tools → Allow notebook connection** in ZAPX first.
+
+    With no arguments the connection details are read from the file ZAPX
+    writes (found automatically); ``path`` points at that file when ZAPX keeps
+    its data somewhere else, or pass the ``port`` and ``token`` ZAPX shows.
+    If the connection drops later (ZAPX restarted, connection turned off and
+    on), the next call reconnects on its own.
+    """
+    global _notebook
+    with _lock:
+        _notebook = {"path": path, "port": port, "token": token}
+        _connect_notebook()
 
 
 def _call(method: str, **params):
@@ -87,12 +201,38 @@ def _call(method: str, **params):
         if _sock is None:
             _connect()
         _next_id += 1
-        req = {"id": _next_id, "method": method, "params": params}
-        _sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
-        line = _reader.readline()
-    if not line:
-        raise Error("ZAPX closed the connection (script stopped?)")
-    reply = json.loads(line)
+        rid = _next_id
+        req = {"id": rid, "method": method, "params": params}
+        try:
+            _sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
+            while True:
+                line = _reader.readline()
+                if not line:
+                    _close()
+                    raise Error(
+                        "ZAPX closed the connection"
+                        + (
+                            " (notebook connection turned off, or ZAPX closed) — "
+                            "run the cell again to reconnect"
+                            if _notebook is not None
+                            else ""
+                        )
+                    )
+                reply = json.loads(line)
+                if reply.get("id") == rid:
+                    break  # anything else is a late reply to a cancelled call
+        except KeyboardInterrupt:
+            # Stopped cell / Ctrl+C: ask ZAPX to stop waiting on our behalf.
+            _next_id += 1
+            cancel = {"id": _next_id, "method": "cancel", "params": {"id": rid}}
+            try:
+                _sock.sendall((json.dumps(cancel) + "\n").encode("utf-8"))
+            except (OSError, AttributeError):
+                pass
+            raise
+        except OSError as e:
+            _close()
+            raise Error(f"lost the connection to ZAPX: {e}") from None
     if reply.get("ok"):
         return reply.get("result")
     err = reply.get("error") or {}
@@ -169,8 +309,20 @@ class Session:
 
 
 def session() -> Session:
-    """The tab that was focused when the script started."""
+    """The focused tab: in a script, call it first thing to get the tab that
+    was focused when you ran it; in a notebook, the one focused now."""
     return Session(_call("session"))
+
+
+def tabs() -> List[Session]:
+    """The terminal tabs open in ZAPX right now."""
+    return [Session(t) for t in _call("tabs")]
+
+
+def tab(name: str) -> Session:
+    """An already open tab, by its name (as shown on the tab). Raises
+    :class:`Error` if no tab has that name; with several, the first."""
+    return Session(_call("tab", name=name))
 
 
 def open(name: str, timeout: float = 60) -> Session:  # noqa: A001 - mirrors "open a session"

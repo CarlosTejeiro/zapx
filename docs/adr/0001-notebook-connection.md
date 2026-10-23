@@ -1,6 +1,6 @@
 # ADR 0001 — Conexión de notebooks (Jupyter / VS Code) a ZAPX
 
-- **Estado:** Propuesta — pendiente de aprobación
+- **Estado:** Aceptada (2026-10-23) — implementada en 0.26.0
 - **Fecha:** 2026-10-23
 - **Contexto previo:** Python scripting (0.25.0), `docs/user-guide/scripting.md`
 
@@ -160,9 +160,9 @@ Capturas: las de ZAPX se sacan de la app real. Las del notebook, de
 JupyterLab (mismo `.ipynb` que en VS Code); en este entorno no hay VS Code
 para capturarlo.
 
-## 8. Decisiones pendientes
+## 8. Decisiones
 
-1. Aprobar el enfoque (notebook externo + `zapx.connect()`).
-2. Idioma de la guía: español, inglés o ambos.
-3. ¿Desconexión automática por inactividad? Propuesta: sí, 60 min,
-   configurable.
+1. Enfoque aprobado (notebook externo + `zapx.connect()`).
+2. Desconexión automática: sí, 60 min sin llamadas del notebook
+   (`notebook.idle_minutes`, `0` = nunca).
+3. Idioma de la guía para principiantes: pendiente.

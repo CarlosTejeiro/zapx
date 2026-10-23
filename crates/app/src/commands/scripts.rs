@@ -4,7 +4,10 @@
 //! - `script-request` `{run_id, req_id, method, params}` — carry out an API
 //!   call and answer with [`script_reply`];
 //! - `script-output` `{run_id, stream, line}` — a line the script printed;
-//! - `script-exit` `{run_id, code}` — the script ended (`code` null = killed).
+//! - `script-exit` `{run_id, code}` — the script ended (`code` null = killed),
+//!   or the notebook connection was turned off;
+//! - `script-status` `{run_id, status}` — notebook connection only:
+//!   `"connected"` / `"waiting"`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,6 +22,10 @@ use crate::state::AppState;
 
 /// Settings key for an explicit interpreter (empty = auto-detect).
 const PYTHON_SETTING: &str = "scripts.python";
+/// Settings key: minutes without a notebook call before the notebook
+/// connection turns itself off (`0` = never). Default [`NOTEBOOK_IDLE_DEFAULT`].
+const NOTEBOOK_IDLE_SETTING: &str = "notebook.idle_minutes";
+const NOTEBOOK_IDLE_DEFAULT: u64 = 60;
 
 struct TauriSink(AppHandle);
 
@@ -68,6 +75,15 @@ impl ScriptSink for TauriSink {
     fn exit(&self, run_id: &str, code: Option<i32>) {
         let _ = self.0.emit("script-exit", ExitEvent { run_id, code });
     }
+    fn status(&self, run_id: &str, status: &'static str) {
+        let _ = self.0.emit("script-status", StatusEvent { run_id, status });
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct StatusEvent<'a> {
+    run_id: &'a str,
+    status: &'a str,
 }
 
 #[derive(Serialize)]
@@ -113,6 +129,50 @@ pub async fn script_start(
         run_id: run.id.clone(),
         dry_run: run.dry_run,
         python: python.join(" "),
+    })
+}
+
+#[derive(Serialize)]
+pub struct NotebookStarted {
+    pub run_id: String,
+    /// The file `zapx.connect()` reads (port + token).
+    pub connection_file: String,
+    /// Folder holding `zapx.py`, for the notebook's `sys.path`.
+    pub module_dir: String,
+    /// Turns itself off after this many idle minutes (`0` = never).
+    pub idle_minutes: u64,
+}
+
+/// Turn on the notebook connection (see `scripting::start_notebook`). The
+/// `zapx` module and `connection.json` live in `<data dir>/scripting/`.
+#[tauri::command]
+pub async fn notebook_enable(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<NotebookStarted, AppError> {
+    let idle_minutes = state
+        .db
+        .get_setting(NOTEBOOK_IDLE_SETTING)
+        .map_err(internal)?
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(NOTEBOOK_IDLE_DEFAULT);
+    let module_dir =
+        scripting::install_module(&state.data_dir.dir.join("scripting")).map_err(internal)?;
+    let connection_file = module_dir.join("connection.json");
+    let idle = (idle_minutes > 0).then(|| std::time::Duration::from_secs(idle_minutes * 60));
+    let run = scripting::start_notebook(
+        &connection_file,
+        idle,
+        Arc::new(TauriSink(app)),
+        state.scripts.clone(),
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    Ok(NotebookStarted {
+        run_id: run.id.clone(),
+        connection_file: connection_file.to_string_lossy().into_owned(),
+        module_dir: module_dir.to_string_lossy().into_owned(),
+        idle_minutes,
     })
 }
 
@@ -164,7 +224,8 @@ pub async fn script_examples_dir(
     Ok(dir.to_string_lossy().into_owned())
 }
 
-/// Kill a running script. No-op when it already ended.
+/// Kill a running script, or turn the notebook connection off. No-op when it
+/// already ended.
 #[tauri::command]
 pub async fn script_stop(state: State<'_, AppState>, run_id: String) -> Result<(), AppError> {
     let run = state.scripts.lock().unwrap().get(&run_id).cloned();

@@ -20,7 +20,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
@@ -31,6 +32,9 @@ pub const ZAPX_MODULE: &str = include_str!("zapx.py");
 /// (a script that never imports `zapx` still runs; it just can't call it).
 const ACCEPT_WINDOW: Duration = Duration::from_secs(3600);
 
+/// Sent to a client once its token is accepted (it waits for this line).
+const HELLO_OK: &str = "{\"hello\":true}\n";
+
 /// Where the run's events go. Implemented by the Tauri layer (events to the
 /// frontend) and by tests (answers in-process).
 pub trait ScriptSink: Send + Sync + 'static {
@@ -39,7 +43,10 @@ pub trait ScriptSink: Send + Sync + 'static {
     /// One line the script wrote to stdout or stderr.
     fn output(&self, run_id: &str, stream: &'static str, line: String);
     /// The script finished: exit code, or `None` when killed / not started.
+    /// For a notebook connection: it was turned off.
     fn exit(&self, run_id: &str, code: Option<i32>);
+    /// Notebook connection only: `"connected"` or `"waiting"` (for a client).
+    fn status(&self, _run_id: &str, _status: &'static str) {}
 }
 
 /// A running script. Held in the app state so `script_reply` / `script_stop`
@@ -114,6 +121,7 @@ pub fn find_python(configured: Option<&str>) -> Result<Vec<String>, String> {
 pub const EXAMPLES: &[(&str, &str)] = &[
     ("hello.py", include_str!("examples/hello.py")),
     ("sase_reset.py", include_str!("examples/sase_reset.py")),
+    ("explore.ipynb", include_str!("examples/explore.ipynb")),
 ];
 
 /// Write the example scripts into `dir`, keeping any the user already edited
@@ -265,6 +273,40 @@ impl LinesOf {
     }
 }
 
+/// Read the client's opening line and accept it only if it carries `token`
+/// (then confirm with [`HELLO_OK`]). Anything else is dropped.
+async fn handshake(stream: TcpStream, token: &str) -> Option<(Reader, OwnedWriteHalf)> {
+    let (r, mut w) = stream.into_split();
+    let mut reader = BufReader::new(r);
+    let mut first = String::new();
+    let hello = tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut first)).await;
+    let ok = matches!(hello, Ok(Ok(n)) if n > 0)
+        && serde_json::from_str::<Value>(&first)
+            .ok()
+            .and_then(|v| v.get("token").and_then(|t| t.as_str()).map(|t| t == token))
+            .unwrap_or(false);
+    if !ok || w.write_all(HELLO_OK.as_bytes()).await.is_err() {
+        return None;
+    }
+    Some((reader, w))
+}
+
+type Reader = BufReader<OwnedReadHalf>;
+
+/// Hand one request line from the client to the sink (malformed lines are
+/// ignored).
+fn forward_request(line: &str, run_id: &str, sink: &Arc<dyn ScriptSink>) {
+    let Ok(req) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    let Some(req_id) = req.get("id").and_then(Value::as_u64) else {
+        return;
+    };
+    let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+    let params = req.get("params").cloned().unwrap_or(Value::Null);
+    sink.request(run_id, req_id, method, params);
+}
+
 async fn serve(
     listener: TcpListener,
     token: String,
@@ -273,27 +315,16 @@ async fn serve(
     mut replies: mpsc::UnboundedReceiver<String>,
 ) {
     // Accept until a client presents the token (anything else is dropped).
-    let stream = loop {
+    let (mut reader, mut writer) = loop {
         let Ok(Ok((stream, _))) = tokio::time::timeout(ACCEPT_WINDOW, listener.accept()).await
         else {
             return;
         };
-        let (r, w) = stream.into_split();
-        let mut reader = BufReader::new(r);
-        let mut first = String::new();
-        let hello =
-            tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut first)).await;
-        let ok = matches!(hello, Ok(Ok(n)) if n > 0)
-            && serde_json::from_str::<Value>(&first)
-                .ok()
-                .and_then(|v| v.get("token").and_then(|t| t.as_str()).map(|t| t == token))
-                .unwrap_or(false);
-        if ok {
-            break (reader, w);
+        if let Some(client) = handshake(stream, &token).await {
+            break client;
         }
     };
     drop(listener); // one client per run
-    let (mut reader, mut writer) = stream;
 
     // Replies from the frontend → script.
     let writer_task = tokio::spawn(async move {
@@ -314,19 +345,142 @@ async fn serve(
         line.clear();
         match reader.read_line(&mut line).await {
             Ok(0) | Err(_) => break,
-            Ok(_) => {}
+            Ok(_) => forward_request(&line, &run_id, &sink),
         }
-        let Ok(req) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let Some(req_id) = req.get("id").and_then(Value::as_u64) else {
-            continue;
-        };
-        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        let params = req.get("params").cloned().unwrap_or(Value::Null);
-        sink.request(&run_id, req_id, method, params);
     }
     writer_task.abort();
+}
+
+// ── notebook connection ─────────────────────────────────────────────────────
+
+/// Where a notebook finds the connection (`{"port": …, "token": …}`), written
+/// readable by the owner only.
+pub fn write_connection_file(path: &Path, port: u16, token: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::remove_file(path);
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    f.write_all(
+        serde_json::json!({ "port": port, "token": token })
+            .to_string()
+            .as_bytes(),
+    )
+}
+
+/// Turn on the notebook connection: listen on 127.0.0.1 with a new token,
+/// write `connection_file`, and serve one client at a time (a second one is
+/// refused while the first is connected) until [`ScriptRun::stop`] or `idle`
+/// passes without any request. Then the file is removed and the sink gets
+/// `exit(None)`. The returned run answers requests like a script's.
+pub async fn start_notebook(
+    connection_file: &Path,
+    idle: Option<Duration>,
+    sink: Arc<dyn ScriptSink>,
+    runs: Runs,
+) -> Result<Arc<ScriptRun>, String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .map_err(|e| format!("could not open the notebook channel: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let token = uuid::Uuid::new_v4().to_string();
+    let id = uuid::Uuid::new_v4().to_string();
+    write_connection_file(connection_file, port, &token)
+        .map_err(|e| format!("could not write {}: {e}", connection_file.display()))?;
+
+    let (reply_tx, mut replies) = mpsc::unbounded_channel::<String>();
+    let (kill_tx, mut kill_rx) = oneshot::channel::<()>();
+    let run = Arc::new(ScriptRun {
+        id: id.clone(),
+        dry_run: false,
+        replies: reply_tx,
+        kill: Mutex::new(Some(kill_tx)),
+    });
+    runs.lock().unwrap().insert(id.clone(), run.clone());
+
+    let connection_file = connection_file.to_path_buf();
+    tokio::spawn(async move {
+        let mut reader: Option<Reader> = None;
+        let mut writer: Option<OwnedWriteHalf> = None;
+        let mut line = String::new();
+        let mut last_activity = tokio::time::Instant::now();
+        loop {
+            let idle_deadline = idle.map(|d| last_activity + d);
+            tokio::select! {
+                _ = &mut kill_rx => break,
+                _ = async {
+                    match idle_deadline {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    sink.output(&id, "stderr", "Notebook connection turned off after inactivity.".into());
+                    break;
+                }
+                accepted = listener.accept() => {
+                    let Ok((stream, _)) = accepted else { continue };
+                    if writer.is_some() {
+                        // One notebook at a time: tell the newcomer why.
+                        let mut stream = stream;
+                        let refusal = serde_json::json!({
+                            "hello": false,
+                            "error": "another notebook is already connected to ZAPX",
+                        });
+                        let _ = stream.write_all(format!("{refusal}\n").as_bytes()).await;
+                        continue;
+                    }
+                    if let Some((r, w)) = handshake(stream, &token).await {
+                        reader = Some(r);
+                        writer = Some(w);
+                        last_activity = tokio::time::Instant::now();
+                        sink.status(&id, "connected");
+                    }
+                }
+                read = async {
+                    match reader.as_mut() {
+                        Some(r) => {
+                            line.clear();
+                            r.read_line(&mut line).await
+                        }
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    match read {
+                        Ok(0) | Err(_) => {
+                            reader = None;
+                            writer = None;
+                            sink.status(&id, "waiting");
+                        }
+                        Ok(_) => {
+                            last_activity = tokio::time::Instant::now();
+                            forward_request(&line, &id, &sink);
+                        }
+                    }
+                }
+                Some(reply) = replies.recv() => {
+                    if let Some(w) = writer.as_mut() {
+                        if w.write_all(format!("{reply}\n").as_bytes()).await.is_err() {
+                            reader = None;
+                            writer = None;
+                            sink.status(&id, "waiting");
+                        }
+                    }
+                }
+            }
+        }
+        let _ = std::fs::remove_file(&connection_file);
+        runs.lock().unwrap().remove(&id);
+        sink.exit(&id, None);
+    });
+    Ok(run)
 }
 
 #[cfg(test)]
@@ -340,6 +494,8 @@ mod tests {
         runs: Runs,
         log: StdMutex<Vec<String>>,
         done: StdMutex<Option<oneshot::Sender<Option<i32>>>>,
+        /// A `hold` request left unanswered until `cancel`.
+        held: StdMutex<Option<u64>>,
     }
 
     impl ScriptSink for FakeHost {
@@ -349,6 +505,16 @@ mod tests {
                 .unwrap()
                 .push(format!("req {method} {params}"));
             let run = self.runs.lock().unwrap().get(run_id).cloned().unwrap();
+            if method == "hold" {
+                *self.held.lock().unwrap() = Some(req_id);
+                return;
+            }
+            if method == "cancel" {
+                // The held call answers late, after the script gave up on it.
+                if let Some(held) = self.held.lock().unwrap().take() {
+                    run.reply(held, Ok(Value::String("late".into())));
+                }
+            }
             let outcome = match method {
                 "session" => {
                     Ok(serde_json::json!({"id": "s1", "name": "fw1", "platform": "fortigate"}))
@@ -367,7 +533,13 @@ mod tests {
                     Ok(serde_json::json!({"id": "s2", "name": params["name"], "platform": null}))
                 }
                 "confirm" => Ok(Value::Bool(true)),
-                "report" | "send" | "close" | "note" => Ok(Value::Null),
+                "tab" => Ok(
+                    serde_json::json!({"id": "s1", "name": params["name"], "platform": "fortigate"}),
+                ),
+                "tabs" => {
+                    Ok(serde_json::json!([{"id": "s1", "name": "fw1", "platform": "fortigate"}]))
+                }
+                "report" | "send" | "close" | "note" | "cancel" => Ok(Value::Null),
                 _ => Err(
                     serde_json::json!({"kind": "error", "message": format!("unknown {method}")}),
                 ),
@@ -382,6 +554,18 @@ mod tests {
                 let _ = tx.send(code);
             }
         }
+        fn status(&self, _run_id: &str, status: &'static str) {
+            self.log.lock().unwrap().push(format!("status {status}"));
+        }
+    }
+
+    fn fake_host(runs: &Runs, done: Option<oneshot::Sender<Option<i32>>>) -> Arc<FakeHost> {
+        Arc::new(FakeHost {
+            runs: runs.clone(),
+            log: StdMutex::new(Vec::new()),
+            done: StdMutex::new(done),
+            held: StdMutex::new(None),
+        })
     }
 
     fn python_or_skip() -> Option<Vec<String>> {
@@ -401,11 +585,7 @@ mod tests {
         std::fs::write(&script, body).unwrap();
         let runs: Runs = Arc::default();
         let (tx, rx) = oneshot::channel();
-        let host = Arc::new(FakeHost {
-            runs: runs.clone(),
-            log: StdMutex::new(Vec::new()),
-            done: StdMutex::new(Some(tx)),
-        });
+        let host = fake_host(&runs, Some(tx));
         let python = python_or_skip().unwrap();
         start(&python, &script, &module_dir, dry_run, host.clone(), runs)
             .await
@@ -556,7 +736,7 @@ print(zapx.session().name)
         if python_or_skip().is_none() {
             return;
         }
-        for (name, content) in EXAMPLES {
+        for (name, content) in EXAMPLES.iter().filter(|(n, _)| n.ends_with(".py")) {
             // The fake host doesn't know `sessions`/`open`/`confirm`/`close`;
             // give the SASE example an explicit device and stub those calls.
             let body = content.replace("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]");
@@ -576,11 +756,7 @@ print(zapx.session().name)
         std::fs::write(&script, "import time\ntime.sleep(60)\n").unwrap();
         let runs: Runs = Arc::default();
         let (tx, rx) = oneshot::channel();
-        let host = Arc::new(FakeHost {
-            runs: runs.clone(),
-            log: StdMutex::new(Vec::new()),
-            done: StdMutex::new(Some(tx)),
-        });
+        let host = fake_host(&runs, Some(tx));
         let run = start(&python, &script, &module_dir, false, host, runs.clone())
             .await
             .unwrap();
@@ -593,5 +769,233 @@ print(zapx.session().name)
         assert_eq!(code, None);
         assert!(runs.lock().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // ── notebook connection ─────────────────────────────────────────────────
+
+    /// Run `body` as a plain Python process (like a notebook kernel would be:
+    /// not started by ZAPX) with the module on its path. Returns stdout.
+    async fn run_outside(python: &[String], module_dir: &Path, body: &str) -> String {
+        let out = Command::new(&python[0])
+            .args(&python[1..])
+            .arg("-c")
+            .arg(body)
+            .env("PYTHONPATH", module_dir)
+            .env_remove("ZAPX_PORT")
+            .env_remove("ZAPX_TOKEN")
+            .output()
+            .await
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.trim().is_empty(), "stderr: {stderr}");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    struct Notebook {
+        dir: PathBuf,
+        file: PathBuf,
+        module_dir: PathBuf,
+        runs: Runs,
+        host: Arc<FakeHost>,
+        run: Arc<ScriptRun>,
+        exited: oneshot::Receiver<Option<i32>>,
+    }
+
+    async fn notebook(idle: Option<Duration>) -> Notebook {
+        let dir = std::env::temp_dir().join(format!("zapx-nb-test-{}", uuid::Uuid::new_v4()));
+        let module_dir = install_module(&dir.join("lib")).unwrap();
+        let file = dir.join("data").join("connection.json");
+        let runs: Runs = Arc::default();
+        let (tx, exited) = oneshot::channel();
+        let host = fake_host(&runs, Some(tx));
+        let run = start_notebook(&file, idle, host.clone(), runs.clone())
+            .await
+            .unwrap();
+        Notebook {
+            dir,
+            file,
+            module_dir,
+            runs,
+            host,
+            run,
+            exited,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_notebook_connects_through_the_file_and_can_reconnect() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let nb = notebook(None).await;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&nb.file).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "connection file must be owner-only");
+        }
+        let body = format!(
+            "import zapx\nzapx.connect(path={:?})\nprint(zapx.session().name, [t.name for t in zapx.tabs()])\n",
+            nb.file.to_string_lossy()
+        );
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert_eq!(out.trim(), "fw1 ['fw1']");
+        // The first kernel went away; a second one connects fine.
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert_eq!(out.trim(), "fw1 ['fw1']");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let log = nb.host.log.lock().unwrap().clone();
+        let statuses: Vec<_> = log.iter().filter(|l| l.starts_with("status")).collect();
+        assert_eq!(
+            statuses,
+            [
+                "status connected",
+                "status waiting",
+                "status connected",
+                "status waiting"
+            ],
+            "{log:#?}"
+        );
+        nb.run.stop();
+        let code = tokio::time::timeout(Duration::from_secs(5), nb.exited)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(code, None);
+        assert!(!nb.file.exists(), "turning it off removes the file");
+        assert!(nb.runs.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[tokio::test]
+    async fn a_second_notebook_is_refused_while_one_is_connected() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let nb = notebook(None).await;
+        let body = format!(
+            r#"import zapx
+zapx.connect(path={file:?})
+zapx.session()
+import zapx as _z, importlib.util, sys
+spec = importlib.util.spec_from_file_location("zapx2", _z.__file__)
+other = importlib.util.module_from_spec(spec); spec.loader.exec_module(other)
+try:
+    other.connect(path={file:?})
+    print("second accepted")
+except other.Error as e:
+    print("refused:", e)
+print(zapx.session().name)
+"#,
+            file = nb.file.to_string_lossy()
+        );
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert!(
+            out.contains("refused: another notebook is already connected"),
+            "{out}"
+        );
+        assert!(
+            out.trim_end().ends_with("fw1"),
+            "first one still works: {out}"
+        );
+        nb.run.stop();
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[tokio::test]
+    async fn a_wrong_token_is_refused_with_a_message() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let nb = notebook(None).await;
+        let port: u16 = serde_json::from_str::<Value>(&std::fs::read_to_string(&nb.file).unwrap())
+            .unwrap()["port"]
+            .as_u64()
+            .unwrap() as u16;
+        let body = format!(
+            "import zapx\ntry:\n    zapx.connect(port={port}, token='nope')\nexcept zapx.Error as e:\n    print('refused:', e)\n"
+        );
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert!(
+            out.starts_with("refused: ZAPX refused the connection"),
+            "{out}"
+        );
+        nb.run.stop();
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_interrupted_call_is_cancelled_and_its_late_reply_ignored() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let nb = notebook(None).await;
+        // A stopped cell: SIGINT while waiting on a call ZAPX hasn't answered.
+        let body = format!(
+            r#"import os, signal, threading, zapx
+zapx.connect(path={file:?})
+threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
+try:
+    zapx._call("hold")
+except KeyboardInterrupt:
+    print("interrupted")
+print(zapx.session().name)
+"#,
+            file = nb.file.to_string_lossy()
+        );
+        let out = run_outside(&python, &nb.module_dir, &body).await;
+        assert_eq!(
+            out.trim(),
+            "interrupted\nfw1",
+            "late reply must not leak: {out}"
+        );
+        let log = nb.host.log.lock().unwrap().clone();
+        assert!(log.iter().any(|l| l.starts_with("req cancel")), "{log:#?}");
+        nb.run.stop();
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[tokio::test]
+    async fn the_notebook_connection_turns_itself_off_when_idle() {
+        let nb = notebook(Some(Duration::from_millis(300))).await;
+        let code = tokio::time::timeout(Duration::from_secs(5), nb.exited)
+            .await
+            .expect("turned off")
+            .unwrap();
+        assert_eq!(code, None);
+        assert!(!nb.file.exists());
+        let _ = std::fs::remove_dir_all(nb.dir);
+    }
+
+    #[tokio::test]
+    async fn the_example_notebook_runs_cell_by_cell() {
+        let Some(python) = python_or_skip() else {
+            return;
+        };
+        let (_, nb_json) = EXAMPLES
+            .iter()
+            .find(|(n, _)| *n == "explore.ipynb")
+            .unwrap();
+        let nb: Value = serde_json::from_str(nb_json).unwrap();
+        let conn = notebook(None).await;
+        let mut body = String::new();
+        for cell in nb["cells"].as_array().unwrap() {
+            if cell["cell_type"] != "code" {
+                continue;
+            }
+            for line in cell["source"].as_array().unwrap() {
+                body.push_str(line.as_str().unwrap());
+            }
+            body.push('\n');
+        }
+        let body = body.replace(
+            "zapx.connect()",
+            &format!("zapx.connect(path={:?})", conn.file.to_string_lossy()),
+        );
+        let out = run_outside(&python, &conn.module_dir, &body).await;
+        assert!(out.contains("down:    none"), "{out}");
+        conn.run.stop();
+        let _ = std::fs::remove_dir_all(conn.dir);
     }
 }
