@@ -26,13 +26,14 @@ SFTP, port forwarding, split panes and multi-host broadcast.
 14. [Security model](#14-security-model)
 15. [Keyboard shortcuts](#15-keyboard-shortcuts)
 
+New to ZAPX and want to automate devices? Start with the step-by-step
+[automation guide](automation/README.md) (saved sessions, vault, Python scripts,
+notebooks).
+
 ---
 
 ## 1. The workspace
 
-<!-- CAPTURE: images/workspace.png — full window: sidebar on the left (SESSIONS +
-MACROS zones), the tab strip on top, a connected terminal card, and the bottom
-snippet bar. Use the v0.20 UI. -->
 ![ZAPX workspace](images/workspace.png)
 
 - **Left sidebar** — your saved **Sessions** (in folders) and your **Macros**
@@ -51,9 +52,6 @@ snippet bar. Use the v0.20 UI. -->
 
 ## 2. Sessions
 
-<!-- CAPTURE: images/new-session.png — the New/Edit Session dialog showing
-host/port/username, the auth method selector, and the "Use a saved credential
-(vault)" picker. -->
 ![New session dialog](images/new-session.png)
 
 - **New saved session** (`Ctrl+N`): pick a protocol (SSH / Telnet / Serial /
@@ -94,8 +92,6 @@ Reusable named credentials, stored securely and referenced by name — so a
 password lives in exactly one place and never appears in a macro, an export, or
 a log.
 
-<!-- CAPTURE: images/vault-dialog.png — the Vault manager dialog listing entries,
-with the add/edit form (Name, Username, Password). -->
 ![Credential vault](images/vault-dialog.png)
 
 - **An entry has a Name (label), a Username, and a Password.** The **Name** is
@@ -137,8 +133,9 @@ new +). -->
 - Rows behave like sessions: hover for **clone / export / edit**; **drag** to
   reorder within a folder or drop onto a folder to move it. Organise into
   folders.
-- Header icons: **export all** (arrow up), **import JSON** (arrow down), **import
-  from MobaXterm**, **new** (+).
+- Header icons: **new** (+) is always shown; hover the MACROS header for
+  **export all** (arrow up), **import JSON** (arrow down) and **import from
+  MobaXterm**.
 
 ### Editing steps
 

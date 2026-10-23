@@ -1,5 +1,8 @@
 # Python scripting
 
+> First time? The [automation guide](automation/README.md) walks through it
+> step by step, with screenshots. This page is the reference.
+
 Macros cover fixed expect / send sequences. When a task needs logic — read a
 command's output, decide, loop over devices, wait and re-check — write it as a
 Python script and let ZAPX run it.
