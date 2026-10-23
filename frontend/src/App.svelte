@@ -36,6 +36,9 @@
   import SettingsModal from '$lib/settings/SettingsModal.svelte'
   import KeyboardInteractiveDialog from '$lib/terminal/KeyboardInteractiveDialog.svelte'
   import SnippetsDialog from '$lib/sessions/SnippetsDialog.svelte'
+  import ScriptPanel from '$lib/scripting/ScriptPanel.svelte'
+  import ScriptStartDialog from '$lib/scripting/ScriptStartDialog.svelte'
+  import { initScriptHost, scriptRun, startScript } from '$lib/scripting/scriptHost.svelte'
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
   import type { PaletteItem } from '$lib/palette/CommandPalette.svelte'
   import Toasts from '$lib/ui/Toasts.svelte'
@@ -90,6 +93,7 @@
     setSnippetSteps,
     setSnippetFolder,
     setSnippetShortcut,
+    scriptExamplesDir,
     setSnippetPositions,
     exportMacros,
     importMacros,
@@ -673,7 +677,7 @@
 
   // ── tab management ────────────────────────────────────────────────────────────
 
-  function openSavedSessionTab(s: SavedSession) {
+  function openSavedSessionTab(s: SavedSession): number {
     // If the focused pane is an empty split placeholder, open the session INTO
     // it (filling the pane the user just split) instead of a new tab.
     const activeT = tabs.find((t) => t.id === activeTabId)
@@ -687,7 +691,7 @@
         target.telnet = undefined
         target.empty = false
         activeT.statuses.set(target.id, 'connecting')
-        return
+        return target.id
       }
     }
     const pane = mkPane(s.name, { savedSession: s, color: pickColor(s.id) } as Partial<PaneData>)
@@ -696,6 +700,77 @@
     tabs = [...tabs, tab]
     activeTabId = tab.id
     focusedPaneId = pane.id
+    return pane.id
+  }
+
+  // ── Python scripts ──────────────────────────────────────────────────────────
+  /// Script chosen in the file dialog, awaiting the Run / Dry run confirmation.
+  let scriptPending = $state<string | null>(null)
+  /// Saved-session id → stored platform, filled lazily for the script host
+  /// (which needs a synchronous answer; live detection also feeds it).
+  const savedPlatformCache = new Map<number, string | null>()
+
+  async function chooseScript() {
+    // Start in the examples folder (created on first use) so there is always
+    // something ready to dry-run and edit.
+    const examples = await scriptExamplesDir(false).catch(() => undefined)
+    const picked = await openFileDialog({
+      multiple: false,
+      directory: false,
+      defaultPath: examples,
+      filters: [{ name: 'Python script', extensions: ['py'] }],
+    })
+    if (typeof picked === 'string') scriptPending = picked
+  }
+
+  /// Pane id + tab of the pane whose live session is `sessionId`.
+  function paneOfSession(sessionId: string): { paneId: number; tab: AppTab } | null {
+    for (const [paneId, sid] of paneToSession) {
+      if (sid !== sessionId) continue
+      const tab = tabs.find((t) => tabPanes(t).some((p) => p.id === paneId))
+      if (tab) return { paneId, tab }
+    }
+    return null
+  }
+
+  function describeSession(sessionId: string) {
+    const found = paneOfSession(sessionId)
+    if (!found) return null
+    const pane = tabPanes(found.tab).find((p) => p.id === found.paneId)
+    if (!pane) return null
+    let platform: string | null = null
+    const saved = pane.savedSession
+    if (saved) {
+      if (savedPlatformCache.has(saved.id)) {
+        platform = savedPlatformCache.get(saved.id) ?? null
+      } else {
+        savedPlatformCache.set(saved.id, null)
+        getSessionPlatform(saved.id)
+          .then((p) => savedPlatformCache.set(saved.id, p))
+          .catch(() => {})
+      }
+    } else if (!pane.ssh && !pane.telnet) {
+      platform = 'linux' // local shell tab
+    }
+    return { id: sessionId, name: pane.label, platform }
+  }
+
+  /// Saved sessions under `folder` (by name, including sub-folders), or all.
+  function savedSessionNames(folder: string | null): string[] {
+    if (!folder) return sessions.map((s) => s.name)
+    const roots = folders.filter((f) => f.name === folder).map((f) => f.id)
+    const inTree = new Set<number>(roots)
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const f of folders) {
+        if (f.parent_id != null && inTree.has(f.parent_id) && !inTree.has(f.id)) {
+          inTree.add(f.id)
+          grew = true
+        }
+      }
+    }
+    return sessions.filter((s) => s.folder_id != null && inTree.has(s.folder_id)).map((s) => s.name)
   }
 
   function addLocalTab() {
@@ -732,6 +807,12 @@
     tabs = tabs.filter((t) => t.id !== id)
     if (activeTabId === id) {
       activeTabId = (tabs[idx] ?? tabs[idx - 1])?.id ?? tabs[0]!.id
+    }
+    // The focused pane may have gone with the tab; without this the status bar
+    // and "focused session" lookups kept pointing at the closed pane.
+    if (!tabs.some((t) => tabPanes(t).some((p) => p.id === focusedPaneId))) {
+      const active = tabs.find((t) => t.id === activeTabId)
+      if (active) focusedPaneId = firstPaneId(active)
     }
   }
 
@@ -1230,6 +1311,22 @@
       run: () => (showQuickConnect = true),
     },
     {
+      id: 'act-run-script',
+      label: 'Run Python script…',
+      icon: 'term' as const,
+      section: 'Actions' as const,
+      run: chooseScript,
+    },
+    {
+      id: 'act-script-examples',
+      label: 'Open script examples folder',
+      icon: 'folder' as const,
+      section: 'Actions' as const,
+      run: () => {
+        scriptExamplesDir(true).catch(() => {})
+      },
+    },
+    {
       id: 'act-snippets',
       label: 'Open Snippets',
       icon: 'book' as const,
@@ -1527,7 +1624,38 @@
       unlistenSync = fn
     })
 
+    // Python scripts: the host carries out each `zapx` call on our tabs.
+    let teardownScripts: (() => void) | null = null
+    initScriptHost({
+      focusedSession: () => {
+        const sid = paneToSession.get(focusedPaneId)
+        return sid ? describeSession(sid) : null
+      },
+      describe: describeSession,
+      savedNames: savedSessionNames,
+      openSaved: (name) => {
+        const s = sessions.find((x) => x.name === name)
+        if (!s) throw new Error(`no saved session called "${name}"`)
+        return openSavedSessionTab(s)
+      },
+      paneStatus: (paneId) => {
+        const tab = tabs.find((t) => tabPanes(t).some((p) => p.id === paneId))
+        if (!tab) return 'closed'
+        return tab.statuses.get(paneId) ?? 'connecting'
+      },
+      closeSession: (sessionId) => {
+        const found = paneOfSession(sessionId)
+        if (!found) return
+        activeTabId = found.tab.id
+        handleClosePane(found.paneId)
+      },
+      confirm: (message) => ask(message, { title: 'Script', kind: 'warning' }),
+    }).then((fn) => {
+      teardownScripts = fn
+    })
+
     return () => {
+      if (teardownScripts) teardownScripts()
       document.removeEventListener('keydown', onKeydown)
       if (unlistenStats) unlistenStats()
       if (unlistenPlatform) unlistenPlatform()
@@ -1558,6 +1686,8 @@
     onQuickConnect={() => (showQuickConnect = true)}
     onSettings={() => (showSettings = true)}
     onSnippets={() => (showSnippets = true)}
+    onRunScript={chooseScript}
+    onScriptExamples={() => scriptExamplesDir(true).catch(() => {})}
     onCheckUpdates={handleCheckUpdates}
     onSetTheme={(k) => applyTheme(k)}
     onAbout={() => (showAbout = true)}
@@ -1831,6 +1961,28 @@
 
 {#if showSnippets}
   <SnippetsDialog onClose={() => (showSnippets = false)} />
+{/if}
+
+{#if scriptPending}
+  {@const path = scriptPending}
+  <ScriptStartDialog
+    {path}
+    target={(() => {
+      const sid = paneToSession.get(focusedPaneId)
+      return sid ? (describeSession(sid)?.name ?? null) : null
+    })()}
+    onRun={(dryRun) => {
+      // Read the path BEFORE clearing scriptPending: `path` is derived from it.
+      const chosen = path
+      scriptPending = null
+      void startScript(chosen, dryRun)
+    }}
+    onCancel={() => (scriptPending = null)}
+  />
+{/if}
+
+{#if scriptRun.visible}
+  <ScriptPanel />
 {/if}
 
 {#if showGroups}

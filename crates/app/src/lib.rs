@@ -6,6 +6,7 @@ mod hint_watcher;
 mod importers;
 mod login_script;
 mod menu;
+mod scripting;
 mod state;
 mod triggers;
 
@@ -204,6 +205,7 @@ pub fn run() {
                 vault_seed,
                 sftp_cancellations: Arc::new(Mutex::new(HashMap::new())),
                 hint_watcher,
+                scripts: Default::default(),
             });
 
             // Sync folder: periodic push of local changes + notification of
@@ -247,6 +249,11 @@ pub fn run() {
             commands::snippets::set_snippet_steps,
             commands::snippets::set_snippet_folder,
             commands::snippets::set_snippet_shortcut,
+            commands::scripts::script_start,
+            commands::scripts::script_reply,
+            commands::scripts::script_stop,
+            commands::scripts::script_python_info,
+            commands::scripts::script_examples_dir,
             commands::snippets::set_snippet_positions,
             commands::snippets::export_macros,
             commands::snippets::import_macros,

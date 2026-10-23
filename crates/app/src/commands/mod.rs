@@ -7,6 +7,7 @@ pub mod highlight;
 pub mod hints;
 pub mod logging;
 pub mod login_scripts;
+pub mod scripts;
 pub mod sessions;
 pub mod settings;
 pub mod sftp;

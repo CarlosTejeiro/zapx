@@ -112,4 +112,6 @@ pub struct AppState {
     /// stops the worker thread, so we just need to keep it alive for the
     /// duration of the process. `None` if the watcher could not start.
     pub hint_watcher: Option<crate::hint_watcher::WatcherGuard>,
+    /// Running Python scripts by run id (see `crate::scripting`).
+    pub scripts: crate::scripting::Runs,
 }
