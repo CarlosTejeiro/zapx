@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.2] - 2026-10-23
+
+### Fixed
+- **Re-running a notebook's `zapx.connect()` cell was refused** with
+  "another notebook is already connected": the module closed its old
+  connection and opened the new one before ZAPX noticed the close. Replacing
+  its own connection now retries that refusal for a moment.
+
+### Changed
+- Docs: example devices in the automation guide, the example notebook and the
+  `zapx` module's docstrings are named by model (`FGT-60F-01`, `FGT-60F-02`,
+  `FGT-40F-01`), with a note that all names, addresses (RFC 5737
+  documentation ranges) and passwords are made up; screenshots retaken.
+
 ## [0.26.1] - 2026-10-23
 
 ### Added

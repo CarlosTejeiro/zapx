@@ -118,7 +118,7 @@ CLOSE_TABS = True         # close each device's tab when done
 ```
 
 - Put your FortiGates in a folder and set `FOLDER`, **or** list them by name:
-  `DEVICES = ["fw-branch-1", "fw-branch-7"]`.
+  `DEVICES = ["FGT-60F-01", "FGT-60F-07"]`.
 - Set `TUNNELS` to your tunnel names.
 
 ### 1) Dry run first — always
@@ -139,19 +139,19 @@ Click **Run for real**. The script asks before touching anything:
 ![Confirmation before sending](../images/script-sase-confirm.png)
 
 Answer **Yes**. Each device opens in a tab and you watch the commands go out —
-here on `fw-branch-1`, where `SASE_INET` was down (`selectors 1/0`):
+here on `FGT-60F-01`, where `SASE_INET` was down (`selectors 1/0`):
 
-![The script working on fw-branch-1](../images/script-sase-running.png)
+![The script working on FGT-60F-01](../images/script-sase-running.png)
 
 The panel's **Stop** button ends the script at any time.
 
 ### 3) Read the result
 
-![Result: fw-branch-1 reset, fw-branch-2 left alone](../images/script-sase-result.png)
+![Result: FGT-60F-01 reset, FGT-60F-02 left alone](../images/script-sase-result.png)
 
-- `fw-branch-1` — **OK**: the down tunnel was reset and both tunnels came back
+- `FGT-60F-01` — **OK**: the down tunnel was reset and both tunnels came back
   (`(1, 1)` = 1 selector, 1 up).
-- `fw-branch-2` — **OK — already up, nothing sent**: both tunnels were up, so
+- `FGT-60F-02` — **OK — already up, nothing sent**: both tunnels were up, so
   the script didn't touch it.
 
 ## Writing your own

@@ -58,7 +58,7 @@ Click **+** next to **SESSIONS** (or press `Ctrl+N`):
 | Field | Example | Notes |
 |---|---|---|
 | Protocol | SSH | Telnet, serial and local shell are also available. |
-| Name | `fw-branch-1` | How it appears in the sidebar, on the tab — and how scripts find it. |
+| Name | `FGT-60F-01` | How it appears in the sidebar, on the tab — and how scripts find it. |
 | Host / Port | `192.0.2.11` / `22` | |
 | Use a saved credential (vault) | `fortigate-admin (admin)` | Fills the user name; the password stays in the vault. |
 | Folder | `SASE` | Create folders with the folder icon next to **SESSIONS**. Scripts can work on a whole folder. |

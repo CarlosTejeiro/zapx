@@ -23,7 +23,7 @@ turn on **Tools → Allow notebook connection** in ZAPX, then::
 
     import zapx
     zapx.connect()
-    fw = zapx.tab("fw-branch-1")             # a tab already open, or zapx.open(...)
+    fw = zapx.tab("FGT-60F-01")             # a tab already open, or zapx.open(...)
     print(fw.run("get vpn ipsec tunnel summary"))
 """
 
@@ -91,25 +91,35 @@ _notebook: Optional[dict] = None
 def _open(port: int, token: str) -> None:
     """Open the channel and present the token; raises Error if refused."""
     global _sock, _reader
+    # Replacing our own connection (a notebook re-running its connect() cell):
+    # ZAPX may not have seen the old one close yet and would refuse us as a
+    # second notebook, so retry that refusal for a moment.
+    replacing = _sock is not None
     _close()
-    try:
-        sock = socket.create_connection(("127.0.0.1", int(port)), timeout=10)
-    except OSError:
-        raise Error(
-            "ZAPX isn't accepting notebooks (is it open, with Tools → Allow "
-            "notebook connection on?)"
-        ) from None
-    reader = sock.makefile("r", encoding="utf-8", newline="\n")
-    sock.sendall((json.dumps({"token": token}) + "\n").encode("utf-8"))
-    line = reader.readline()
-    hello = json.loads(line) if line.strip() else {}
-    if hello.get("hello") is not True:
+    deadline = time.monotonic() + (3 if replacing else 0)
+    while True:
+        try:
+            sock = socket.create_connection(("127.0.0.1", int(port)), timeout=10)
+        except OSError:
+            raise Error(
+                "ZAPX isn't accepting notebooks (is it open, with Tools → Allow "
+                "notebook connection on?)"
+            ) from None
+        reader = sock.makefile("r", encoding="utf-8", newline="\n")
+        sock.sendall((json.dumps({"token": token}) + "\n").encode("utf-8"))
+        line = reader.readline()
+        hello = json.loads(line) if line.strip() else {}
+        if hello.get("hello") is True:
+            break
         sock.close()
-        raise Error(
-            hello.get("error")
-            or "ZAPX refused the connection (token out of date? turn the "
+        message = hello.get("error") or (
+            "ZAPX refused the connection (token out of date? turn the "
             "notebook connection off and on, then connect() again)"
         )
+        if "already connected" in message and time.monotonic() < deadline:
+            time.sleep(0.1)
+            continue
+        raise Error(message)
     sock.settimeout(None)
     _sock, _reader = sock, reader
 
@@ -343,7 +353,7 @@ def sessions(folder: Optional[str] = None) -> List[str]:
 
 def report(target: str, status: str, detail: str = "") -> None:
     """Add a row to the run's summary table, e.g.
-    ``report("fw-branch-1", "OK", "SASE_INET 1/1")``."""
+    ``report("FGT-60F-01", "OK", "SASE_INET 1/1")``."""
     _call("report", target=target, status=status, detail=detail)
 
 
