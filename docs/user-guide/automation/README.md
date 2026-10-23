@@ -16,7 +16,7 @@ run, then for real) and explored a device from a notebook.
  your script / notebook                        ZAPX                       devices
  ┌──────────────────────┐   "run get system  ┌──────────────────┐  types  ┌──────────┐
  │ import zapx          │ ─── status on ───▶ │ a real terminal  │ ──────▶ │ FortiGate│
- │ out = fw.run(...)    │     fw-branch-1"   │ tab you can see  │         │  switch  │
+ │ out = fw.run(...)    │     FGT-60F-01"    │ tab you can see  │         │  switch  │
  │ if "down" in out: …  │ ◀── the output ─── │                  │ ◀────── │  router  │
  └──────────────────────┘                    └──────────────────┘         └──────────┘
 ```
@@ -39,8 +39,13 @@ run, then for real) and explored a device from a notebook.
     and tick **"Add python.exe to PATH"** in the installer.
   - macOS: install it from [python.org](https://www.python.org/downloads/).
 - A device to try it on. The screenshots use two FortiGates called
-  `fw-branch-1` and `fw-branch-2` in a folder called `SASE`; any device you can
+  `FGT-60F-01` and `FGT-60F-02` in a folder called `SASE`; any device you can
   reach works for parts 1 and 3.
+
+> All names, addresses and passwords in this guide are made up. IP addresses
+> are from the ranges reserved for documentation (`192.0.2.0/24`,
+> `203.0.113.0/24`, RFC 5737) or `127.0.0.1`; the screenshots come from a demo
+> profile talking to simulated FortiGates.
 
 ## Reference
 

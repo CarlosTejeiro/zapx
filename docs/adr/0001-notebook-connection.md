@@ -26,7 +26,7 @@ use el mismo módulo `zapx` que los scripts.
 import zapx
 zapx.connect()                       # se engancha al ZAPX abierto
 
-fw = zapx.open("fw-branch-1")        # abre la sesión guardada en una pestaña
+fw = zapx.open("FGT-60F-01")        # abre la sesión guardada en una pestaña
 out = fw.run("get vpn ipsec tunnel summary")
 print(out)                           # salida real, en la celda
 ```
@@ -88,7 +88,7 @@ exacta.
   con un mensaje claro.
 - Mismas llamadas que en los scripts, más dos pensadas para notebooks:
   - `zapx.tabs()` — pestañas abiertas ahora (nombre, plataforma);
-  - `zapx.tab("fw-branch-1")` — engancharse a una pestaña **ya abierta** por
+  - `zapx.tab("FGT-60F-01")` — engancharse a una pestaña **ya abierta** por
     su nombre, sin abrir otra.
 - `zapx.session()` en un notebook devuelve la pestaña con el foco **en ese
   momento** (en un script es la que tenía el foco al arrancar).

@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login automation), Python scripts (`hello.py`, then `sase_reset.py` step by
   step with a dry run first) and notebooks (`explore.ipynb` in VS Code or
   JupyterLab), with screenshots of the real app. The main guide gains its
-  workspace, session-dialog and vault screenshots.
+  workspace, session-dialog and vault screenshots. Example devices are named
+  by model (`FGT-60F-01`…) and use documentation-only IP addresses.
 
 ### Fixed
 - **Scripts saw "platform: unknown" on a saved session whose platform was
@@ -23,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It is now read fresh whenever a script or notebook takes a tab.
 - Scripts no longer leave `__pycache__` folders in your script and examples
   folders.
+- **Re-running a notebook's `zapx.connect()` cell was refused** with
+  "another notebook is already connected": the module closed its old
+  connection and opened the new one before ZAPX noticed the close. Replacing
+  its own connection now retries that refusal for a moment.
 
 ## [0.26.0] - 2026-10-23
 
