@@ -3,6 +3,7 @@
   /// SnippetButtonBar for both create ("+") and edit. Anchored above the bar.
   import type { PylonTheme } from '$lib/themes/index'
   import type { Snippet, LoginStep } from '$lib/bridge/types'
+  import ShortcutField from '$lib/ui/ShortcutField.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -18,6 +19,8 @@
       platformScoped: boolean
       /** Non-null when this button is a macro (expect/send/wait steps). */
       steps: LoginStep[] | null
+      /** Own keyboard shortcut, or null for none. */
+      shortcut: string | null
     }) => void
     onDelete?: () => void
     onClose: () => void
@@ -41,6 +44,8 @@
   // platform when there is one (that's what the bar is showing).
   // svelte-ignore state_referenced_locally
   let platformScoped = $state(snippet ? snippet.platform !== null : hasPlatform)
+  // svelte-ignore state_referenced_locally
+  let shortcut = $state<string | null>(snippet?.shortcut ?? null)
 
   // Palette tuned to read on both light and dark themes.
   const SWATCHES = ['#5eb3b2', '#5b8fc9', '#9a91e8', '#3e8f60', '#b88528', '#c2410c', '#b13a3a']
@@ -57,6 +62,7 @@
       color,
       platformScoped: hasPlatform && platformScoped,
       steps: null,
+      shortcut,
     })
   }
 
@@ -126,6 +132,13 @@
     style:border="1px solid {theme.border}"
     style:font-family={theme.fontMono}
   ></textarea>
+
+  <ShortcutField
+    {theme}
+    value={shortcut}
+    selfId={snippet?.id ?? null}
+    onChange={(v) => (shortcut = v)}
+  />
 
   <div class="footer">
     {#if hasPlatform}

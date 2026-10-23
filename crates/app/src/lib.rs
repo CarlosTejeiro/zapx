@@ -246,6 +246,7 @@ pub fn run() {
             commands::snippets::delete_snippet,
             commands::snippets::set_snippet_steps,
             commands::snippets::set_snippet_folder,
+            commands::snippets::set_snippet_shortcut,
             commands::snippets::set_snippet_positions,
             commands::snippets::export_macros,
             commands::snippets::import_macros,

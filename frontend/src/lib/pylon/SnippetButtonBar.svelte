@@ -26,6 +26,7 @@
     deleteSnippet,
     setSnippetsOrder,
     setSnippetSteps,
+    setSnippetShortcut,
   } from '$lib/bridge/commands'
   import { runMacroOnFocused } from '$lib/orchestrator/macroRunner'
   import {
@@ -77,6 +78,7 @@
     color: string | null
     platformScoped: boolean
     steps: LoginStep[] | null
+    shortcut: string | null
   }) {
     const platform = v.platformScoped ? barContext.platform : null
     const stepsJson = v.steps && v.steps.length > 0 ? JSON.stringify(v.steps) : null
@@ -88,8 +90,10 @@
       } else {
         id = await createSnippet(v.name, v.content, platform, v.color)
       }
-      // Macro steps live in a separate column (set/cleared independently).
+      // Macro steps and the shortcut live in separate columns (set/cleared
+      // independently).
       await setSnippetSteps(id, stepsJson)
+      await setSnippetShortcut(id, v.shortcut)
       editing = null
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
     } catch (e) {
@@ -269,7 +273,7 @@
               e.preventDefault()
               editing = s
             }}
-            title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1} — ` : ''}${s.content}\nRight-click to edit or delete`}
+            title={`${i < SNIPPET_BAR_LIMIT ? `Ctrl+Shift+${i + 1}${s.shortcut ? ` · ${s.shortcut}` : ''} — ` : s.shortcut ? `${s.shortcut} — ` : ''}${s.content}\nRight-click to edit or delete`}
           >
             {#if i < SNIPPET_BAR_LIMIT}
               <span class="key-pill" style:color={theme.accent2}>{i + 1}</span>

@@ -103,6 +103,9 @@ pub struct Snippet {
     /// Optional rank within the macro's folder group in the sidebar (NULLs
     /// last). Reordered independently of `sort_order`. `None` = unranked.
     pub position: Option<i64>,
+    /// Optional keyboard shortcut (e.g. `"Ctrl+Alt+P"`) that fires this
+    /// snippet or macro on the focused session. `None` = no shortcut.
+    pub shortcut: Option<String>,
 }
 
 /// One row from `command_history`, used by the hint engine for
@@ -266,6 +269,9 @@ impl Database {
         }
         if version < 23 {
             conn.execute_batch(include_str!("migrations/023_credential_secrets.sql"))?;
+        }
+        if version < 24 {
+            conn.execute_batch(include_str!("migrations/024_snippet_shortcut.sql"))?;
         }
         Ok(())
     }
@@ -1308,7 +1314,7 @@ impl Database {
     pub fn list_snippets(&self) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position, shortcut
              FROM snippets ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1323,6 +1329,7 @@ impl Database {
                 steps_json: row.get(7)?,
                 folder: row.get(8)?,
                 position: row.get(9)?,
+                shortcut: row.get(10)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1334,7 +1341,7 @@ impl Database {
     pub fn list_snippets_for_platform(&self, platform: &str) -> Result<Vec<Snippet>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position
+            "SELECT id, name, content, sort_order, created_at, platform, color, steps_json, folder, position, shortcut
              FROM snippets
              WHERE platform IS NULL OR platform = ?1
              ORDER BY (platform IS NULL) DESC, sort_order, name",
@@ -1351,6 +1358,7 @@ impl Database {
                 steps_json: row.get(7)?,
                 folder: row.get(8)?,
                 position: row.get(9)?,
+                shortcut: row.get(10)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1460,6 +1468,22 @@ impl Database {
                 rusqlite::params![folder, id],
             )?
         };
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Set (or clear with `None`) a snippet's keyboard shortcut. Kept separate
+    /// from [`update_snippet`] like the other optional fields; a blank combo
+    /// is stored as NULL.
+    pub fn set_snippet_shortcut(&self, id: i64, shortcut: Option<&str>) -> Result<(), Error> {
+        let shortcut = shortcut.map(str::trim).filter(|s| !s.is_empty());
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE snippets SET shortcut = ?1 WHERE id = ?2",
+            rusqlite::params![shortcut, id],
+        )?;
         if n == 0 {
             return Err(Error::NotFound);
         }
@@ -1923,6 +1947,42 @@ mod tests {
         db.delete_credential(id).unwrap();
         assert!(db.get_credential_secret(id).unwrap().is_none());
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn snippet_shortcut_set_and_clear() {
+        let (db, path) = temp_db();
+        let id = db.create_snippet("pw", "", None, None).unwrap();
+        let get = |db: &Database| {
+            db.list_snippets()
+                .unwrap()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .shortcut
+        };
+        assert_eq!(get(&db), None);
+        db.set_snippet_shortcut(id, Some("Ctrl+Alt+P")).unwrap();
+        assert_eq!(get(&db).as_deref(), Some("Ctrl+Alt+P"));
+        // Also visible through the platform-filtered listing.
+        let listed = db.list_snippets_for_platform("fortigate").unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .shortcut
+                .as_deref(),
+            Some("Ctrl+Alt+P")
+        );
+        // Blank clears.
+        db.set_snippet_shortcut(id, Some("  ")).unwrap();
+        assert_eq!(get(&db), None);
+        assert!(matches!(
+            db.set_snippet_shortcut(999_999, Some("Ctrl+Alt+X")),
+            Err(Error::NotFound)
+        ));
         let _ = std::fs::remove_file(&path);
     }
 

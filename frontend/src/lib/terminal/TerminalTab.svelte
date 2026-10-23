@@ -39,6 +39,7 @@
     unregisterFocus,
   } from '$lib/stores/sessionRuntime.svelte'
   import { matchAction } from '$lib/stores/keybindings.svelte'
+  import { matchSnippetShortcut } from '$lib/stores/snippets.svelte'
   import { terminalSettings, colorSchemes, connectionSettings } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
   import { HintController } from '$lib/hints/controller.svelte'
@@ -893,19 +894,29 @@
         }
       }
 
-      const action = matchAction(e)
-      if (action) {
-        onGlobalShortcut?.(action, e)
+      // xterm runs this handler for keydown, keypress AND keyup. Act once, on
+      // keydown, and keep that keydown from also reaching App's document
+      // listener — either path used to fire a second time (one Ctrl+T opened
+      // two tabs). The other phases still return false so xterm doesn't type
+      // the combo into the shell.
+      const fire = (key: string) => {
+        if (e.type === 'keydown') {
+          e.stopPropagation()
+          onGlobalShortcut?.(key, e)
+        }
         return false
       }
+      const action = matchAction(e)
+      if (action) return fire(action)
+      // A snippet or macro bound to its own shortcut (globals, or scoped to
+      // this session's platform).
+      const bound = matchSnippetShortcut(e)
+      if (bound) return fire(`snippet-id:${bound.id}`)
       // Quick-fire snippet by index (Ctrl+Shift+1..9). Forwarded to App as
       // `snippet:N` so xterm doesn't swallow the keys as control characters.
       if (e.ctrlKey && e.shiftKey && e.code.startsWith('Digit')) {
         const d = parseInt(e.code.slice('Digit'.length), 10)
-        if (d >= 1 && d <= 9) {
-          onGlobalShortcut?.(`snippet:${d - 1}`, e)
-          return false
-        }
+        if (d >= 1 && d <= 9) return fire(`snippet:${d - 1}`)
       }
       return true
     })

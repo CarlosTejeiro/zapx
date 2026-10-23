@@ -9,6 +9,7 @@
   import type { Snippet, LoginStep, VaultEntry } from '$lib/bridge/types'
   import { listVaultEntries } from '$lib/bridge/commands'
   import MacroStepEditor from './MacroStepEditor.svelte'
+  import ShortcutField from '$lib/ui/ShortcutField.svelte'
 
   interface Props {
     theme: PylonTheme
@@ -21,6 +22,8 @@
       color: string | null
       folder: string | null
       steps: LoginStep[]
+      /** Own keyboard shortcut, or null for none. */
+      shortcut: string | null
     }) => void
     onDelete?: () => void
     onClose: () => void
@@ -36,6 +39,8 @@
   let color = $state<string | null>(macro?.color ?? null)
   // svelte-ignore state_referenced_locally
   let folder = $state(macro?.folder ?? '')
+  // svelte-ignore state_referenced_locally
+  let shortcut = $state<string | null>(macro?.shortcut ?? null)
   // svelte-ignore state_referenced_locally
   let steps = $state<LoginStep[]>(initialSteps(macro?.steps_json ?? null))
 
@@ -185,7 +190,13 @@
         return
       }
     }
-    onSave({ name: name.trim(), color, folder: folder.trim() || null, steps: finalSteps })
+    onSave({
+      name: name.trim(),
+      color,
+      folder: folder.trim() || null,
+      steps: finalSteps,
+      shortcut,
+    })
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -267,6 +278,13 @@
         <option value={f}></option>
       {/each}
     </datalist>
+
+    <ShortcutField
+      {theme}
+      value={shortcut}
+      selfId={macro?.id ?? null}
+      onChange={(v) => (shortcut = v)}
+    />
 
     <div class="mode" style:color={theme.textMuted}>
       <button

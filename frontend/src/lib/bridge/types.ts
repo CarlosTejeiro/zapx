@@ -111,6 +111,9 @@ export interface Snippet {
   /** Optional rank within the macro's sidebar folder group (nulls last).
    *  Reordered independently of `sort_order`; null = unranked. */
   position: number | null
+  /** Optional keyboard shortcut (e.g. "Ctrl+Alt+P") that fires this snippet
+   *  or macro on the focused session; null = none. */
+  shortcut: string | null
 }
 
 /** A reusable credential ("vault") entry. NEVER carries a secret — only the

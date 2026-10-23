@@ -22,6 +22,7 @@ import {
   listRecentCommandSnippets,
 } from '$lib/bridge/commands'
 import type { Snippet, RecentCommand } from '$lib/bridge/types'
+import { eventToCombo, findSnippetForCombo } from '$lib/stores/shortcuts'
 
 /** Maximum number of user snippets shown in the bottom bar at once. The
  *  number-pill keyboard shortcut Ctrl+Shift+1..9 only addresses these. */
@@ -38,6 +39,13 @@ export const barContext = $state<{ platform: string | null; savedSessionId: numb
   platform: null,
   savedSessionId: null,
 })
+
+/** The snippet or macro whose own shortcut matches this key press in the
+ *  focused session (globals, or scoped to its platform), or null. Uses the
+ *  FULL list — macros live in the sidebar, not the 9-slot bar. */
+export function matchSnippetShortcut(e: KeyboardEvent): Snippet | null {
+  return findSnippetForCombo(eventToCombo(e), snippets, barContext.platform)
+}
 
 /** Refresh the full list (for the manage dialog). */
 export async function loadSnippets(): Promise<void> {
