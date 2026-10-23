@@ -135,6 +135,21 @@ pub async fn set_snippet_folder(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Set (or clear with `None` / blank) the keyboard shortcut that fires a
+/// snippet or macro. Clash checks against app shortcuts and other snippets
+/// happen in the editor, which knows the user's current bindings.
+#[tauri::command]
+pub async fn set_snippet_shortcut(
+    state: State<'_, AppState>,
+    id: i64,
+    shortcut: Option<String>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .set_snippet_shortcut(id, shortcut.as_deref())
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Persist a new per-folder ordering for macros (the sidebar Macros zone's
 /// ▲/▼ reorder). `ordered_ids` lists the macro ids in their new order; each
 /// id's `position` becomes its index.

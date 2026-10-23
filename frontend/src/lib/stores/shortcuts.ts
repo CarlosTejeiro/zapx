@@ -75,3 +75,68 @@ export function findAction(
   }
   return null
 }
+
+// ── Per-snippet shortcuts ────────────────────────────────────────────────────
+
+/// The fields of a snippet the shortcut helpers need (structural, so tests and
+/// callers can pass plain objects).
+export interface ShortcutSnippet {
+  id: number
+  name: string
+  platform: string | null
+  shortcut: string | null
+}
+
+/// Why this key press can't be a snippet shortcut, or `null` if it can. Takes
+/// the event rather than the combo string because the reserved Ctrl+Shift+1..9
+/// row is identified by physical key: with Shift held the produced character
+/// is layout-dependent (`!`, `"`, `·`…).
+export function snippetComboProblem(e: KeyboardEvent): string | null {
+  if (eventToCombo(e) === null) return 'Press a key together with the modifiers.'
+  if (!e.ctrlKey && !e.altKey && !e.metaKey) return 'Use Ctrl, Alt or Cmd in the shortcut.'
+  // Plain Ctrl+<key> is how the shell gets its control characters (Ctrl+C,
+  // Ctrl+R, Ctrl+A…); stealing one would break the terminal.
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey)
+    return 'Ctrl+<key> alone is reserved for the terminal — add Shift or Alt.'
+  if (e.ctrlKey && e.shiftKey && /^Digit[1-9]$/.test(e.code))
+    return 'Ctrl+Shift+1…9 already fire the first nine bar buttons.'
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k')
+    return 'Ctrl+K opens the command palette.'
+  return null
+}
+
+/// What `combo` already belongs to, or `null` if it is free. App shortcuts
+/// (current bindings) and other snippets' shortcuts both count; `selfId` is
+/// the snippet being edited so it doesn't clash with itself.
+export function shortcutClash(
+  combo: string,
+  bindings: Record<string, string>,
+  snippets: readonly ShortcutSnippet[],
+  selfId: number | null,
+): string | null {
+  const action = findAction(combo, bindings)
+  if (action) {
+    const label = SHORTCUT_ACTIONS.find((a) => a.id === action)?.label ?? action
+    return `Already used by “${label}”.`
+  }
+  const other = snippets.find((s) => s.shortcut === combo && s.id !== selfId)
+  if (other) return `Already used by “${other.name}”.`
+  return null
+}
+
+/// The snippet `combo` fires in a session of `platform`: one scoped to that
+/// platform wins over a global one; snippets scoped to other platforms never
+/// match. `null` when nothing is bound to the combo here.
+export function findSnippetForCombo<T extends ShortcutSnippet>(
+  combo: string | null,
+  snippets: readonly T[],
+  platform: string | null,
+): T | null {
+  if (!combo) return null
+  const bound = snippets.filter((s) => s.shortcut === combo)
+  return (
+    bound.find((s) => !!platform && s.platform === platform) ??
+    bound.find((s) => s.platform === null) ??
+    null
+  )
+}

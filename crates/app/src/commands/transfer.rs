@@ -302,6 +302,12 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
     //    the bottom button bar with device-named buttons (the macros) instead of
     //    keeping them in the sidebar Macros library.
     let existing_snippets = db.list_snippets().map_err(internal)?;
+    // Shortcuts already taken in this install — an imported snippet whose combo
+    // clashes keeps everything but the shortcut, so one key never fires two.
+    let mut taken_shortcuts: Vec<String> = existing_snippets
+        .iter()
+        .filter_map(|e| e.shortcut.clone())
+        .collect();
     for sn in &file.snippets {
         if existing_snippets
             .iter()
@@ -324,6 +330,12 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         if sn.folder.is_some() {
             db.set_snippet_folder(id, sn.folder.as_deref())
                 .map_err(internal)?;
+        }
+        if let Some(combo) = sn.shortcut.as_deref().filter(|c| !c.trim().is_empty()) {
+            if !taken_shortcuts.iter().any(|t| t == combo) {
+                db.set_snippet_shortcut(id, Some(combo)).map_err(internal)?;
+                taken_shortcuts.push(combo.to_string());
+            }
         }
         summary.snippets_added += 1;
     }
@@ -568,6 +580,7 @@ mod tests {
         src.set_snippet_steps(mac, Some(r#"[{"kind":"send","send":"a\r"}]"#))
             .unwrap();
         src.set_snippet_folder(mac, Some("Net")).unwrap();
+        src.set_snippet_shortcut(mac, Some("Ctrl+Alt+L")).unwrap();
         src.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
             .unwrap();
 
@@ -596,6 +609,8 @@ mod tests {
             Some(r#"[{"kind":"send","send":"a\r"}]"#)
         );
         assert_eq!(imported_mac.folder.as_deref(), Some("Net"));
+        // The shortcut travels with the macro.
+        assert_eq!(imported_mac.shortcut.as_deref(), Some("Ctrl+Alt+L"));
 
         // Remapping: spine lives in DC/Spines and jumps through the new bastion id.
         let sessions = dst.list_sessions().unwrap();

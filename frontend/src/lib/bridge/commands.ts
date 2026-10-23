@@ -343,6 +343,11 @@ export async function setSnippetFolder(id: number, folder: string | null): Promi
   return invoke<void>('set_snippet_folder', { id, folder })
 }
 
+/** Set or clear (null) the keyboard shortcut that fires a snippet or macro. */
+export async function setSnippetShortcut(id: number, shortcut: string | null): Promise<void> {
+  return invoke<void>('set_snippet_shortcut', { id, shortcut })
+}
+
 /** Persist a new per-folder ordering for macros (sidebar Macros ▲/▼ reorder).
  *  Each id's `position` becomes its index in `orderedIds`. */
 export async function setSnippetPositions(orderedIds: number[]): Promise<void> {

@@ -5,6 +5,37 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Your own keyboard shortcut for any button or macro.** The button editor
+  (right-click a bar button, or its pencil) and the macro editor have a
+  **Shortcut** field: click it and press the combo. It fires the button or
+  macro on the focused session, from the terminal or anywhere else in the
+  window (not while you're typing in a text field). Macros run their steps, so
+  a macro that sends `{{vault:Name.Password}}` puts a stored password on a
+  key without it ever passing through the UI. Combos must use Ctrl+Shift,
+  Alt or Cmd: plain Ctrl+key belongs to the shell (Ctrl+C, Ctrl+R…),
+  Ctrl+Shift+1…9 already fire the first nine bar buttons, and a combo already
+  taken by an app shortcut or another button is refused with the reason.
+  Platform-scoped buttons only answer in sessions of their platform. The
+  shortcut is included in exports and encrypted backups; on import, a combo
+  already used in that install is dropped rather than doubled.
+- **More FortiGate and FortiManager defaults.** 13 new FortiGate buttons (HA,
+  performance, ARP, BGP, IPsec IKE/tunnel lists, session stats, `sys top`,
+  SD-WAN health checks, FortiGuard status, config revisions, and a one-click
+  "stop debug") and 6 new FortiManager ones (HA, ADOM list, DVM integrity,
+  policy-package check, FortiGuard server list, DVM tasks). Installs that
+  already had the original Fortinet buttons receive only the new ones, and a
+  default you deleted doesn't come back. The autocomplete catalogs gain 22
+  FortiGate and 12 FortiManager commands. Every added command was checked
+  against Fortinet's CLI references, administration guides or technical tips.
+
+### Fixed
+- **App shortcuts pressed in the terminal ran twice.** xterm handed the key
+  to ZAPX on keydown and keyup, and the keydown also reached the window
+  listener, so one Ctrl+T opened two tabs. Shortcuts now fire exactly once.
+
 ## [0.23.2] - 2026-10-23
 
 ### Fixed

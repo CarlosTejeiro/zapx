@@ -80,6 +80,7 @@
     loadSnippets,
     loadVisibleSnippets,
     setBarContext,
+    matchSnippetShortcut,
   } from '$lib/stores/snippets.svelte'
   import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
   import {
@@ -88,6 +89,7 @@
     deleteSnippet,
     setSnippetSteps,
     setSnippetFolder,
+    setSnippetShortcut,
     setSnippetPositions,
     exportMacros,
     importMacros,
@@ -322,6 +324,7 @@
     color: string | null
     folder: string | null
     steps: LoginStep[]
+    shortcut: string | null
   }) {
     try {
       const stepsJson = JSON.stringify(v.steps)
@@ -341,6 +344,7 @@
       }
       await setSnippetSteps(id, stepsJson)
       await setSnippetFolder(id, v.folder)
+      await setSnippetShortcut(id, v.shortcut)
       editingMacro = null
       await refreshSnippets()
     } catch (e) {
@@ -1140,7 +1144,24 @@
   /// key the user pressed.
   async function fireSnippetByIndex(idx: number) {
     const s = visibleSnippets[idx]
-    if (!s) return
+    if (s) await fireSnippet(s)
+  }
+
+  /// Fire a snippet or macro by id — the target of its own keyboard shortcut.
+  /// Looks in the FULL list: macros live in the sidebar, not the 9-slot bar.
+  async function fireSnippetById(id: number) {
+    const s = snippets.find((x) => x.id === id)
+    if (s) await fireSnippet(s)
+  }
+
+  /// Send one snippet to the focused session (and the broadcast group). A
+  /// macro runs its expect/send/wait steps — vault references are written by
+  /// the backend, so a password never passes through the UI.
+  async function fireSnippet(s: Snippet) {
+    if (s.steps_json) {
+      await runMacroOnFocused(s)
+      return
+    }
     const focused = getFocusedSessionId()
     if (!focused) return
     // Resolve any {{variables}} (prompts the user) before sending.
@@ -1162,6 +1183,11 @@
   /// existing callback signature). The `snippet:N` namespace is handled here
   /// to avoid widening the typed action union.
   function handleGlobalShortcut(action: string, _e: KeyboardEvent) {
+    if (action.startsWith('snippet-id:')) {
+      const id = parseInt(action.slice('snippet-id:'.length), 10)
+      if (!Number.isNaN(id)) fireSnippetById(id)
+      return
+    }
     if (action.startsWith('snippet:')) {
       const idx = parseInt(action.slice('snippet:'.length), 10)
       if (!Number.isNaN(idx)) fireSnippetByIndex(idx)
@@ -1394,9 +1420,23 @@
         return
       }
       const action = matchAction(e)
-      if (!action) return
+      if (action) {
+        e.preventDefault()
+        dispatchAction(action)
+        return
+      }
+      // A snippet/macro shortcut pressed outside the terminal (sidebar, button
+      // bar…). Not while typing in a field — that keystroke is the user's text,
+      // and the shortcut editor captures combos itself. Inside the terminal,
+      // TerminalTab handles it and stops propagation, so it can't fire twice.
+      const t = e.target as HTMLElement | null
+      const typing =
+        !!t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
+      if (typing) return
+      const bound = matchSnippetShortcut(e)
+      if (!bound) return
       e.preventDefault()
-      dispatchAction(action)
+      fireSnippet(bound)
     }
     document.addEventListener('keydown', onKeydown)
 
