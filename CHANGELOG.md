@@ -5,6 +5,25 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.1] - 2026-10-23
+
+### Added
+- **Automation guide for newcomers** (`docs/user-guide/automation/`): getting
+  started (install, vault, a saved session that logs in on its own, platform,
+  login automation), Python scripts (`hello.py`, then `sase_reset.py` step by
+  step with a dry run first) and notebooks (`explore.ipynb` in VS Code or
+  JupyterLab), with screenshots of the real app. The main guide gains its
+  workspace, session-dialog and vault screenshots.
+
+### Fixed
+- **Scripts saw "platform: unknown" on a saved session whose platform was
+  set.** The stored platform was read lazily (the first call got nothing) and
+  never re-read after you changed it in the session dialog, so `hello.py` ran
+  `uname -a` on a FortiGate and `run()` fell back to slower prompt guessing.
+  It is now read fresh whenever a script or notebook takes a tab.
+- Scripts no longer leave `__pycache__` folders in your script and examples
+  folders.
+
 ## [0.26.0] - 2026-10-23
 
 ### Added

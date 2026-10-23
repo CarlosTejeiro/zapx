@@ -182,6 +182,8 @@ pub async fn start(
         .env("ZAPX_DRY_RUN", if dry_run { "1" } else { "0" })
         .env("PYTHONPATH", pythonpath)
         .env("PYTHONIOENCODING", "utf-8")
+        // No __pycache__ littering the user's script folders.
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

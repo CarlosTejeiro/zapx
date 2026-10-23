@@ -46,6 +46,8 @@ export interface ScriptHostApi {
   openTabs(): SessionInfo[]
   /** Name + platform of a live session the script uses. */
   describe(sessionId: string): SessionInfo | null
+  /** Reload the stored platform behind `sessionId` (before `describe`). */
+  refreshPlatform(sessionId: string): Promise<void>
   /** Saved session names, optionally only those under `folder`. */
   savedNames(folder: string | null): string[]
   /** Open the saved session called `name` in a new tab; returns its pane id. */
@@ -348,8 +350,11 @@ async function dispatch(
       // A stopped notebook cell: abandon the call it was waiting on.
       if (typeof p.id === 'number' && inFlight.has(p.id)) cancelled.add(p.id)
       return null
-    case 'tabs':
-      return api.openTabs().map((t) => info(t.id) ?? t)
+    case 'tabs': {
+      const all = api.openTabs()
+      await Promise.all(all.map((t) => api?.refreshPlatform(t.id)))
+      return all.map((t) => info(t.id) ?? t)
+    }
     case 'tab': {
       const wanted = str(p.name, 'name')
       const all = api.openTabs()
@@ -361,12 +366,14 @@ async function dispatch(
         throw new ApiError('error', `no open tab called ${JSON.stringify(wanted)} (open: ${names})`)
       }
       attach(t.id)
+      await api.refreshPlatform(t.id)
       return info(t.id) ?? t
     }
     case 'session': {
       const s = api.focusedSession()
       if (!s) throw new ApiError('error', 'no focused session — click a terminal tab first')
       attach(s.id)
+      await api.refreshPlatform(s.id)
       return info(s.id) ?? s
     }
     case 'sessions':
@@ -523,6 +530,7 @@ async function openSaved(
     await sleep(100)
   }
   tap.raw = '' // what came before belongs to the login, not to the first run()
+  await api.refreshPlatform(sid)
   return info(sid) ?? { id: sid, name: sessionName, platform: null }
 }
 

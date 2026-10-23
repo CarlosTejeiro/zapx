@@ -794,6 +794,19 @@
     return { id: sessionId, name: pane.label, platform }
   }
 
+  /// Re-read the stored platform of the saved session behind `sessionId`, so a
+  /// script sees the one set in the session dialog (or detected) right now,
+  /// not a stale or not-yet-loaded cache entry.
+  async function refreshSessionPlatform(sessionId: string) {
+    const found = paneOfSession(sessionId)
+    const saved = found
+      ? tabPanes(found.tab).find((p) => p.id === found.paneId)?.savedSession
+      : undefined
+    if (!saved) return
+    const p = await getSessionPlatform(saved.id).catch(() => null)
+    savedPlatformCache.set(saved.id, p)
+  }
+
   /// Saved sessions under `folder` (by name, including sub-folders), or all.
   function savedSessionNames(folder: string | null): string[] {
     if (!folder) return sessions.map((s) => s.name)
@@ -1689,6 +1702,7 @@
         return out
       },
       describe: describeSession,
+      refreshPlatform: refreshSessionPlatform,
       savedNames: savedSessionNames,
       openSaved: (name) => {
         const s = sessions.find((x) => x.name === name)
