@@ -26,6 +26,7 @@
   let bindPort = $state<number | null>(null)
   let targetHost = $state('')
   let targetPort = $state<number | null>(null)
+  let name = $state('')
 
   onMount(refresh)
 
@@ -50,18 +51,33 @@
     busy = true
     try {
       if (kind === 'local') {
-        await addLocalForward(sessionId, bindAddr.trim(), bindPort, targetHost.trim(), targetPort!)
+        await addLocalForward(
+          sessionId,
+          bindAddr.trim(),
+          bindPort,
+          targetHost.trim(),
+          targetPort!,
+          name.trim(),
+        )
       } else if (kind === 'remote') {
         // For -R, `bindAddr` is the address the SSH server will listen on.
         // "0.0.0.0" exposes it on every interface of the remote host;
         // "127.0.0.1" keeps it loopback-only.
-        await addRemoteForward(sessionId, bindAddr.trim(), bindPort, targetHost.trim(), targetPort!)
+        await addRemoteForward(
+          sessionId,
+          bindAddr.trim(),
+          bindPort,
+          targetHost.trim(),
+          targetPort!,
+          name.trim(),
+        )
       } else {
-        await addDynamicForward(sessionId, bindAddr.trim(), bindPort)
+        await addDynamicForward(sessionId, bindAddr.trim(), bindPort, name.trim())
       }
       bindPort = null
       targetHost = ''
       targetPort = null
+      name = ''
       await refresh()
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
@@ -97,13 +113,18 @@
             <span class="kind" class:dyn={f.kind === 'dynamic'} class:remote={f.kind === 'remote'}>
               {f.kind === 'local' ? 'L' : f.kind === 'remote' ? 'R' : 'D'}
             </span>
-            <span class="bind">{f.bind_addr}:{f.bind_port}</span>
-            <span class="arrow">{f.kind === 'remote' ? '←' : '→'}</span>
-            {#if f.target_host}
-              <span class="target">{f.target_host}:{f.target_port}</span>
-            {:else}
-              <span class="target socks">SOCKS5</span>
-            {/if}
+            <span class="fwd-info">
+              {#if f.name}<span class="name" title={f.name}>{f.name}</span>{/if}
+              <span class="route">
+                <span class="bind">{f.bind_addr}:{f.bind_port}</span>
+                <span class="arrow">{f.kind === 'remote' ? '←' : '→'}</span>
+                {#if f.target_host}
+                  <span class="target">{f.target_host}:{f.target_port}</span>
+                {:else}
+                  <span class="target socks">SOCKS5</span>
+                {/if}
+              </span>
+            </span>
             <button class="rm" onclick={() => remove(f.id)} title="Remove forward"
               ><Icon name="x" size={12} /></button
             >
@@ -128,6 +149,11 @@
           <option value="remote">Remote (-R): remote port → local target</option>
           <option value="dynamic">Dynamic SOCKS5 (-D)</option>
         </select>
+      </label>
+
+      <label>
+        <span>Name <span class="opt">(optional)</span></span>
+        <input bind:value={name} maxlength="80" placeholder="e.g. FortiGate GUI" />
       </label>
 
       {#if kind === 'remote'}
@@ -294,6 +320,33 @@
   .bind,
   .target {
     color: var(--zx-text);
+  }
+
+  .fwd-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .route {
+    display: flex;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .name {
+    font-family: var(--zx-font-ui);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opt {
+    color: var(--zx-text-dim);
+    font-weight: 400;
   }
 
   .target.socks {

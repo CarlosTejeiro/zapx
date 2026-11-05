@@ -238,7 +238,11 @@ progress. -->
 - **SFTP** (SSH sessions): browse, upload and download with progress and cancel;
   edit a remote file with your local editor.
 - **Port forwarding**: local `-L`, dynamic `-D` (SOCKS5) and remote `-R`
-  forwards, managed per session from the pane header.
+  forwards, managed per session from the pane header. Forwards saved on a
+  session (**Port forwards** at the bottom of the session dialog) start
+  automatically on connect. Give each one a **name** ("FortiGate GUI", "RDP to
+  jump host"…): it is shown above the mapping in the session dialog, the pane's
+  port-forwards list and **Tools → Active tunnels…**.
 
 ---
 

@@ -186,6 +186,7 @@ pub fn parse_port_forwardings(
                 bind_port,
                 target_host: None,
                 target_port: None,
+                name: None,
             });
             continue;
         }
@@ -214,6 +215,7 @@ pub fn parse_port_forwardings(
             bind_port,
             target_host: Some(th.to_owned()),
             target_port: Some(tp),
+            name: None,
         });
     }
     out
