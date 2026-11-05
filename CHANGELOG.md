@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The port fields of the session dialog's forwards are wider, so five-digit
   ports are no longer cut off.
 
+### Security
+- Dependency updates for new advisories: `crypto-bigint` 0.7.10
+  (RUSTSEC-2026-0387, timing side channels in constant-time arithmetic, used
+  by the SSH library) and `tokio` 1.54.1 (RUSTSEC-2026-0386). Two more are
+  acknowledged in `deny.toml`: `zip` (RUSTSEC-2026-0429) only reaches the
+  updater plugin, which is disabled, and `pin-utils` (RUSTSEC-2026-0441) is
+  unmaintained, not vulnerable, and comes from `portable-pty` 0.8.
+
 ## [0.26.2] - 2026-10-23
 
 ### Fixed
