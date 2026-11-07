@@ -65,6 +65,10 @@ pub struct SavedForward {
     pub bind_port: u16,
     pub target_host: Option<String>,
     pub target_port: Option<u16>,
+    /// What this tunnel is for ("FortiGate GUI"…); `None` = unnamed. Absent
+    /// in exports made before it existed.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// A stored credential row. The secret itself never lives here — only the
@@ -272,6 +276,9 @@ impl Database {
         }
         if version < 24 {
             conn.execute_batch(include_str!("migrations/024_snippet_shortcut.sql"))?;
+        }
+        if version < 25 {
+            conn.execute_batch(include_str!("migrations/025_forward_name.sql"))?;
         }
         Ok(())
     }
@@ -704,7 +711,7 @@ impl Database {
     pub fn list_session_forwards(&self, session_id: i64) -> Result<Vec<SavedForward>, Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT kind, bind_addr, bind_port, target_host, target_port
+            "SELECT kind, bind_addr, bind_port, target_host, target_port, name
              FROM session_forwards WHERE session_id = ?1 ORDER BY sort_order, id",
         )?;
         let rows = stmt.query_map(rusqlite::params![session_id], |row| {
@@ -714,6 +721,7 @@ impl Database {
                 bind_port: row.get::<_, i64>(2)? as u16,
                 target_host: row.get(3)?,
                 target_port: row.get::<_, Option<i64>>(4)?.map(|p| p as u16),
+                name: row.get(5)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -734,8 +742,8 @@ impl Database {
         for (idx, f) in forwards.iter().enumerate() {
             tx.execute(
                 "INSERT INTO session_forwards
-                 (session_id, kind, bind_addr, bind_port, target_host, target_port, sort_order)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 (session_id, kind, bind_addr, bind_port, target_host, target_port, sort_order, name)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     session_id,
                     f.kind,
@@ -744,6 +752,7 @@ impl Database {
                     f.target_host,
                     f.target_port.map(|p| p as i64),
                     idx as i64,
+                    f.name.as_deref().map(str::trim).filter(|n| !n.is_empty()),
                 ],
             )?;
         }
@@ -1774,6 +1783,50 @@ mod tests {
         let path = std::env::temp_dir().join(format!("zapx_groups_test_{nanos}.db"));
         let db = Database::open(&path).expect("open db");
         (db, path)
+    }
+
+    #[test]
+    fn forward_names_are_saved_trimmed_and_optional() {
+        let (db, path) = temp_db();
+        let sid = db
+            .create_session(
+                None,
+                "jump",
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                None,
+                None,
+                "{}",
+            )
+            .unwrap();
+        let fwd = |name: Option<&str>| SavedForward {
+            kind: "local".into(),
+            bind_addr: "127.0.0.1".into(),
+            bind_port: 8443,
+            target_host: Some("10.0.0.2".into()),
+            target_port: Some(443),
+            name: name.map(str::to_owned),
+        };
+        db.set_session_forwards(
+            sid,
+            &[fwd(Some("  FortiGate GUI ")), fwd(Some("   ")), fwd(None)],
+        )
+        .unwrap();
+        let names: Vec<_> = db
+            .list_session_forwards(sid)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert_eq!(names, [Some("FortiGate GUI".to_owned()), None, None]);
+        // Exports made before names existed still deserialize.
+        let old: SavedForward = serde_json::from_str(
+            r#"{"kind":"dynamic","bind_addr":"127.0.0.1","bind_port":1080,"target_host":null,"target_port":null}"#,
+        )
+        .unwrap();
+        assert_eq!(old.name, None);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

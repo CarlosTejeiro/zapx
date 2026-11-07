@@ -208,6 +208,7 @@ fn attach_forwards(
             bind_port,
             target_host,
             target_port,
+            name: None,
         };
 
         // Attach to the matching gateway session, or create one for it.

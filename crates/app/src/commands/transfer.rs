@@ -564,6 +564,7 @@ mod tests {
                 bind_port: 8080,
                 target_host: Some("10.0.0.9".into()),
                 target_port: Some(80),
+                name: Some("Web UI".into()),
             }],
         )
         .unwrap();
@@ -623,6 +624,7 @@ mod tests {
         assert_eq!(fwds.len(), 1);
         assert_eq!(fwds[0].bind_port, 8080);
         assert_eq!(fwds[0].target_host.as_deref(), Some("10.0.0.9"));
+        assert_eq!(fwds[0].name.as_deref(), Some("Web UI"));
         let folders = dst.list_folders().unwrap();
         let new_child = folders.iter().find(|f| f.name == "Spines").unwrap();
         let new_parent = folders.iter().find(|f| f.name == "DC").unwrap();

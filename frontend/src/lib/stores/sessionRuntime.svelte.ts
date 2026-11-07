@@ -33,7 +33,11 @@ export function registerSession(paneId: number, sessionId: string): void {
   paneToSession.set(paneId, sessionId)
 }
 
-export function unregisterSession(paneId: number): void {
+/** Forget the pane's session. With `sessionId`, only if the pane still maps
+ *  to it — a terminal being torn down must not drop the session of the one
+ *  that replaced it in the same pane. */
+export function unregisterSession(paneId: number, sessionId?: string): void {
+  if (sessionId !== undefined && paneToSession.get(paneId) !== sessionId) return
   paneToSession.delete(paneId)
 }
 

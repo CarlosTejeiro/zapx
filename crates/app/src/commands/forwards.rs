@@ -46,6 +46,11 @@ fn session_handle_and_registry(
     Ok((handle, registry))
 }
 
+/// A tunnel name as typed: trimmed, `None` when blank.
+fn clean_name(name: Option<String>) -> Option<String> {
+    name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty())
+}
+
 /// Bind a local TCP port and tunnel each connection to `(target_host,
 /// target_port)` via `direct-tcpip` on the SSH session. Equivalent to
 /// `ssh -L <bind_port>:<target_host>:<target_port>`.
@@ -58,12 +63,14 @@ pub async fn add_local_forward(
     bind_port: u16,
     target_host: String,
     target_port: u16,
+    name: Option<String>,
 ) -> Result<ForwardInfo, AppError> {
     let handle = session_handle(&state, &session_id)?;
-    let controller =
+    let mut controller =
         core_transport::open_local_forward(handle, bind_addr, bind_port, target_host, target_port)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
+    controller.info.name = clean_name(name);
     let info = controller.info.clone();
     state
         .forwards
@@ -83,11 +90,13 @@ pub async fn add_dynamic_forward(
     session_id: String,
     bind_addr: String,
     bind_port: u16,
+    name: Option<String>,
 ) -> Result<ForwardInfo, AppError> {
     let handle = session_handle(&state, &session_id)?;
-    let controller = core_transport::open_dynamic_forward(handle, bind_addr, bind_port)
+    let mut controller = core_transport::open_dynamic_forward(handle, bind_addr, bind_port)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+    controller.info.name = clean_name(name);
     let info = controller.info.clone();
     state
         .forwards
@@ -112,9 +121,10 @@ pub async fn add_remote_forward(
     bind_port: u16,
     target_host: String,
     target_port: u16,
+    name: Option<String>,
 ) -> Result<ForwardInfo, AppError> {
     let (handle, registry) = session_handle_and_registry(&state, &session_id)?;
-    let controller = core_transport::open_remote_forward(
+    let mut controller = core_transport::open_remote_forward(
         handle,
         registry,
         bind_addr,
@@ -124,6 +134,7 @@ pub async fn add_remote_forward(
     )
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
+    controller.info.name = clean_name(name);
     let info = controller.info.clone();
     state
         .forwards
@@ -277,13 +288,16 @@ pub async fn autostart_saved_forwards(
             }
         };
         match opened {
-            Ok(controller) => state
-                .forwards
-                .lock()
-                .unwrap()
-                .entry(live_session_id.to_owned())
-                .or_default()
-                .push(controller),
+            Ok(mut controller) => {
+                controller.info.name = clean_name(f.name.clone());
+                state
+                    .forwards
+                    .lock()
+                    .unwrap()
+                    .entry(live_session_id.to_owned())
+                    .or_default()
+                    .push(controller);
+            }
             Err(e) => tracing::warn!(
                 "auto-start {} forward {}:{} failed: {e}",
                 f.kind,

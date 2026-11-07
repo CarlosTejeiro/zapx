@@ -161,6 +161,7 @@ export async function addLocalForward(
   bindPort: number,
   targetHost: string,
   targetPort: number,
+  name?: string,
 ): Promise<ForwardInfo> {
   return invoke<ForwardInfo>('add_local_forward', {
     sessionId,
@@ -168,6 +169,7 @@ export async function addLocalForward(
     bindPort,
     targetHost,
     targetPort,
+    name: name || null,
   })
 }
 
@@ -175,8 +177,14 @@ export async function addDynamicForward(
   sessionId: string,
   bindAddr: string,
   bindPort: number,
+  name?: string,
 ): Promise<ForwardInfo> {
-  return invoke<ForwardInfo>('add_dynamic_forward', { sessionId, bindAddr, bindPort })
+  return invoke<ForwardInfo>('add_dynamic_forward', {
+    sessionId,
+    bindAddr,
+    bindPort,
+    name: name || null,
+  })
 }
 
 /// Ask the SSH server to listen on `bindAddr:bindPort` and forward every
@@ -188,6 +196,7 @@ export async function addRemoteForward(
   bindPort: number,
   targetHost: string,
   targetPort: number,
+  name?: string,
 ): Promise<ForwardInfo> {
   return invoke<ForwardInfo>('add_remote_forward', {
     sessionId,
@@ -195,6 +204,7 @@ export async function addRemoteForward(
     bindPort,
     targetHost,
     targetPort,
+    name: name || null,
   })
 }
 

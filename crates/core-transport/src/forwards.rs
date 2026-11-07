@@ -39,6 +39,9 @@ pub struct ForwardInfo {
     /// (SOCKS picks per connection).
     pub target_host: Option<String>,
     pub target_port: Option<u16>,
+    /// The user's name for this tunnel (from the saved forward, or typed when
+    /// adding it by hand); `None` = unnamed.
+    pub name: Option<String>,
 }
 
 /// Cleanup the controller fires on drop. Local/dynamic forwards just abort
@@ -118,6 +121,7 @@ pub async fn open_local_forward(
             bind_port: resolved_bind_port,
             target_host: Some(target_host),
             target_port: Some(target_port),
+            name: None,
         },
         task: Some(join.abort_handle()),
         cleanup: None,
@@ -164,6 +168,7 @@ pub async fn open_dynamic_forward(
             bind_port: resolved_bind_port,
             target_host: None,
             target_port: None,
+            name: None,
         },
         task: Some(join.abort_handle()),
         cleanup: None,
@@ -262,6 +267,7 @@ pub async fn open_remote_forward(
             bind_port: resolved_port,
             target_host: Some(target_host),
             target_port: Some(target_port),
+            name: None,
         },
         task: None,
         cleanup: Some(cleanup),

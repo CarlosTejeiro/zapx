@@ -155,6 +155,8 @@ export interface ForwardInfo {
   /** Present for "local"; null for "dynamic" (SOCKS5 chooses per connection). */
   target_host: string | null
   target_port: number | null
+  /** The user's name for this tunnel, or null. */
+  name: string | null
 }
 
 // A port-forward saved on a session (auto-started on connect), mirroring
@@ -166,6 +168,8 @@ export interface SavedForward {
   bind_port: number
   target_host: string | null
   target_port: number | null
+  /** What the tunnel is for ("FortiGate GUI"…), or null. */
+  name?: string | null
 }
 
 // Mirror of core-transport `HostKeyStatus` (serde tag = "status").

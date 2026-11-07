@@ -102,6 +102,7 @@
               {kindLabel(f.info.kind)}
             </span>
             <div class="info">
+              {#if f.info.name}<span class="name">{f.info.name}</span>{/if}
               <span class="route">{route(f)}</span>
               <span class="session">{labels[f.session_id] ?? f.session_id.slice(0, 8)}</span>
             </div>
@@ -209,6 +210,13 @@
   .session {
     font-size: 0.68rem;
     color: var(--zx-text-dim);
+  }
+  .name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .btn {
     background: transparent;

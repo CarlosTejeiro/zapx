@@ -248,6 +248,7 @@
       bind_port: 0,
       target_host: '',
       target_port: 0,
+      name: '',
     })
   }
   function removeForward(idx: number) {
@@ -494,11 +495,13 @@
               f.bind_port > 0 &&
               (f.kind === 'dynamic' || (f.target_host?.trim() && (f.target_port ?? 0) > 0)),
           )
-          .map((f) =>
-            f.kind === 'dynamic'
-              ? { ...f, target_host: null, target_port: null }
-              : { ...f, target_host: f.target_host!.trim() },
-          )
+          .map((f) => ({
+            ...f,
+            name: f.name?.trim() || null,
+            ...(f.kind === 'dynamic'
+              ? { target_host: null, target_port: null }
+              : { target_host: f.target_host!.trim() }),
+          }))
         if (existing || cleanForwards.length > 0) {
           await setSessionForwards(id, cleanForwards)
         }
@@ -901,6 +904,13 @@
           <strong>Remote</strong> (-R) binds a port on the server back to a local target.
         </p>
         {#each forwards as f, idx (idx)}
+          <input
+            class="fwd-name"
+            placeholder="Name (optional) — e.g. FortiGate GUI, RDP to jump host"
+            bind:value={f.name}
+            maxlength="80"
+            aria-label="Forward name"
+          />
           <div class="fwd">
             <select class="fwd-kind" bind:value={f.kind} title="Forward type">
               <option value="local">Local -L</option>
@@ -1356,7 +1366,13 @@
     display: flex;
     gap: 0.3rem;
     align-items: center;
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+  .fwd-name {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0.2rem;
+    font-size: 0.78rem;
   }
   .fwd-kind {
     width: 6.5rem;
@@ -1371,7 +1387,7 @@
     font-size: 0.78rem;
   }
   .fwd-port {
-    width: 4rem;
+    width: 4.8rem;
     font-size: 0.78rem;
     flex-shrink: 0;
     font-family: var(--zx-font-mono);

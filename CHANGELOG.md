@@ -5,6 +5,39 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-11-05
+
+### Added
+- **Names for port forwards.** Each forward saved on a session (session
+  dialog → Port forwards) has an optional name, e.g. "FortiGate GUI" or "RDP
+  to jump host", shown above its mapping there, in the pane's port-forwards
+  list and in Tools → Active tunnels…. Forwards added by hand from the pane
+  can be named too. Names are kept in exports and duplicated sessions;
+  exports from older versions still import (their forwards are unnamed).
+
+### Fixed
+- **Saved port forwards (and login automation) didn't start after typing the
+  password in a tab.** When a session's password isn't in the system keyring,
+  the tab asks for it; it then reconnected as a plain SSH connection instead of
+  as the saved session, so its jump host, port forwards, login automation and
+  platform were skipped. It now reconnects as the saved session (the typed
+  password is kept encrypted for later restarts, as before), also for sessions
+  with no stored credential such as MobaXterm imports. Reconnecting also no
+  longer leaves the tab's SFTP / port-forward buttons pointing at a gone
+  connection.
+
+### Changed
+- The port fields of the session dialog's forwards are wider, so five-digit
+  ports are no longer cut off.
+
+### Security
+- Dependency updates for new advisories: `crypto-bigint` 0.7.10
+  (RUSTSEC-2026-0387, timing side channels in constant-time arithmetic, used
+  by the SSH library) and `tokio` 1.54.1 (RUSTSEC-2026-0386). Two more are
+  acknowledged in `deny.toml`: `zip` (RUSTSEC-2026-0429) only reaches the
+  updater plugin, which is disabled, and `pin-utils` (RUSTSEC-2026-0441) is
+  unmaintained, not vulnerable, and comes from `portable-pty` 0.8.
+
 ## [0.26.2] - 2026-10-23
 
 ### Fixed
