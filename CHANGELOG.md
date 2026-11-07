@@ -5,6 +5,34 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-11-07
+
+### Added
+- **Read-only mode for scripts and notebooks.** The run dialog now offers
+  three modes: Dry run, **Read-only** and Run. Read-only logs into the devices
+  and types only commands starting with an allowed word (`get, show` by
+  default, editable in the dialog), so the script works on real output;
+  anything else is not typed but listed as `[read-only] … would run "…"`, and
+  lines chaining commands (`;`, `|`, `&`, …) are always held back. ZAPX
+  enforces it; scripts can check `zapx.read_only`, and `sase_reset.py` uses it
+  to report which tunnels a real run would reset. The notebook connection is
+  read-only by default too (a **Read-only** box in its panel, remembered).
+- **Platform detection over Telnet and serial.** Telnet and serial sessions
+  now recognise the device (e.g. a FortiGate from `get system status`) like
+  SSH sessions do: the snippet bar switches to that platform's commands, and
+  for saved sessions the platform is remembered.
+
+### Fixed
+- **A wrongly typed password kept failing.** When the password typed in a tab
+  was wrong, ZAPX kept retrying it and showed "Authentication failed". It now
+  forgets it and asks again ("Wrong password — try again.").
+- **Login scripts and scripts could miss a device's first output.** A device
+  that prints its banner straight away (a Telnet login disclaimer, on a fast
+  link) could send it before the session was ready to read it: the login
+  script then never saw the text it was waiting for, the banner was missing
+  from the tab, and a script's first command could come back empty. The first
+  output is now kept and handed over once the session is ready.
+
 ## [0.27.0] - 2026-11-05
 
 ### Added
