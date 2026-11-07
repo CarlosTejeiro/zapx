@@ -1,8 +1,11 @@
 """Reset the SASE IPsec tunnels found down on a group of FortiGates.
 
-Edit the settings below, then run it from Tools → Run Python script… — keep
-Dry run ticked the first time: nothing is sent or opened, the panel lists every
-command it would type. Untick it to run for real.
+Edit the settings below, then run it from Tools → Run Python script…:
+- Dry run (first time): nothing is sent or opened; the panel lists every
+  command it would type.
+- Read-only: logs in and reads the real tunnel state (`get` commands only),
+  then reports which tunnels a real run would reset — nothing is changed.
+- Run: does it for real.
 
 The devices are ZAPX saved sessions (all those in FOLDER, or the names in
 DEVICES). ZAPX handles the connection like for any saved session: jump host,
@@ -74,6 +77,10 @@ def reset_device(name: str) -> None:
         down = [t for t in TUNNELS if not is_up(summary, t)]
         if not down:
             zapx.report(name, "OK — already up, nothing sent", describe(summary))
+            return
+        if zapx.read_only:
+            # Real data, no changes: say what a real run would reset.
+            zapx.report(name, "READ-ONLY — nothing changed", f"would reset {', '.join(down)}")
             return
 
         set_status(s, down, "down")

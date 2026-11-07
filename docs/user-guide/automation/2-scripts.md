@@ -45,9 +45,10 @@ zapx.report(s.name, "OK", first_line)
    ![Choosing the script](../images/script-file-picker.png)
 
 3. The run dialog says which tab the script starts on and which Python it will
-   use. **Dry run** is ticked:
+   use, and offers three modes — **Dry run** (chosen), **Read-only** and
+   **Run**:
 
-   ![Run dialog with Dry run ticked](../images/script-run-dialog.png)
+   ![Run dialog with Dry run chosen](../images/script-run-dialog.png)
 
    Click **Dry run**.
 
@@ -123,7 +124,7 @@ CLOSE_TABS = True         # close each device's tab when done
 
 ### 1) Dry run first — always
 
-Run it with **Dry run** ticked. The panel lists every command it *would* send,
+Run it as a **Dry run**. The panel lists every command it *would* send,
 per device:
 
 ![sase_reset.py dry run: the plan for each device](../images/script-sase-dry-run.png)
@@ -132,7 +133,21 @@ In a dry run the script can't see real output, so it assumes every tunnel is
 down and shows you the **longest** plan. Read it: right devices? right tunnel
 names?
 
-### 2) Run for real
+### 2) Read-only: the real state, nothing changed
+
+Run it again and choose **Read-only** (commands starting with `get, show`).
+ZAPX logs into each device and types only the `get` commands, so the script
+sees the real tunnel state; it stops there and says what a real run would do:
+
+![sase_reset.py read-only: what a real run would reset](../images/script-sase-read-only.png)
+
+- `FGT-60F-01` — **READ-ONLY — nothing changed**, *would reset SASE_INET*.
+- `FGT-60F-02` — **OK — already up, nothing sent**.
+
+Any other command the script tried would be listed as
+`[read-only] … would run "…"` instead of being typed.
+
+### 3) Run for real
 
 Click **Run for real**. The script asks before touching anything:
 
@@ -145,7 +160,7 @@ here on `FGT-60F-01`, where `SASE_INET` was down (`selectors 1/0`):
 
 The panel's **Stop** button ends the script at any time.
 
-### 3) Read the result
+### 4) Read the result
 
 ![Result: FGT-60F-01 reset, FGT-60F-02 left alone](../images/script-sase-result.png)
 
@@ -175,7 +190,8 @@ The full list, and how `run()` decides a command has finished, is in the
 
 **Good habits**
 
-- Dry run every new or changed script first.
+- Dry run every new or changed script first, then a read-only run against the
+  real devices.
 - Check before you change: read the state, decide, and send nothing when there
   is nothing to fix.
 - Put the undo in a `finally:` block, like `sase_reset.py` does with

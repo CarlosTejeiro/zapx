@@ -10,6 +10,7 @@
     stopNotebook,
     stopScript,
   } from './scriptHost.svelte'
+  import { setSetting } from '$lib/bridge/commands'
 
   let logEl = $state<HTMLPreElement | null>(null)
   let collapsed = $state(false)
@@ -63,8 +64,14 @@
     if (nearBottom) queueMicrotask(() => (el.scrollTop = el.scrollHeight))
   })
 
-  function rerun(dryRun: boolean) {
-    void startScript(scriptRun.path, dryRun)
+  function rerun(dryRun: boolean, readOnly: boolean) {
+    void startScript(scriptRun.path, dryRun, readOnly, scriptRun.allow)
+  }
+
+  /// Notebook mode: read-only can be switched live; remembered for next time.
+  function setNotebookReadOnly(on: boolean) {
+    scriptRun.readOnly = on
+    void setSetting('notebook.read_only', on ? '1' : '0').catch(() => {})
   }
 </script>
 
@@ -74,6 +81,10 @@
     <span class="title" title={scriptRun.path}>{fileName}</span>
     <span class="status">{statusLabel}</span>
     {#if scriptRun.dryRun}<span class="badge">dry run</span>{/if}
+    {#if scriptRun.readOnly}<span
+        class="badge ro"
+        title={`Only ${scriptRun.allow.join(', ')} commands are sent`}>read-only</span
+      >{/if}
     <span class="spacer"></span>
     {#if notebook}
       {#if notebookOn}
@@ -84,12 +95,16 @@
     {:else if scriptRun.status === 'running'}
       <button class="btn stop" onclick={() => stopScript()}>Stop</button>
     {:else}
-      {#if scriptRun.dryRun}
-        <button class="btn" onclick={() => rerun(false)} title="Run it again, sending for real"
-          >Run for real</button
+      {#if scriptRun.dryRun || scriptRun.readOnly}
+        <button
+          class="btn"
+          onclick={() => rerun(false, false)}
+          title="Run it again, sending every command">Run for real</button
         >
       {/if}
-      <button class="btn" onclick={() => rerun(scriptRun.dryRun)}>Run again</button>
+      <button class="btn" onclick={() => rerun(scriptRun.dryRun, scriptRun.readOnly)}
+        >Run again</button
+      >
     {/if}
     <button
       class="icon"
@@ -111,6 +126,17 @@
   {#if !collapsed}
     {#if notebookOn && scriptRun.moduleDir}
       <div class="connect">
+        <label class="ro-toggle">
+          <input
+            type="checkbox"
+            checked={scriptRun.readOnly}
+            onchange={(e) => setNotebookReadOnly(e.currentTarget.checked)}
+          />
+          <span>
+            <strong>Read-only</strong> — only <code>{scriptRun.allow.join(', ')}</code> commands are sent;
+            anything else is listed as "would run".
+          </span>
+        </label>
         <p>
           In your notebook (VS Code, JupyterLab) or a <code>python</code> prompt, run:
         </p>
@@ -343,5 +369,16 @@
     font-size: 10.5px;
     color: var(--zx-text-dim);
     font-family: var(--zx-font-mono);
+  }
+  .badge.ro {
+    background: color-mix(in srgb, var(--zx-warn) 18%, transparent);
+    color: var(--zx-warn);
+  }
+  .ro-toggle {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    cursor: pointer;
   }
 </style>

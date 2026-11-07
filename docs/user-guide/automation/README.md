@@ -7,7 +7,7 @@ run, then for real) and explored a device from a notebook.
 | Part | What you'll do | Time |
 |---|---|---|
 | [1. Getting started](1-getting-started.md) | Install, save your first device, store its password in the vault, log in automatically. | 10 min |
-| [2. Python scripts](2-scripts.md) | What a script is, run `hello.py`, then `sase_reset.py` step by step — dry run first. | 15 min |
+| [2. Python scripts](2-scripts.md) | What a script is, run `hello.py`, then `sase_reset.py` step by step — dry run, read-only, then for real. | 15 min |
 | [3. Notebooks](3-notebooks.md) | Connect VS Code or JupyterLab to ZAPX and explore a device cell by cell. | 15 min |
 
 ## The idea in one picture

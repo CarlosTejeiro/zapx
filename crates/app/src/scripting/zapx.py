@@ -14,9 +14,14 @@ command and its output there — while your script only decides what to do.
 Passwords never reach the script: ``send_secret("Name.Password")`` asks ZAPX to
 type a credential from its vault straight into the session.
 
-With **Dry run** ticked in ZAPX, ``zapx.dry_run`` is True: nothing is sent or
+In **Dry run** mode, ``zapx.dry_run`` is True: nothing is sent or
 opened, ``run()``/``expect()`` return an empty string and every action is
 logged as "would …" instead.
+
+In **Read-only** mode (``zapx.read_only`` is True) sessions are opened and
+display commands (``get``/``show`` by default) run for real; anything else is
+skipped and logged as "would run", and ``run()`` returns an empty string for
+it. ZAPX enforces this, not the script.
 
 From a notebook (VS Code, JupyterLab) or a Python prompt you started yourself,
 turn on **Tools → Allow notebook connection** in ZAPX, then::
@@ -44,6 +49,7 @@ __all__ = [
     "Timeout",
     "Session",
     "dry_run",
+    "read_only",
     "connect",
     "session",
     "tab",
@@ -58,6 +64,12 @@ __all__ = [
 
 #: True when ZAPX started the script in dry-run mode.
 dry_run: bool = os.environ.get("ZAPX_DRY_RUN") == "1"
+
+#: True when ZAPX started the script in read-only mode: only display commands
+#: (``get``/``show`` by default) are typed; ZAPX skips the rest and logs them
+#: as "would run", and ``run()`` returns an empty string for those. From a
+#: notebook it reflects the connection's Read-only box when ``connect()`` ran.
+read_only: bool = os.environ.get("ZAPX_READ_ONLY") == "1"
 
 
 class Error(Exception):
@@ -198,10 +210,13 @@ def connect(path: Optional[str] = None, port: Optional[int] = None, token: Optio
     If the connection drops later (ZAPX restarted, connection turned off and
     on), the next call reconnects on its own.
     """
-    global _notebook
+    global _notebook, read_only
     with _lock:
         _notebook = {"path": path, "port": port, "token": token}
         _connect_notebook()
+    # The notebook connection's Read-only box decides; ZAPX enforces it either
+    # way, this only lets the notebook's own code adapt (re-read on connect()).
+    read_only = bool((_call("mode") or {}).get("read_only"))
 
 
 def _call(method: str, **params):
