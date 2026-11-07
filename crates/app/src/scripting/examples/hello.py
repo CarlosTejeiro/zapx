@@ -1,7 +1,8 @@
 """Smallest ZAPX script: look at the focused tab and run one command.
 
-Run it from Tools → Run Python script…, with Dry run ticked first: nothing is
-sent, the panel lists what would be. Untick it to run for real.
+Run it from Tools → Run Python script…, as a Dry run first: nothing is sent,
+the panel lists what would be. Then choose Run (it only reads, so Read-only
+runs it for real too).
 """
 
 import zapx

@@ -30,16 +30,25 @@ point the dialog at `python.exe`.
 
 **Tools → Run Python script…** picks a `.py` file and opens the run dialog:
 
-- **Dry run** (ticked by default): nothing is sent or opened. `run()` returns
-  an empty string, `sleep()` doesn't wait, `confirm()` answers yes, and every
+- **Dry run** (the default): nothing is sent or opened. `run()` returns an
+  empty string, `sleep()` doesn't wait, `confirm()` answers yes, and every
   action is listed in the panel as `[dry-run] would …`. A syntax error or a
   typo in a name shows up straight away, before anything touches a device.
+- **Read-only**: sessions are opened and logged into for real, and commands
+  that start with an allowed word (`get, show` by default; edit the list in the
+  dialog, setting `scripts.read_only_allow`) are typed, so the script sees the
+  real output. Anything else — `config`, `execute`, `diagnose`, a line with
+  `;`, `|`, `&`, `<`, `>`, `` ` `` or `$(` — is not typed: the panel lists it
+  as `[read-only] … would run "…"` and `run()` returns an empty string for it.
+  `zapx.read_only` is `True`, so a script can stop before its changes and say
+  what it would do. ZAPX enforces the list, not the script.
+- **Run**: every command is sent.
 - **Python**: leave empty to auto-detect, or give a path / command.
 
 The script panel (bottom right) shows the status, the summary table the script
-fills with `zapx.report()`, and the live log (`print`, errors, `[dry-run]`
-lines). **Stop** kills the script; after a dry run, **Run for real** runs it
-again with sending enabled. The panel doesn't block the window, so you can
+fills with `zapx.report()`, and the live log (`print`, errors, `[dry-run]` and
+`[read-only]` lines). **Stop** kills the script; after a dry run or a
+read-only run, **Run for real** runs it again with sending enabled. The panel doesn't block the window, so you can
 watch and use the tabs while a script runs.
 
 One script runs at a time.
@@ -73,6 +82,9 @@ and reports OK / NOT UP / FAILED per device. One device failing doesn't stop
 the others.
 
 Run it as a dry run first: it lists every command it would send, per device.
+Then a **read-only** run: it logs in, reads the real tunnel state and reports
+`READ-ONLY — nothing changed` with the tunnels a real run would reset (or
+`OK — already up`), without sending any change.
 
 ## Notebooks (VS Code, JupyterLab)
 
@@ -102,7 +114,13 @@ file:
 How it behaves:
 
 - Same API as scripts. `zapx.session()` is the tab focused *now*.
-- **Not a dry run**: every `run()` / `send()` is typed on the device.
+- **Read-only by default**: the panel's **Read-only** box (ticked the first
+  time; ZAPX remembers it as `notebook.read_only`) applies the same allowlist
+  as a read-only script run, so only `get` / `show` commands reach the device
+  and the rest is logged as "would run". Untick it to make changes from the
+  notebook; it takes effect on the next call. `zapx.read_only` tells the
+  notebook which mode it got when `connect()` ran. There is no dry run in a
+  notebook.
 - One notebook at a time; a second `connect()` is refused while one is
   connected.
 - Stopping a cell (■) makes ZAPX abandon what that call was waiting on; the
@@ -132,6 +150,7 @@ if "HA mode: standalone" in out:
 | Call | What it does |
 |---|---|
 | `zapx.dry_run` | `True` when started as a dry run. |
+| `zapx.read_only` | `True` in a read-only run (or a read-only notebook connection, as of `connect()`). |
 | `zapx.session()` | The focused tab (in a script, call it first to get the one focused when it started). |
 | `zapx.open(name, timeout=60)` | Opens the saved session `name` in a new tab, waits until it is connected and its output settles, returns it. |
 | `zapx.sessions(folder=None)` | Saved session names, or those in `folder` and its sub-folders. |

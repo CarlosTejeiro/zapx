@@ -155,6 +155,7 @@ pub async fn start(
     script: &Path,
     module_dir: &Path,
     dry_run: bool,
+    read_only: bool,
     sink: Arc<dyn ScriptSink>,
     runs: Runs,
 ) -> Result<Arc<ScriptRun>, String> {
@@ -180,6 +181,9 @@ pub async fn start(
         .env("ZAPX_PORT", port.to_string())
         .env("ZAPX_TOKEN", &token)
         .env("ZAPX_DRY_RUN", if dry_run { "1" } else { "0" })
+        // Informational: ZAPX itself enforces read-only (the frontend host
+        // refuses to type disallowed commands); scripts can adapt to it.
+        .env("ZAPX_READ_ONLY", if read_only { "1" } else { "0" })
         .env("PYTHONPATH", pythonpath)
         .env("PYTHONIOENCODING", "utf-8")
         // No __pycache__ littering the user's script folders.
@@ -535,6 +539,7 @@ mod tests {
                     Ok(serde_json::json!({"id": "s2", "name": params["name"], "platform": null}))
                 }
                 "confirm" => Ok(Value::Bool(true)),
+                "mode" => Ok(serde_json::json!({"dry_run": false, "read_only": true})),
                 "tab" => Ok(
                     serde_json::json!({"id": "s1", "name": params["name"], "platform": "fortigate"}),
                 ),
@@ -581,6 +586,14 @@ mod tests {
     }
 
     async fn run_script(body: &str, dry_run: bool) -> (Option<i32>, Vec<String>) {
+        run_script_mode(body, dry_run, false).await
+    }
+
+    async fn run_script_mode(
+        body: &str,
+        dry_run: bool,
+        read_only: bool,
+    ) -> (Option<i32>, Vec<String>) {
         let dir = std::env::temp_dir().join(format!("zapx-script-test-{}", uuid::Uuid::new_v4()));
         let module_dir = install_module(&dir.join("lib")).unwrap();
         let script = dir.join("t.py");
@@ -589,9 +602,17 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         let host = fake_host(&runs, Some(tx));
         let python = python_or_skip().unwrap();
-        start(&python, &script, &module_dir, dry_run, host.clone(), runs)
-            .await
-            .unwrap();
+        start(
+            &python,
+            &script,
+            &module_dir,
+            dry_run,
+            read_only,
+            host.clone(),
+            runs,
+        )
+        .await
+        .unwrap();
         let code = tokio::time::timeout(Duration::from_secs(30), rx)
             .await
             .expect("script finished")
@@ -759,9 +780,17 @@ print(zapx.session().name)
         let runs: Runs = Arc::default();
         let (tx, rx) = oneshot::channel();
         let host = fake_host(&runs, Some(tx));
-        let run = start(&python, &script, &module_dir, false, host, runs.clone())
-            .await
-            .unwrap();
+        let run = start(
+            &python,
+            &script,
+            &module_dir,
+            false,
+            false,
+            host,
+            runs.clone(),
+        )
+        .await
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         run.stop();
         let code = tokio::time::timeout(Duration::from_secs(10), rx)
@@ -837,14 +866,15 @@ print(zapx.session().name)
             assert_eq!(mode & 0o777, 0o600, "connection file must be owner-only");
         }
         let body = format!(
-            "import zapx\nzapx.connect(path={:?})\nprint(zapx.session().name, [t.name for t in zapx.tabs()])\n",
+            "import zapx\nzapx.connect(path={:?})\nprint(zapx.session().name, [t.name for t in zapx.tabs()], zapx.read_only)\n",
             nb.file.to_string_lossy()
         );
+        // `read_only` comes from the host (its "mode" reply), not the env.
         let out = run_outside(&python, &nb.module_dir, &body).await;
-        assert_eq!(out.trim(), "fw1 ['fw1']");
+        assert_eq!(out.trim(), "fw1 ['fw1'] True");
         // The first kernel went away; a second one connects fine.
         let out = run_outside(&python, &nb.module_dir, &body).await;
-        assert_eq!(out.trim(), "fw1 ['fw1']");
+        assert_eq!(out.trim(), "fw1 ['fw1'] True");
         tokio::time::sleep(Duration::from_millis(200)).await;
         let log = nb.host.log.lock().unwrap().clone();
         let statuses: Vec<_> = log.iter().filter(|l| l.starts_with("status")).collect();
@@ -1016,5 +1046,46 @@ print(zapx.session().name)
         assert!(out.contains("down:    none"), "{out}");
         conn.run.stop();
         let _ = std::fs::remove_dir_all(conn.dir);
+    }
+
+    #[tokio::test]
+    async fn read_only_flag_reaches_the_script_and_the_example_adapts() {
+        if python_or_skip().is_none() {
+            return;
+        }
+        let (code, log) = run_script_mode(
+            "import zapx\nprint(zapx.read_only, zapx.dry_run)\n",
+            false,
+            true,
+        )
+        .await;
+        assert_eq!(code, Some(0));
+        assert!(log.contains(&"stdout: True False".to_string()), "{log:#?}");
+
+        // sase_reset in read-only: reads (the fake host's output has no tunnel
+        // up) and reports instead of resetting. Its device-safety checks are
+        // switched off here because the fake output isn't a real FortiOS one.
+        let (_, body) = EXAMPLES
+            .iter()
+            .find(|(n, _)| *n == "sase_reset.py")
+            .unwrap();
+        let body = body
+            .replace("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]")
+            .replace(
+                "not zapx.dry_run and \"Virtual domain configuration: disable\" not in status",
+                "False",
+            )
+            .replace("if missing and not zapx.dry_run:", "if False:");
+        let (code, log) = run_script_mode(&body, false, true).await;
+        assert_eq!(code, Some(0), "{log:#?}");
+        assert!(
+            log.iter()
+                .any(|l| l.starts_with("req report") && l.contains("READ-ONLY")),
+            "{log:#?}"
+        );
+        assert!(
+            !log.iter().any(|l| l.contains("set status")),
+            "no change commands may be issued: {log:#?}"
+        );
     }
 }

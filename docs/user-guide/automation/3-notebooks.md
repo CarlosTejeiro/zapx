@@ -11,8 +11,10 @@ A notebook (`.ipynb`) is a page of **cells**. You run one cell at a time
 next cells. ZAPX lets a notebook drive its tabs with the same `zapx` module as
 scripts.
 
-> ⚠️ **A notebook is never a dry run.** Every `run()` is typed on the device.
-> Explore with read-only commands (`get …`, `show …`) and keep changes for a
+> 🔒 **A notebook starts read-only.** Only `get …` / `show …` commands reach
+> the device; anything else is listed in the ZAPX panel as "would run" and
+> `run()` returns an empty text for it. Untick **Read-only** in the panel only
+> when you really mean to change something — and keep bigger changes for a
 > script you've dry-run.
 
 ## One-time setup
@@ -34,7 +36,8 @@ notebook…* and the lines a notebook needs:
 
 The connection is off by default, local to your computer only, and turns
 itself off after 60 minutes without notebook activity or when ZAPX closes.
-**Turn off** in the panel ends it any time.
+**Turn off** in the panel ends it any time. The **Read-only** box is ticked;
+leave it that way while you explore.
 
 ## Step 2 — open the example notebook
 
