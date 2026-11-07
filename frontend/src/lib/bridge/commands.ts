@@ -950,6 +950,11 @@ export async function cacheSessionPassword(
   return invoke<void>('cache_session_password', { savedSessionId, password })
 }
 
+// Drop a typed password that turned out to be wrong (memory + encrypted copy).
+export async function forgetSessionPassword(savedSessionId: number): Promise<void> {
+  return invoke<void>('forget_session_password', { savedSessionId })
+}
+
 export type {
   SavedSession,
   Folder,

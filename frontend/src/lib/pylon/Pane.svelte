@@ -2,9 +2,10 @@
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, ColorPalette, AuthMethod } from '$lib/bridge/types'
-  import { getCachedPassword, setCachedPassword } from '$lib/credentialCache'
+  import { clearCachedPassword, getCachedPassword, setCachedPassword } from '$lib/credentialCache'
   import {
     cacheSessionPassword,
+    forgetSessionPassword,
     startSessionLogging,
     stopSessionLogging,
   } from '$lib/bridge/commands'
@@ -186,6 +187,26 @@
     termKey++
   }
 
+  /// Shown above the password form after a typed password was rejected.
+  let passwordError = $state('')
+
+  /// The server rejected the password. If it was one typed in this pane, it is
+  /// wrong: forget it everywhere and ask again (instead of retrying it on
+  /// every connect). A wrong password from the keyring stays a plain error —
+  /// fix it in the session dialog.
+  function handleAuthFailed(): boolean {
+    const s = pane.savedSession
+    if (!s || !retriedWithCache) return false
+    retriedWithCache = false
+    clearCachedPassword(s.id)
+    forgetSessionPassword(s.id).catch(console.error)
+    passwordError = 'Wrong password — try again.'
+    needsPassword = true
+    status = 'error'
+    onStatusChange?.('error')
+    return true
+  }
+
   function handlePasswordSubmit(e: Event) {
     e.preventDefault()
     if (!passwordInput.trim()) return
@@ -194,6 +215,7 @@
     const pw = passwordInput
     setCachedPassword(s.id, pw)
     passwordInput = ''
+    passwordError = ''
     void reconnectSaved(s.id, pw)
   }
 
@@ -476,9 +498,13 @@
           <p class="pw-title" style:color={theme.terminal.fg}>
             {pane.savedSession?.username ?? 'user'}@{pane.savedSession?.host ?? 'host'}
           </p>
-          <p class="pw-sub" style:color={theme.terminal.dim}>
-            Credentials missing from keyring — enter password to reconnect
-          </p>
+          {#if passwordError}
+            <p class="pw-error" role="alert">{passwordError}</p>
+          {:else}
+            <p class="pw-sub" style:color={theme.terminal.dim}>
+              Credentials missing from keyring — enter password to reconnect
+            </p>
+          {/if}
           <input
             class="pw-input"
             type="password"
@@ -504,6 +530,7 @@
           pylonPalette={terminalPalette}
           {onGlobalShortcut}
           onNeedPassword={handleNeedPassword}
+          onAuthFailed={handleAuthFailed}
           onSessionOpen={() => handleStatus('connected')}
           onSessionError={() => handleStatus('error')}
           onSessionClose={() => handleStatus('closed')}
@@ -697,6 +724,12 @@
     text-align: center;
   }
 
+  .pw-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--zx-err);
+    text-align: center;
+  }
   .pw-sub {
     font-size: 11px;
     text-align: center;
