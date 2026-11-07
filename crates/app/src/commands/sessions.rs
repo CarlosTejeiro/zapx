@@ -1274,35 +1274,33 @@ fn resolve_ssh_auth_for_session(
     //   2. Process-lifetime in-memory cache (survives Cmd+R).
     //   3. Encrypted local store in SQLite (survives app restart — used on
     //      macOS dev builds where the unsigned binary is denied keyring read).
-    let secret = match session.credential_id {
-        Some(cred_id) => {
-            let from_keyring = state
+    // Steps 2–3 also apply to a session with no stored credential at all
+    // (e.g. a MobaXterm import): the password the user typed in the pane's
+    // reconnect form lands there via `cache_session_password`.
+    let from_keyring = session.credential_id.and_then(|cred_id| {
+        state
+            .db
+            .get_credential_keyring_key(cred_id)
+            .ok()
+            .and_then(|key| core_vault::Vault::retrieve(&key).ok())
+    });
+    let secret = from_keyring
+        .or_else(|| {
+            state
+                .password_cache
+                .lock()
+                .unwrap()
+                .get(&session.id)
+                .cloned()
+        })
+        .or_else(|| {
+            state
                 .db
-                .get_credential_keyring_key(cred_id)
+                .get_session_secret(session.id)
                 .ok()
-                .and_then(|key| core_vault::Vault::retrieve(&key).ok());
-            from_keyring
-                .or_else(|| {
-                    state
-                        .password_cache
-                        .lock()
-                        .unwrap()
-                        .get(&session.id)
-                        .cloned()
-                })
-                .or_else(|| {
-                    state
-                        .db
-                        .get_session_secret(session.id)
-                        .ok()
-                        .flatten()
-                        .and_then(|blob| {
-                            core_vault::decrypt_with_seed(&state.vault_seed, &blob).ok()
-                        })
-                })
-        }
-        None => None,
-    };
+                .flatten()
+                .and_then(|blob| core_vault::decrypt_with_seed(&state.vault_seed, &blob).ok())
+        });
     // Warm the in-memory cache if we resolved via DB (saves a decrypt+SQL
     // round-trip on subsequent opens).
     if let Some(ref pw) = secret {

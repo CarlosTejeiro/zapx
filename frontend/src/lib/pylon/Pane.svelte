@@ -129,6 +129,7 @@
   })
 
   function handleStatus(s: PaneStatus) {
+    if (s === 'connected') retriedWithCache = false
     status = s
     onStatusChange?.(s)
   }
@@ -139,27 +140,50 @@
   let sshOverride = $state<SshParams | null>(null)
   let termKey = $state(0)
 
+  /// The saved session was retried with a just-cached password; a second
+  /// "need password" right after means it didn't help → show the form.
+  let retriedWithCache = false
+
   function handleNeedPassword() {
     const s = pane.savedSession
-    if (s) {
-      const cached = getCachedPassword(s.id)
-      if (cached) {
-        // Use cached password silently — no form shown
-        sshOverride = {
-          host: s.host ?? '',
-          port: s.port ?? 22,
-          user: s.username ?? '',
-          auth: { type: 'password', password: cached },
-        }
-        status = 'connecting'
-        onStatusChange?.('connecting')
-        termKey++
-        return
-      }
+    const cached = s ? getCachedPassword(s.id) : null
+    if (s && cached && !retriedWithCache) {
+      // Use the password typed earlier in this run silently — no form shown.
+      void reconnectSaved(s.id, cached)
+      return
     }
+    retriedWithCache = false
     needsPassword = true
     status = 'error'
     onStatusChange?.('error')
+  }
+
+  /// Reconnect as the SAVED session — jump host, saved port forwards, login
+  /// automation, platform all apply — with `pw` standing in for the missing
+  /// keyring secret. The backend reads it from its session-password cache
+  /// (`cache_session_password` also keeps an encrypted copy for restarts).
+  /// If caching fails, fall back to a plain SSH connection with `pw`.
+  async function reconnectSaved(savedId: number, pw: string) {
+    status = 'connecting'
+    onStatusChange?.('connecting')
+    // The form (or the failed terminal) stays until the password is cached:
+    // mounting the terminal earlier would try the saved session without it.
+    try {
+      await cacheSessionPassword(savedId, pw)
+      sshOverride = null
+      retriedWithCache = true
+    } catch (err) {
+      console.error(err)
+      const s = pane.savedSession
+      sshOverride = {
+        host: s?.host ?? '',
+        port: s?.port ?? 22,
+        user: s?.username ?? '',
+        auth: { type: 'password', password: pw },
+      }
+    }
+    needsPassword = false
+    termKey++
   }
 
   function handlePasswordSubmit(e: Event) {
@@ -169,19 +193,8 @@
     if (!s) return
     const pw = passwordInput
     setCachedPassword(s.id, pw)
-    // Also persist on the Rust side so it survives Cmd+R (webview reload).
-    cacheSessionPassword(s.id, pw).catch(console.error)
-    sshOverride = {
-      host: s.host ?? '',
-      port: s.port ?? 22,
-      user: s.username ?? '',
-      auth: { type: 'password', password: pw },
-    }
     passwordInput = ''
-    needsPassword = false
-    status = 'connecting'
-    onStatusChange?.('connecting')
-    termKey++
+    void reconnectSaved(s.id, pw)
   }
 
   const protocol = $derived(

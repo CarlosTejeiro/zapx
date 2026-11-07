@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can be named too. Names are kept in exports and duplicated sessions;
   exports from older versions still import (their forwards are unnamed).
 
+### Fixed
+- **Saved port forwards (and login automation) didn't start after typing the
+  password in a tab.** When a session's password isn't in the system keyring,
+  the tab asks for it; it then reconnected as a plain SSH connection instead of
+  as the saved session, so its jump host, port forwards, login automation and
+  platform were skipped. It now reconnects as the saved session (the typed
+  password is kept encrypted for later restarts, as before), also for sessions
+  with no stored credential such as MobaXterm imports. Reconnecting also no
+  longer leaves the tab's SFTP / port-forward buttons pointing at a gone
+  connection.
+
 ### Changed
 - The port fields of the session dialog's forwards are wider, so five-digit
   ports are no longer cut off.

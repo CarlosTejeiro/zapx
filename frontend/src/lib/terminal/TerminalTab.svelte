@@ -1123,7 +1123,7 @@
     // Null the ref so any in-flight safeFit()/correctPtySize() (e.g. the
     // deferred self-heal) short-circuits instead of touching a disposed term.
     term = null
-    if (paneId != null) unregisterSession(paneId)
+    if (paneId != null && sessionId) unregisterSession(paneId, sessionId)
     if (sessionId) {
       const id = sessionId
       sessionId = null
