@@ -6,6 +6,8 @@ import {
   lastLine,
   looksLikePrompt,
   MORE_RE,
+  parseAllowList,
+  readOnlyAllows,
   stripAnsi,
 } from './output'
 
@@ -98,5 +100,37 @@ describe('looksLikePrompt', () => {
     ]) {
       expect(looksLikePrompt(p), p).toBe(false)
     }
+  })
+})
+
+describe('read-only allowlist', () => {
+  const allow = parseAllowList('get, show')
+
+  it('allows display commands as whole words', () => {
+    expect(readOnlyAllows('get system status', allow)).toBe(true)
+    expect(readOnlyAllows('  SHOW  running-config ', allow)).toBe(true)
+    expect(readOnlyAllows('show', allow)).toBe(true)
+    expect(readOnlyAllows('', allow)).toBe(true)
+  })
+
+  it('blocks everything else', () => {
+    expect(readOnlyAllows('config system interface', allow)).toBe(false)
+    expect(readOnlyAllows('diagnose vpn tunnel flush SASE_INET', allow)).toBe(false)
+    expect(readOnlyAllows('execute reboot', allow)).toBe(false)
+    expect(readOnlyAllows('shower', allow)).toBe(false)
+  })
+
+  it('blocks chaining and redirection even after an allowed prefix', () => {
+    expect(readOnlyAllows('show ip; reload', allow)).toBe(false)
+    expect(readOnlyAllows('show run | tee x', allow)).toBe(false)
+    expect(readOnlyAllows('show a && rm -rf /', allow)).toBe(false)
+    expect(readOnlyAllows('show $(id)', allow)).toBe(false)
+    expect(readOnlyAllows('show > /tmp/x', allow)).toBe(false)
+  })
+
+  it('parses lists and falls back to the defaults', () => {
+    expect(parseAllowList('get\nshow\n diagnose  sys ')).toEqual(['get', 'show', 'diagnose sys'])
+    expect(parseAllowList('')).toEqual(['get', 'show'])
+    expect(readOnlyAllows('diagnose sys top', parseAllowList('diagnose sys'))).toBe(true)
   })
 })

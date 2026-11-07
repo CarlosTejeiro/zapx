@@ -96,7 +96,13 @@
     setBarContext,
     matchSnippetShortcut,
   } from '$lib/stores/snippets.svelte'
-  import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
+  import {
+    getSessionPlatform,
+    getSessionTcpMss,
+    getSetting,
+    openExternal,
+  } from '$lib/bridge/commands'
+  import { parseAllowList } from '$lib/scripting/output'
   import {
     createSnippet,
     updateSnippet,
@@ -759,7 +765,12 @@
       })
       return
     }
-    await startNotebook()
+    const [ro, allowText] = await Promise.all([
+      getSetting('notebook.read_only').catch(() => null),
+      getSetting('scripts.read_only_allow').catch(() => null),
+    ])
+    // Read-only unless the user switched it off before.
+    await startNotebook(ro !== '0', parseAllowList(allowText))
   }
 
   /// Pane id + tab of the pane whose live session is `sessionId`.
@@ -2043,11 +2054,11 @@
       const sid = paneToSession.get(focusedPaneId)
       return sid ? (describeSession(sid)?.name ?? null) : null
     })()}
-    onRun={(dryRun) => {
+    onRun={(mode, allow) => {
       // Read the path BEFORE clearing scriptPending: `path` is derived from it.
       const chosen = path
       scriptPending = null
-      void startScript(chosen, dryRun)
+      void startScript(chosen, mode === 'dry', mode === 'read-only', allow)
     }}
     onCancel={() => (scriptPending = null)}
   />

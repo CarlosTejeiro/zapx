@@ -1,21 +1,26 @@
 <script lang="ts">
   /// Confirms a Python script run: shows the file, the tab it starts on, the
-  /// interpreter ZAPX will use (overridable) and the Dry run switch.
+  /// interpreter ZAPX will use (overridable) and the mode: dry run, read-only
+  /// (only allowlisted display commands are typed) or for real.
   import { invoke } from '@tauri-apps/api/core'
   import { getSetting, setSetting } from '$lib/bridge/commands'
+  import { parseAllowList } from './output'
 
   interface Props {
     path: string
     /** Name of the focused tab, or null when none (the script can still open
      *  saved sessions). */
     target: string | null
-    onRun: (dryRun: boolean) => void
+    onRun: (mode: RunMode, allow: string[]) => void
     onCancel: () => void
   }
 
+  type RunMode = 'dry' | 'read-only' | 'real'
+
   const { path, target, onRun, onCancel }: Props = $props()
 
-  let dryRun = $state(true)
+  let mode = $state<RunMode>('dry')
+  let allowText = $state('get, show')
   let python = $state('')
   let pythonInfo = $state<{ ok: boolean; text: string } | null>(null)
   let checking = $state(false)
@@ -36,6 +41,11 @@
   }
 
   $effect(() => {
+    getSetting('scripts.read_only_allow')
+      .then((v) => {
+        if (v) allowText = v
+      })
+      .catch(() => {})
     getSetting('scripts.python')
       .then((v) => {
         python = v ?? ''
@@ -47,7 +57,9 @@
   async function run() {
     // Persist an explicit interpreter (blank = auto-detect) before starting.
     await setSetting('scripts.python', python.trim()).catch(() => {})
-    onRun(dryRun)
+    const allow = parseAllowList(allowText)
+    await setSetting('scripts.read_only_allow', allow.join(', ')).catch(() => {})
+    onRun(mode, allow)
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -70,12 +82,38 @@
       {/if}
     </p>
 
-    <label class="check">
-      <input type="checkbox" bind:checked={dryRun} />
-      <span>
-        <strong>Dry run</strong> — nothing is sent or opened; every action is listed instead.
-      </span>
-    </label>
+    <fieldset class="modes">
+      <legend class="sr-only">Mode</legend>
+      <label class="check">
+        <input type="radio" name="mode" value="dry" bind:group={mode} />
+        <span>
+          <strong>Dry run</strong> — nothing is sent or opened; every action is listed instead.
+        </span>
+      </label>
+      <label class="check">
+        <input type="radio" name="mode" value="read-only" bind:group={mode} />
+        <span>
+          <strong>Read-only</strong> — logs in and sends only commands starting with:
+        </span>
+      </label>
+      {#if mode === 'read-only'}
+        <input
+          class="allow"
+          bind:value={allowText}
+          spellcheck="false"
+          aria-label="Allowed command prefixes"
+          placeholder="get, show"
+        />
+        <p class="muted indent">
+          Anything else is listed as "would run" instead of sent, so the script sees real output
+          without changing the device.
+        </p>
+      {/if}
+      <label class="check">
+        <input type="radio" name="mode" value="real" bind:group={mode} />
+        <span><strong>Run</strong> — every command is sent.</span>
+      </label>
+    </fieldset>
 
     <label class="python">
       <span>Python</span>
@@ -95,7 +133,7 @@
     <div class="actions">
       <button class="cancel" onclick={onCancel}>Cancel</button>
       <button class="run" onclick={run} disabled={!pythonInfo?.ok}>
-        {dryRun ? 'Dry run' : 'Run'}
+        {mode === 'dry' ? 'Dry run' : mode === 'read-only' ? 'Run read-only' : 'Run'}
       </button>
     </div>
   </div>
@@ -211,5 +249,28 @@
   .run:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+  .modes {
+    border: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .allow {
+    margin-left: 1.6rem;
+    font-family: var(--zx-font-mono);
+    font-size: 0.8rem;
+  }
+  .indent {
+    margin: 0 0 0 1.6rem;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 </style>

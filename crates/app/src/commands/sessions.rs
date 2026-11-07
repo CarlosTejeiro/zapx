@@ -112,19 +112,28 @@ fn parse_login_script(json: Option<&str>) -> Option<Vec<LoginStep>> {
     }
 }
 
+/// Commands a login runner sent before the session's I/O loop existed; hand
+/// it to [`link_login_runner`] once `start_io_loop` returns the real sender.
+type LoginLink = tokio::sync::mpsc::UnboundedReceiver<core_transport::SessionCmd>;
+
 /// Build and store a [`LoginRunner`] into `slot` (no-op if `script_json` is
 /// `None` or parses to an empty array). The runner forwards progress events
 /// to the frontend as `login-script-progress`.
+///
+/// Call it BEFORE `start_io_loop`: the reader starts at once, and a device
+/// that prints its banner straight away (a Telnet login disclaimer on a fast
+/// link) would otherwise send the text the first `expect` waits for before
+/// the runner is there to see it — and the login script would stall. The
+/// runner's commands queue on the returned link until [`link_login_runner`]
+/// connects it to the session.
 fn maybe_install_login_runner(
     slot: &LoginRunnerSlot,
     script_json: Option<&str>,
     session_id: &str,
-    cmd_tx: tokio::sync::mpsc::UnboundedSender<core_transport::SessionCmd>,
     app: &AppHandle,
-) {
-    let Some(steps) = parse_login_script(script_json) else {
-        return;
-    };
+) -> Option<LoginLink> {
+    let steps = parse_login_script(script_json)?;
+    let (cmd_tx, link) = tokio::sync::mpsc::unbounded_channel();
     let app_for_progress = app.clone();
     let runner = Arc::new(LoginRunner::new(
         session_id.to_string(),
@@ -148,6 +157,24 @@ fn maybe_install_login_runner(
         }
     });
     *slot.lock().unwrap() = Some(runner);
+    Some(link)
+}
+
+/// Forward a login runner's commands (see [`maybe_install_login_runner`]) to
+/// the session. Ends when the runner is dropped or the session closes.
+fn link_login_runner(
+    link: Option<LoginLink>,
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<core_transport::SessionCmd>,
+) {
+    let Some(mut link) = link else { return };
+    let cmd_tx = cmd_tx.clone();
+    tokio::spawn(async move {
+        while let Some(cmd) = link.recv().await {
+            if cmd_tx.send(cmd).is_err() {
+                break;
+            }
+        }
+    });
 }
 
 fn parse_triggers(json: Option<&str>) -> Option<Vec<crate::triggers::Trigger>> {
@@ -188,7 +215,7 @@ fn maybe_install_trigger_runner(
 /// Wrap an `on_data` callback to:
 /// 1. Write raw bytes to the session log (if logging is active).
 /// 2. Feed the (raw, pre-highlight) bytes to the login-script runner, if any.
-/// 3. Feed the bytes to the platform detector (SSH sessions only); fire the
+/// 3. Feed the bytes to the platform detector (local shells have none); fire the
 ///    `on_platform_detected` callback the first time it latches.
 /// 4. Apply keyword highlighting.
 /// 5. Emit highlighted bytes to the frontend.
@@ -226,7 +253,7 @@ where
         if let Some(t) = trig {
             t.feed(&data);
         }
-        // Platform auto-detect: only SSH sessions wire this. `feed` returns
+        // Platform auto-detect (SSH, Telnet, serial). `feed` returns
         // `Some` ONCE, at the moment of detection, then `None` forever; we
         // pipe that single hit to the host's persistence + emit callback.
         if let Some(d) = detector.as_ref() {
@@ -1372,6 +1399,25 @@ pub async fn cache_session_password(
     Ok(())
 }
 
+/// Forget a password typed for `saved_session_id` (memory cache and encrypted
+/// copy) — called when it turned out to be wrong, so the next open asks again
+/// instead of retrying it. The OS keyring entry, if any, is left alone.
+#[tauri::command]
+pub async fn forget_session_password(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+) -> Result<(), AppError> {
+    state
+        .password_cache
+        .lock()
+        .unwrap()
+        .remove(&saved_session_id);
+    state
+        .db
+        .delete_session_secret(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 /// Walk the `via_session_id` chain starting at `start_id` and return the list
 /// of saved-session ids from outermost (no `via`) to innermost (just before
 /// the target). Detects cycles.
@@ -1565,6 +1611,13 @@ pub async fn open_saved_session(
             let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
+            // Before the I/O loop starts, so it sees the first bytes (see the fn).
+            let login_link = maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                &app,
+            );
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
             let trigger_slot_for_closure = Arc::clone(&trigger_slot);
             let detector = new_detector();
@@ -1597,14 +1650,7 @@ pub async fn open_saved_session(
                 make_on_close(app.clone(), session_id.clone()),
             );
 
-            // Wire up the optional login automation (no-op if the session has no script).
-            maybe_install_login_runner(
-                &login_slot,
-                login_script_json.as_deref(),
-                &session_id,
-                cmd_tx.clone(),
-                &app,
-            );
+            link_login_runner(login_link, &cmd_tx);
             maybe_install_trigger_runner(
                 &trigger_slot,
                 triggers_json.as_deref(),
@@ -1680,8 +1726,20 @@ pub async fn open_saved_session(
             let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
+            // Before the I/O loop starts, so it sees the first bytes (see the fn).
+            let login_link = maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                &app,
+            );
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
             let trigger_slot_for_closure = Arc::clone(&trigger_slot);
+            let detector = new_detector();
+            // Saved telnet/serial — persist the detected platform unless the row
+            // already has a user-chosen one.
+            let on_detected =
+                make_detection_callback(app.clone(), session_id.clone(), Some(saved_session_id));
             let cmd_tx = transport.start_io_loop(
                 cols,
                 rows,
@@ -1692,8 +1750,8 @@ pub async fn open_saved_session(
                     login_slot_for_closure,
                     trigger_slot_for_closure,
                     Arc::clone(&rx_total),
-                    None, // no platform detector for non-SSH
-                    None,
+                    Some(Arc::clone(&detector)),
+                    Some(on_detected),
                     move |data| {
                         let _ = app_handle.emit(
                             "terminal-data",
@@ -1706,13 +1764,7 @@ pub async fn open_saved_session(
                 ),
             );
 
-            maybe_install_login_runner(
-                &login_slot,
-                login_script_json.as_deref(),
-                &session_id,
-                cmd_tx.clone(),
-                &app,
-            );
+            link_login_runner(login_link, &cmd_tx);
             maybe_install_trigger_runner(
                 &trigger_slot,
                 triggers_json.as_deref(),
@@ -1731,7 +1783,7 @@ pub async fn open_saved_session(
                     rows,
                     ssh_handle: None,
                     remote_forwards: None,
-                    platform_detector: None,
+                    platform_detector: Some(detector),
                     tcp_mss: core_transport::TcpMss::default(),
                     sftp: None,
                     rx_total,
@@ -1774,8 +1826,20 @@ pub async fn open_saved_session(
             let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let login_slot: LoginRunnerSlot = empty_login_slot();
             let login_slot_for_closure = Arc::clone(&login_slot);
+            // Before the I/O loop starts, so it sees the first bytes (see the fn).
+            let login_link = maybe_install_login_runner(
+                &login_slot,
+                login_script_json.as_deref(),
+                &session_id,
+                &app,
+            );
             let trigger_slot: TriggerRunnerSlot = empty_trigger_slot();
             let trigger_slot_for_closure = Arc::clone(&trigger_slot);
+            let detector = new_detector();
+            // Saved telnet/serial — persist the detected platform unless the row
+            // already has a user-chosen one.
+            let on_detected =
+                make_detection_callback(app.clone(), session_id.clone(), Some(saved_session_id));
             let cmd_tx = transport.start_io_loop(make_on_data(
                 session_id.clone(),
                 lg,
@@ -1783,8 +1847,8 @@ pub async fn open_saved_session(
                 login_slot_for_closure,
                 trigger_slot_for_closure,
                 Arc::clone(&rx_total),
-                None, // no platform detector for non-SSH
-                None,
+                Some(Arc::clone(&detector)),
+                Some(on_detected),
                 move |data| {
                     let _ = app_handle.emit(
                         "terminal-data",
@@ -1796,13 +1860,7 @@ pub async fn open_saved_session(
                 },
             ));
 
-            maybe_install_login_runner(
-                &login_slot,
-                login_script_json.as_deref(),
-                &session_id,
-                cmd_tx.clone(),
-                &app,
-            );
+            link_login_runner(login_link, &cmd_tx);
             maybe_install_trigger_runner(
                 &trigger_slot,
                 triggers_json.as_deref(),
@@ -1821,7 +1879,7 @@ pub async fn open_saved_session(
                     rows,
                     ssh_handle: None,
                     remote_forwards: None,
-                    platform_detector: None,
+                    platform_detector: Some(detector),
                     tcp_mss: core_transport::TcpMss::default(),
                     sftp: None,
                     rx_total,
@@ -1865,6 +1923,9 @@ pub async fn open_telnet_session(
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
     let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let detector = new_detector();
+    // Ephemeral session (no saved id) — emit only, don't persist.
+    let on_detected = make_detection_callback(app.clone(), session_id.clone(), None);
     let cmd_tx = transport.start_io_loop(
         cols,
         rows,
@@ -1875,8 +1936,8 @@ pub async fn open_telnet_session(
             empty_login_slot(),
             empty_trigger_slot(),
             Arc::clone(&rx_total),
-            None, // no platform detector for non-SSH
-            None,
+            Some(Arc::clone(&detector)),
+            Some(on_detected),
             move |data| {
                 let _ = app_handle.emit(
                     "terminal-data",
@@ -1902,7 +1963,7 @@ pub async fn open_telnet_session(
             rows,
             ssh_handle: None,
             remote_forwards: None,
-            platform_detector: None,
+            platform_detector: Some(detector),
             tcp_mss: core_transport::TcpMss::default(),
             sftp: None,
             rx_total,
@@ -1936,6 +1997,9 @@ pub async fn open_serial_session(
     let hl = Arc::clone(&state.highlighter);
     let lg = Arc::clone(&state.loggers);
     let rx_total = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let detector = new_detector();
+    // Ephemeral session (no saved id) — emit only, don't persist.
+    let on_detected = make_detection_callback(app.clone(), session_id.clone(), None);
     let cmd_tx = transport.start_io_loop(make_on_data(
         session_id.clone(),
         lg,
@@ -1943,8 +2007,8 @@ pub async fn open_serial_session(
         empty_login_slot(),
         empty_trigger_slot(),
         Arc::clone(&rx_total),
-        None, // no platform detector for non-SSH
-        None,
+        Some(Arc::clone(&detector)),
+        Some(on_detected),
         move |data| {
             let _ = app_handle.emit(
                 "terminal-data",
@@ -1970,7 +2034,7 @@ pub async fn open_serial_session(
             rows: 24,
             ssh_handle: None,
             remote_forwards: None,
-            platform_detector: None,
+            platform_detector: Some(detector),
             tcp_mss: core_transport::TcpMss::default(),
             sftp: None,
             rx_total,

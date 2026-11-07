@@ -77,3 +77,28 @@ export function looksLikePrompt(line: string): boolean {
   if (t.length === 0 || t.length > 120) return false
   return /^[\w.\-@:~/[\]() ]*[\w)\]~][ \t]?[#>$]$/.test(t)
 }
+
+/** Read-only mode's default allowlist: commands that only display. */
+export const DEFAULT_READ_ONLY_ALLOW = ['get', 'show']
+
+/** The allowlist as typed ("get, show" / one per line) → lowercase prefixes. */
+export function parseAllowList(text: string | null | undefined): string[] {
+  const items = (text ?? '')
+    .split(/[,\n]/)
+    .map((p) => p.trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter(Boolean)
+  return items.length > 0 ? items : [...DEFAULT_READ_ONLY_ALLOW]
+}
+
+/**
+ * Read-only mode: may `command` be typed? Only if it starts with one of
+ * `allow` as whole words (`show` allows `show run`, not `shower`), and holds
+ * nothing that could chain or redirect a second command on a shell-like CLI.
+ * An empty line (a bare Enter) is always allowed.
+ */
+export function readOnlyAllows(command: string, allow: string[]): boolean {
+  const c = command.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (c === '') return true
+  if (/[;|&`<>]|\$\(/.test(c)) return false
+  return allow.some((p) => c === p || c.startsWith(p + ' '))
+}

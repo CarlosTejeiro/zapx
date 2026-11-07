@@ -106,6 +106,7 @@ pub async fn script_start(
     state: State<'_, AppState>,
     path: String,
     dry_run: bool,
+    read_only: Option<bool>,
 ) -> Result<ScriptStarted, AppError> {
     let script = PathBuf::from(&path);
     if !script.is_file() {
@@ -120,6 +121,7 @@ pub async fn script_start(
         &script,
         &module_dir,
         dry_run,
+        read_only.unwrap_or(false),
         Arc::new(TauriSink(app)),
         state.scripts.clone(),
     )

@@ -20,7 +20,15 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { onTerminalData } from '$lib/bridge/events'
 import { promptReturned, sendVaultField } from '$lib/bridge/commands'
 import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
-import { extractRunOutput, lastLine, looksLikePrompt, MORE_RE, stripAnsi } from './output'
+import {
+  DEFAULT_READ_ONLY_ALLOW,
+  extractRunOutput,
+  lastLine,
+  looksLikePrompt,
+  MORE_RE,
+  readOnlyAllows,
+  stripAnsi,
+} from './output'
 
 /** Output must stay quiet this long (after the echo) to count as finished
  *  when no prompt is recognised. */
@@ -81,6 +89,10 @@ export const scriptRun = $state({
   runId: null as string | null,
   path: '',
   dryRun: false,
+  /** Read-only: only commands starting with one of `allow` are typed; the
+   *  rest are logged as "would run". Toggleable live in notebook mode. */
+  readOnly: false,
+  allow: [...DEFAULT_READ_ONLY_ALLOW] as string[],
   python: '',
   status: 'done' as RunStatus,
   exitCode: null as number | null,
@@ -212,7 +224,20 @@ export async function initScriptHost(hostApi: ScriptHostApi): Promise<() => void
 }
 
 /** Start `path`. Opens the panel; progress arrives through events. */
-export async function startScript(path: string, dryRun: boolean): Promise<void> {
+/** Read-only gate for text about to be typed in `sessionId`: true when it may
+ *  be sent; otherwise logs what would have been and returns false. */
+function readOnlyLets(sessionId: string, text: string, verb: string): boolean {
+  if (!scriptRun.readOnly || readOnlyAllows(text, scriptRun.allow)) return true
+  log(`[read-only] ${name(sessionId)}: would ${verb} ${JSON.stringify(text)}`)
+  return false
+}
+
+export async function startScript(
+  path: string,
+  dryRun: boolean,
+  readOnly = false,
+  allow: string[] = DEFAULT_READ_ONLY_ALLOW,
+): Promise<void> {
   if (hostBusy()) throw new Error('a script or a notebook connection is already active')
   if (!path) throw new Error('no script chosen')
   taps.clear()
@@ -223,6 +248,8 @@ export async function startScript(path: string, dryRun: boolean): Promise<void> 
     runId: null,
     path,
     dryRun,
+    readOnly: readOnly && !dryRun,
+    allow: [...allow],
     python: '',
     status: 'running',
     exitCode: null,
@@ -230,11 +257,20 @@ export async function startScript(path: string, dryRun: boolean): Promise<void> 
     report: [],
     visible: true,
   })
-  log(`Starting ${path}${dryRun ? ' (dry run — nothing will be sent)' : ''}…`)
+  log(
+    `Starting ${path}${
+      dryRun
+        ? ' (dry run — nothing will be sent)'
+        : scriptRun.readOnly
+          ? ` (read-only — only ${scriptRun.allow.join(', ')} commands are sent)`
+          : ''
+    }…`,
+  )
   try {
     const started = await invoke<{ run_id: string; python: string }>('script_start', {
       path,
       dryRun,
+      readOnly: scriptRun.readOnly,
     })
     scriptRun.runId = started.run_id
     scriptRun.python = started.python
@@ -256,7 +292,10 @@ export async function stopScript(): Promise<void> {
 }
 
 /** Turn on the notebook connection and show the panel with how to connect. */
-export async function startNotebook(): Promise<void> {
+export async function startNotebook(
+  readOnly = true,
+  allow: string[] = DEFAULT_READ_ONLY_ALLOW,
+): Promise<void> {
   if (hostBusy()) throw new Error('a script or a notebook connection is already active')
   taps.clear()
   aborted = false
@@ -266,6 +305,8 @@ export async function startNotebook(): Promise<void> {
     runId: null,
     path: '',
     dryRun: false,
+    readOnly,
+    allow: [...allow],
     python: '',
     status: 'waiting',
     exitCode: null,
@@ -376,6 +417,8 @@ async function dispatch(
       await api.refreshPlatform(s.id)
       return info(s.id) ?? s
     }
+    case 'mode':
+      return { dry_run: scriptRun.dryRun, read_only: scriptRun.readOnly }
     case 'sessions':
       return api.savedNames(typeof p.folder === 'string' ? p.folder : null)
     case 'open':
@@ -390,6 +433,7 @@ async function dispatch(
         log(`[dry-run] ${name(sid)}: would send ${JSON.stringify(text)}${enter ? ' + Enter' : ''}`)
         return null
       }
+      if (!readOnlyLets(sid, text, 'send')) return null
       await sendText(sid, enter ? text + '\r' : text)
       return null
     }
@@ -547,6 +591,7 @@ async function run(
   if (/[\r\n]/.test(command)) {
     throw new ApiError('error', 'run() takes one command line — call it once per line')
   }
+  if (!readOnlyLets(sessionId, command, 'run')) return ''
   const tap = attach(sessionId)
   tap.raw = ''
   tap.lastData = Date.now()

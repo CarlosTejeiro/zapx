@@ -170,6 +170,9 @@
     onSessionError?: () => void
     onSessionClose?: () => void
     onNeedPassword?: () => void
+    /** The server rejected the credentials. Return true if handled (the host
+     *  shows its own re-auth form instead of the error). */
+    onAuthFailed?: () => boolean
   }
 
   let {
@@ -184,6 +187,7 @@
     onSessionError,
     onSessionClose,
     onNeedPassword,
+    onAuthFailed,
   }: Props = $props()
 
   // True when a connect failed because we have no usable credential and the
@@ -658,8 +662,7 @@
     reconnecting = true
     errorMsg = null
     try {
-      const id = await doOpen()
-      sessionId = id
+      const id = await openKeepingEarlyOutput()
       disconnected = false
       reconnecting = false
       reconnectAttempt = 0
@@ -673,6 +676,50 @@
       errorMsg = fmtError(e)
       scheduleReconnect()
     }
+  }
+
+  // Output received while an open call is in flight (its session id isn't
+  // known yet). Every session's output passes through, so it is filtered on
+  // replay and capped so a busy neighbour tab can't grow it without bound.
+  let earlyOutput: TerminalDataPayload[] = []
+  let earlyBytes = 0
+  let keepingEarly = false
+  const EARLY_OUTPUT_MAX = 1 << 20
+
+  function keepEarlyOutput(payload: TerminalDataPayload) {
+    if (!keepingEarly || earlyBytes + payload.data.length > EARLY_OUTPUT_MAX) return
+    earlyOutput.push(payload)
+    earlyBytes += payload.data.length
+  }
+
+  /** `doOpen()`, then set `sessionId` and replay the output the new session
+   *  sent before the call returned. */
+  async function openKeepingEarlyOutput(): Promise<string> {
+    earlyOutput = []
+    earlyBytes = 0
+    keepingEarly = true
+    try {
+      const id = await doOpen()
+      sessionId = id
+      flushEarlyOutput()
+      return id
+    } finally {
+      keepingEarly = false
+      earlyOutput = []
+      earlyBytes = 0
+    }
+  }
+
+  function writeOutput(data: number[]) {
+    term?.write(new Uint8Array(data), () => {
+      hintController?.onIncomingFlushed()
+    })
+  }
+
+  /** Replay this session's early output, in order, right after `sessionId` is
+   *  set (synchronously, so nothing newer can be written first). */
+  function flushEarlyOutput() {
+    for (const p of earlyOutput) if (p.session_id === sessionId) writeOutput(p.data)
   }
 
   // Force a reconnect from the toolbar: tear down the live session, then
@@ -921,6 +968,22 @@
       return true
     })
 
+    // Forward PTY output to xterm. Listening starts before the session is
+    // opened: a device can print its banner (a Telnet login disclaimer) before
+    // the open call returns the session id, so output that arrives while the
+    // id is unknown is kept and replayed (`openKeepingEarlyOutput`).
+    unlisteners.push(
+      await listen<TerminalDataPayload>('terminal-data', (event) => {
+        if (!term) return
+        if (sessionId === null) {
+          keepEarlyOutput(event.payload)
+          return
+        }
+        if (event.payload.session_id !== sessionId) return
+        writeOutput(event.payload.data)
+      }),
+    )
+
     // Open the backend session.
     try {
       await waitForTauri()
@@ -944,7 +1007,7 @@
         }
       }
 
-      sessionId = await doOpen()
+      await openKeepingEarlyOutput()
     } catch (e) {
       if (needsPasswordReentry(e)) {
         onNeedPassword?.()
@@ -953,6 +1016,12 @@
         return
       }
       errorMsg = fmtError(e)
+      if (errorMsg.startsWith('Authentication failed') && onAuthFailed?.()) {
+        errorMsg = null
+        term?.dispose()
+        term = null
+        return
+      }
       onSessionError?.()
       term?.dispose()
       term = null
@@ -1002,16 +1071,6 @@
         })()
       }, 150)
     })()
-
-    // Forward PTY output to xterm.
-    unlisteners.push(
-      await listen<TerminalDataPayload>('terminal-data', (event) => {
-        if (!term || event.payload.session_id !== sessionId) return
-        term.write(new Uint8Array(event.payload.data), () => {
-          hintController?.onIncomingFlushed()
-        })
-      }),
-    )
 
     // Login-script progress badge (auto-clears a couple of seconds after
     // the script completes; sticks on timeout so the user notices).
