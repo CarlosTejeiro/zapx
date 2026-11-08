@@ -5,7 +5,7 @@
   import Icon from '$lib/icons/Icon.svelte'
   import {
     scriptRun,
-    startNotebook,
+    startNotebookFromSettings,
     startScript,
     stopNotebook,
     stopScript,
@@ -90,7 +90,9 @@
       {#if notebookOn}
         <button class="btn stop" onclick={() => stopNotebook()}>Turn off</button>
       {:else}
-        <button class="btn" onclick={() => void startNotebook()}>Turn on</button>
+        <button class="btn" onclick={() => void startNotebookFromSettings().catch(console.error)}
+          >Turn on</button
+        >
       {/if}
     {:else if scriptRun.status === 'running'}
       <button class="btn stop" onclick={() => stopScript()}>Stop</button>

@@ -15,9 +15,6 @@ export interface PylonTheme {
 
   // Tabs
   tabActiveBg: string
-  tabIdleBg: string
-  tabBorder: string
-  tabRadius: string
 
   // Interactive
   accent: string
@@ -113,9 +110,6 @@ export const parchment: PylonTheme = {
   tabBarBg: '#f7f4ed',
 
   tabActiveBg: '#efebdf',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(82,68,40,0.16)',
-  tabRadius: '7px',
 
   accent: '#564ca0',
   accent2: '#b3793a',
@@ -179,9 +173,6 @@ export const porcelain: PylonTheme = {
   tabBarBg: '#ebeff5',
 
   tabActiveBg: '#fbfcfe',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(40,60,90,0.22)',
-  tabRadius: '7px',
 
   accent: '#2563d9',
   accent2: '#d4602f',
@@ -245,9 +236,6 @@ export const midnight: PylonTheme = {
   tabBarBg: '#0f141c',
 
   tabActiveBg: '#1b2430',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(190,215,255,0.18)',
-  tabRadius: '7px',
 
   accent: '#4aa3ff',
   accent2: '#ffb347',
@@ -311,9 +299,6 @@ export const aurora: PylonTheme = {
   tabBarBg: '#1b1533',
 
   tabActiveBg: '#2c2350',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(205,185,255,0.2)',
-  tabRadius: '7px',
 
   accent: '#2fe0c0',
   accent2: '#ff5fa8',
@@ -377,9 +362,6 @@ export const ember: PylonTheme = {
   tabBarBg: '#1f1813',
 
   tabActiveBg: '#33281f',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(255,205,160,0.18)',
-  tabRadius: '7px',
 
   accent: '#ff8a3d',
   accent2: '#ffd166',

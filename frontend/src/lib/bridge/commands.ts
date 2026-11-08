@@ -951,6 +951,13 @@ export async function cacheSessionPassword(
 }
 
 // Drop a typed password that turned out to be wrong (memory + encrypted copy).
+/** Where an open of this saved session gets its password from now. */
+export async function sessionPasswordSource(
+  savedSessionId: number,
+): Promise<'keyring' | 'typed' | 'none'> {
+  return invoke('session_password_source', { savedSessionId })
+}
+
 export async function forgetSessionPassword(savedSessionId: number): Promise<void> {
   return invoke<void>('forget_session_password', { savedSessionId })
 }

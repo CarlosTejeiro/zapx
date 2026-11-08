@@ -128,6 +128,16 @@ describe('read-only allowlist', () => {
     expect(readOnlyAllows('show > /tmp/x', allow)).toBe(false)
   })
 
+  it('blocks control characters that would change what the device runs', () => {
+    expect(readOnlyAllows('show version\rexecute reboot', allow)).toBe(false)
+    expect(readOnlyAllows('show version\nexecute reboot', allow)).toBe(false)
+    expect(readOnlyAllows('show \b\b\b\b\bexecute reboot', allow)).toBe(false)
+    expect(readOnlyAllows('show x\x15config system global', allow)).toBe(false)
+    expect(readOnlyAllows('show \x1b[A', allow)).toBe(false)
+    expect(readOnlyAllows('show\tint', allow)).toBe(false)
+    expect(readOnlyAllows('get\x7f', allow)).toBe(false)
+  })
+
   it('parses lists and falls back to the defaults', () => {
     expect(parseAllowList('get\nshow\n diagnose  sys ')).toEqual(['get', 'show', 'diagnose sys'])
     expect(parseAllowList('')).toEqual(['get', 'show'])

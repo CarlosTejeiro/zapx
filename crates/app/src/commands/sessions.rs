@@ -1288,6 +1288,33 @@ fn clone_credential(db: &core_persistence::Database, src_cred_id: i64) -> Option
         .ok()
 }
 
+/// The password typed for `session_id` in a pane's reconnect form: from the
+/// in-memory cache, else from the encrypted copy in the database (which then
+/// warms the cache).
+fn typed_password(
+    db: &core_persistence::Database,
+    cache: &crate::state::PasswordCache,
+    seed: &str,
+    session_id: i64,
+) -> Option<String> {
+    // Separate statement: the cache guard must be dropped before the fallback
+    // below locks the cache again (a same-expression re-lock of a std Mutex
+    // deadlocks).
+    let cached = cache.lock().unwrap().get(&session_id).cloned();
+    if cached.is_some() {
+        return cached;
+    }
+    let pw = db
+        .get_session_secret(session_id)
+        .ok()
+        .flatten()
+        .and_then(|blob| core_vault::decrypt_with_seed(seed, &blob).ok());
+    if let Some(ref pw) = pw {
+        cache.lock().unwrap().insert(session_id, pw.clone());
+    }
+    pw
+}
+
 /// Build the [`core_transport::SshAuth`] for a saved SSH session, pulling its
 /// secret from the vault if applicable. Shared by direct connects and every
 /// hop of a ProxyJump chain.
@@ -1296,47 +1323,38 @@ fn resolve_ssh_auth_for_session(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<core_transport::SshAuth, AppError> {
-    // Resolve the password through a fallback chain:
+    // Resolve the secret through a fallback chain:
     //   1. OS keyring (primary; works in signed/production builds).
     //   2. Process-lifetime in-memory cache (survives Cmd+R).
     //   3. Encrypted local store in SQLite (survives app restart — used on
     //      macOS dev builds where the unsigned binary is denied keyring read).
-    // Steps 2–3 also apply to a session with no stored credential at all
-    // (e.g. a MobaXterm import): the password the user typed in the pane's
-    // reconnect form lands there via `cache_session_password`.
-    let from_keyring = session.credential_id.and_then(|cred_id| {
-        state
-            .db
-            .get_credential_keyring_key(cred_id)
-            .ok()
-            .and_then(|key| core_vault::Vault::retrieve(&key).ok())
-    });
-    let secret = from_keyring
-        .or_else(|| {
-            state
-                .password_cache
-                .lock()
-                .unwrap()
-                .get(&session.id)
-                .cloned()
-        })
-        .or_else(|| {
+    // For password auth, steps 2–3 also apply to a session with no stored
+    // credential at all (e.g. a MobaXterm import): the password the user typed
+    // in the pane's reconnect form lands there via `cache_session_password`.
+    // A key's passphrase only comes from there when the session has a
+    // credential (a typed *password* must never be tried as a passphrase), and
+    // agent / keyboard-interactive sessions need no lookup at all.
+    let lookup_secret = |without_credential: bool| -> Option<String> {
+        let from_keyring = session.credential_id.and_then(|cred_id| {
             state
                 .db
-                .get_session_secret(session.id)
+                .get_credential_keyring_key(cred_id)
                 .ok()
-                .flatten()
-                .and_then(|blob| core_vault::decrypt_with_seed(&state.vault_seed, &blob).ok())
+                .and_then(|key| core_vault::Vault::retrieve(&key).ok())
         });
-    // Warm the in-memory cache if we resolved via DB (saves a decrypt+SQL
-    // round-trip on subsequent opens).
-    if let Some(ref pw) = secret {
-        state
-            .password_cache
-            .lock()
-            .unwrap()
-            .insert(session.id, pw.clone());
-    }
+        if from_keyring.is_some() {
+            return from_keyring;
+        }
+        if session.credential_id.is_none() && !without_credential {
+            return None;
+        }
+        typed_password(
+            &state.db,
+            &state.password_cache,
+            &state.vault_seed,
+            session.id,
+        )
+    };
 
     Ok(match session.auth_method.as_deref() {
         Some("key") => {
@@ -1348,7 +1366,7 @@ fn resolve_ssh_auth_for_session(
                 .to_string();
             core_transport::SshAuth::PublicKey {
                 key_path,
-                passphrase: secret,
+                passphrase: lookup_secret(false),
             }
         }
         Some("agent") => core_transport::SshAuth::Agent {
@@ -1359,7 +1377,7 @@ fn resolve_ssh_auth_for_session(
         },
         // None / "password" — legacy behaviour.
         _ => core_transport::SshAuth::Password(
-            secret.ok_or_else(|| AppError::Internal("missing credential".into()))?,
+            lookup_secret(true).ok_or_else(|| AppError::Internal("missing credential".into()))?,
         ),
     })
 }
@@ -1397,6 +1415,40 @@ pub async fn cache_session_password(
         Err(e) => tracing::warn!(saved_session_id, "encrypt session_secret failed: {e}"),
     }
     Ok(())
+}
+
+/// Where an open of `saved_session_id` gets its password from right now:
+/// "keyring" (the OS keyring entry of its credential), "typed" (what was typed
+/// in a pane's form, kept in memory or encrypted) or "none". The pane uses it
+/// after a rejected password: only a typed one is forgotten and asked again —
+/// a wrong keyring entry is fixed in the session dialog.
+#[tauri::command]
+pub async fn session_password_source(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+) -> Result<&'static str, AppError> {
+    let session = state
+        .db
+        .get_session(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let in_keyring = session.credential_id.is_some_and(|cred_id| {
+        state
+            .db
+            .get_credential_keyring_key(cred_id)
+            .ok()
+            .and_then(|key| core_vault::Vault::retrieve(&key).ok())
+            .is_some()
+    });
+    if in_keyring {
+        return Ok("keyring");
+    }
+    let typed = typed_password(
+        &state.db,
+        &state.password_cache,
+        &state.vault_seed,
+        saved_session_id,
+    );
+    Ok(if typed.is_some() { "typed" } else { "none" })
 }
 
 /// Forget a password typed for `saved_session_id` (memory cache and encrypted
@@ -1473,7 +1525,16 @@ async fn build_bastion_chain(
         let user = saved.username.clone().ok_or_else(|| {
             AppError::Internal(format!("jump host «{label}» has no username set"))
         })?;
-        let auth = resolve_ssh_auth_for_session(&saved, app, state)?;
+        // A jump host without a stored password must not read as the target's
+        // "missing credential": the pane would ask for the target's password,
+        // which can never help.
+        let auth = resolve_ssh_auth_for_session(&saved, app, state).map_err(|e| match e {
+            AppError::Internal(m) if m == "missing credential" => AppError::Internal(format!(
+                "jump host «{label}» has no stored password — open «{label}» in its own tab \
+                 and enter it there, or add it to the session"
+            )),
+            other => other,
+        })?;
 
         emit_progress(
             app,
@@ -2110,5 +2171,55 @@ struct DisconnectPayload {
 fn make_on_close(app: AppHandle, session_id: String) -> impl FnOnce() + Send + 'static {
     move || {
         let _ = app.emit("session-disconnected", DisconnectPayload { session_id });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::{mpsc, Mutex};
+    use std::time::Duration;
+
+    #[test]
+    fn typed_password_reads_the_encrypted_copy_and_warms_the_cache() {
+        let dir = std::env::temp_dir().join(format!("zapx-typed-pw-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = core_persistence::Database::open(&dir.join("zapx.db")).unwrap();
+        let id = db
+            .create_session_full(
+                None,
+                "fw",
+                "ssh",
+                Some("fw.example"),
+                Some(22),
+                Some("admin"),
+                None,
+                "{}",
+                None,
+                None,
+            )
+            .unwrap();
+        let seed = "test-seed";
+        db.set_session_secret(id, &core_vault::encrypt_with_seed(seed, "s3cret").unwrap())
+            .unwrap();
+        let cache: crate::state::PasswordCache = Arc::new(Mutex::new(HashMap::new()));
+
+        // Run on a thread with a deadline: a lock held across the fallback
+        // used to hang here forever.
+        let (tx, rx) = mpsc::channel();
+        let (db2, cache2) = (db, Arc::clone(&cache));
+        std::thread::spawn(move || {
+            let _ = tx.send(typed_password(&db2, &cache2, seed, id));
+        });
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("typed_password deadlocked");
+        assert_eq!(got.as_deref(), Some("s3cret"));
+        assert_eq!(
+            cache.lock().unwrap().get(&id).map(String::as_str),
+            Some("s3cret")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -762,7 +762,14 @@ print(zapx.session().name)
         for (name, content) in EXAMPLES.iter().filter(|(n, _)| n.ends_with(".py")) {
             // The fake host doesn't know `sessions`/`open`/`confirm`/`close`;
             // give the SASE example an explicit device and stub those calls.
-            let body = content.replace("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]");
+            let body = if *name == "sase_reset.py" {
+                patched(
+                    content,
+                    &[("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]")],
+                )
+            } else {
+                content.to_string()
+            };
             let (code, log) = run_script(&body, true).await;
             assert_eq!(code, Some(0), "{name}: {log:#?}");
         }
@@ -1038,14 +1045,24 @@ print(zapx.session().name)
             }
             body.push('\n');
         }
-        let body = body.replace(
-            "zapx.connect()",
-            &format!("zapx.connect(path={:?})", conn.file.to_string_lossy()),
-        );
+        let path = format!("zapx.connect(path={:?})", conn.file.to_string_lossy());
+        let body = patched(&body, &[("zapx.connect()", path.as_str())]);
         let out = run_outside(&python, &conn.module_dir, &body).await;
         assert!(out.contains("down:    none"), "{out}");
         conn.run.stop();
         let _ = std::fs::remove_dir_all(conn.dir);
+    }
+
+    /// Apply text replacements to an example, failing loudly when one no
+    /// longer matches (the example changed), instead of silently testing
+    /// something else.
+    fn patched(body: &str, edits: &[(&str, &str)]) -> String {
+        let mut out = body.to_string();
+        for (from, to) in edits {
+            assert!(out.contains(from), "example no longer contains {from:?}");
+            out = out.replace(from, to);
+        }
+        out
     }
 
     #[tokio::test]
@@ -1069,13 +1086,17 @@ print(zapx.session().name)
             .iter()
             .find(|(n, _)| *n == "sase_reset.py")
             .unwrap();
-        let body = body
-            .replace("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]")
-            .replace(
-                "not zapx.dry_run and \"Virtual domain configuration: disable\" not in status",
-                "False",
-            )
-            .replace("if missing and not zapx.dry_run:", "if False:");
+        let body = patched(
+            body,
+            &[
+                ("DEVICES: list[str] = []", "DEVICES: list[str] = [\"fw1\"]"),
+                (
+                    "not zapx.dry_run and \"Virtual domain configuration: disable\" not in status",
+                    "False",
+                ),
+                ("if missing and not zapx.dry_run:", "if False:"),
+            ],
+        );
         let (code, log) = run_script_mode(&body, false, true).await;
         assert_eq!(code, Some(0), "{log:#?}");
         assert!(

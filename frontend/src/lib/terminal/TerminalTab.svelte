@@ -172,7 +172,7 @@
     onNeedPassword?: () => void
     /** The server rejected the credentials. Return true if handled (the host
      *  shows its own re-auth form instead of the error). */
-    onAuthFailed?: () => boolean
+    onAuthFailed?: () => boolean | Promise<boolean>
   }
 
   let {
@@ -249,6 +249,12 @@
   // close leaked the xterm instance, the event listeners and the backend PTY.
   let resizeObserver: ResizeObserver | null = null
   let unlisteners: UnlistenFn[] = []
+  /** Keep an event listener for onDestroy to remove — or remove it now when
+   *  the tab was already closed while `listen()` was being awaited. */
+  function track(off: UnlistenFn) {
+    if (destroyed) off()
+    else unlisteners.push(off)
+  }
 
   // Logging state
   let isLogging = $state(false)
@@ -392,6 +398,9 @@
     try {
       const obj = JSON.parse(raw) as Record<string, unknown>
       const inner = typeof obj.Internal === 'string' ? obj.Internal : raw
+      // A jump-host failure names the hop; keep that instead of a generic text
+      // that would point at the target's password.
+      if (inner.startsWith('jump host «')) return inner
       if (inner.includes('keyring') && inner.includes('No matching entry')) {
         return 'Saved credentials not found in keyring.\n\nFix: delete this session and recreate it — you will be prompted to re-enter your password.\n\nIf running in WSL, ensure gnome-keyring is running:\n  eval $(gnome-keyring-daemon --start --components=secrets)'
       }
@@ -663,6 +672,7 @@
     errorMsg = null
     try {
       const id = await openKeepingEarlyOutput()
+      if (id === null) return
       disconnected = false
       reconnecting = false
       reconnectAttempt = 0
@@ -673,6 +683,7 @@
       term.focus()
     } catch (e) {
       reconnecting = false
+      if (destroyed) return
       errorMsg = fmtError(e)
       scheduleReconnect()
     }
@@ -681,25 +692,38 @@
   // Output received while an open call is in flight (its session id isn't
   // known yet). Every session's output passes through, so it is filtered on
   // replay and capped so a busy neighbour tab can't grow it without bound.
+  // Once a chunk doesn't fit, nothing more is kept: the replay is then a
+  // clean prefix of the stream, never one with a hole in the middle.
   let earlyOutput: TerminalDataPayload[] = []
   let earlyBytes = 0
   let keepingEarly = false
+  /** Set by onDestroy: an open still in flight then closes what it opened. */
+  let destroyed = false
   const EARLY_OUTPUT_MAX = 1 << 20
 
   function keepEarlyOutput(payload: TerminalDataPayload) {
-    if (!keepingEarly || earlyBytes + payload.data.length > EARLY_OUTPUT_MAX) return
+    if (!keepingEarly) return
+    if (earlyBytes + payload.data.length > EARLY_OUTPUT_MAX) {
+      keepingEarly = false
+      return
+    }
     earlyOutput.push(payload)
     earlyBytes += payload.data.length
   }
 
   /** `doOpen()`, then set `sessionId` and replay the output the new session
-   *  sent before the call returned. */
-  async function openKeepingEarlyOutput(): Promise<string> {
+   *  sent before the call returned. Returns null (and closes the new session)
+   *  when the tab was closed while the open was in flight. */
+  async function openKeepingEarlyOutput(): Promise<string | null> {
     earlyOutput = []
     earlyBytes = 0
     keepingEarly = true
     try {
       const id = await doOpen()
+      if (destroyed) {
+        void invoke('close_session', { sessionId: id }).catch(console.error)
+        return null
+      }
       sessionId = id
       flushEarlyOutput()
       return id
@@ -968,12 +992,15 @@
       return true
     })
 
-    // Forward PTY output to xterm. Listening starts before the session is
-    // opened: a device can print its banner (a Telnet login disclaimer) before
-    // the open call returns the session id, so output that arrives while the
-    // id is unknown is kept and replayed (`openKeepingEarlyOutput`).
-    unlisteners.push(
-      await listen<TerminalDataPayload>('terminal-data', (event) => {
+    // Open the backend session.
+    try {
+      await waitForTauri()
+
+      // Forward PTY output to xterm. Listening starts before the session is
+      // opened: a device can print its banner (a Telnet login disclaimer)
+      // before the open call returns the session id, so output that arrives
+      // while the id is unknown is kept and replayed (`openKeepingEarlyOutput`).
+      const offData = await listen<TerminalDataPayload>('terminal-data', (event) => {
         if (!term) return
         if (sessionId === null) {
           keepEarlyOutput(event.payload)
@@ -981,12 +1008,9 @@
         }
         if (event.payload.session_id !== sessionId) return
         writeOutput(event.payload.data)
-      }),
-    )
-
-    // Open the backend session.
-    try {
-      await waitForTauri()
+      })
+      track(offData)
+      if (destroyed) return
 
       // Verify the SSH host key (known_hosts) before connecting.
       if (savedSession?.protocol === 'ssh' && savedSession.host) {
@@ -1007,8 +1031,9 @@
         }
       }
 
-      await openKeepingEarlyOutput()
+      if ((await openKeepingEarlyOutput()) === null) return
     } catch (e) {
+      if (destroyed) return
       if (needsPasswordReentry(e)) {
         onNeedPassword?.()
         term?.dispose()
@@ -1016,7 +1041,8 @@
         return
       }
       errorMsg = fmtError(e)
-      if (errorMsg.startsWith('Authentication failed') && onAuthFailed?.()) {
+      if (errorMsg.startsWith('Authentication failed') && (await onAuthFailed?.())) {
+        if (destroyed) return
         errorMsg = null
         term?.dispose()
         term = null
@@ -1074,7 +1100,7 @@
 
     // Login-script progress badge (auto-clears a couple of seconds after
     // the script completes; sticks on timeout so the user notices).
-    unlisteners.push(
+    track(
       await listen<{
         session_id: string
         current: number
@@ -1096,7 +1122,7 @@
     )
 
     // Output triggers that fired a notify/bell action.
-    unlisteners.push(
+    track(
       await listen<{
         session_id: string
         kind: string
@@ -1116,7 +1142,7 @@
     // Remote dropped the link (server closed, or keepalives went unanswered).
     // Mark the pane disconnected and kick off auto-reconnect if enabled; the
     // banner offers a manual retry either way.
-    unlisteners.push(
+    track(
       await listen<{ session_id: string }>('session-disconnected', (event) => {
         if (event.payload.session_id !== sessionId) return
         if (paneId != null) unregisterSession(paneId)
@@ -1171,6 +1197,7 @@
   // lifecycle. Reads the refs onMount populated; everything is null-guarded so
   // it's safe even if the component is destroyed before onMount finishes.
   onDestroy(() => {
+    destroyed = true
     clearReconnectTimer()
     clearSelfHealTimer()
     resizeObserver?.disconnect()

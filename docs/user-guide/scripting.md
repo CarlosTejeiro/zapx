@@ -40,8 +40,11 @@ point the dialog at `python.exe`.
   real output. Anything else — `config`, `execute`, `diagnose`, a line with
   `;`, `|`, `&`, `<`, `>`, `` ` `` or `$(` — is not typed: the panel lists it
   as `[read-only] … would run "…"` and `run()` returns an empty string for it.
-  `zapx.read_only` is `True`, so a script can stop before its changes and say
-  what it would do. ZAPX enforces the list, not the script.
+  Lines with control characters (a second line, backspace, arrow keys…) are
+  held back the same way, and `send_secret()` types nothing. Saved sessions
+  still log in as usual (jump host, login script), but their on-connect macro
+  is skipped. `zapx.read_only` is `True`, so a script can stop before its
+  changes and say what it would do. ZAPX enforces the list, not the script.
 - **Run**: every command is sent.
 - **Python**: leave empty to auto-detect, or give a path / command.
 
@@ -118,8 +121,8 @@ How it behaves:
   time; ZAPX remembers it as `notebook.read_only`) applies the same allowlist
   as a read-only script run, so only `get` / `show` commands reach the device
   and the rest is logged as "would run". Untick it to make changes from the
-  notebook; it takes effect on the next call. `zapx.read_only` tells the
-  notebook which mode it got when `connect()` ran. There is no dry run in a
+  notebook; it takes effect on the next call. `zapx.read_only` reads the box
+  each time, so the notebook's code can follow it. There is no dry run in a
   notebook.
 - One notebook at a time; a second `connect()` is refused while one is
   connected.
@@ -150,7 +153,7 @@ if "HA mode: standalone" in out:
 | Call | What it does |
 |---|---|
 | `zapx.dry_run` | `True` when started as a dry run. |
-| `zapx.read_only` | `True` in a read-only run (or a read-only notebook connection, as of `connect()`). |
+| `zapx.read_only` | `True` in a read-only run, or while a notebook connection's Read-only box is ticked. |
 | `zapx.session()` | The focused tab (in a script, call it first to get the one focused when it started). |
 | `zapx.open(name, timeout=60)` | Opens the saved session `name` in a new tab, waits until it is connected and its output settles, returns it. |
 | `zapx.sessions(folder=None)` | Saved session names, or those in `folder` and its sub-folders. |
