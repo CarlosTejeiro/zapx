@@ -1,5 +1,5 @@
 import { setSetting } from '$lib/bridge/commands'
-import { parchment, themes } from './index'
+import { parchment, themeAliases, themes } from './index'
 import type { PylonTheme } from './index'
 
 let active = $state<PylonTheme>(parchment)
@@ -9,11 +9,11 @@ export function getTheme(): PylonTheme {
 }
 
 /** In-memory switch only — also what `loadSettings` uses to restore the
- *  persisted choice at boot. An unknown name (e.g. a theme removed in a later
- *  version) is ignored, so the app falls back to the default instead of
- *  breaking. */
+ *  persisted choice at boot. A renamed theme maps to its replacement
+ *  (`themeAliases`); an unknown name is ignored, so the app falls back to the
+ *  default instead of breaking. */
 export function setTheme(name: string) {
-  const t = themes[name]
+  const t = themes[themeAliases[name] ?? name]
   if (t) active = t
 }
 

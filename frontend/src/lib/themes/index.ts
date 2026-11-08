@@ -77,16 +77,18 @@ export interface PylonTheme {
 }
 
 /* ---------------------------------------------------------------------------
- * The 5 bundled themes (Parchment, Oxide, Fjord, Nocturne, Porcelain). Each maps
- * the design tokens
- * (`paper`, `paper2`, `ink`, `inkMuted`, `inkDim`, `line`, `hover`) onto the
- * PylonTheme fields: paper → appBg/bodyBg/tabBarBg, paper2 → sidebarBg/
- * titlebarBg/statusbarBg/tabActiveBg, line → border/tabBorder, hover →
- * itemHoverBg. `itemActiveBg` is always accent at 10%; the active row is
- * marked by background + type weight (no border-left). Remaining ANSI slots:
- * black = terminal bg lightened one step, brightBlack = dim, bright* = the
- * base colour at +10–15% lightness with the hue kept. ok/warn/err stay
- * semantic (red errors stay red in every theme).
+ * The 5 bundled themes: two light (Parchment, Porcelain) and three dark with
+ * distinct characters (Midnight, Aurora, Ember). Except for Parchment, which
+ * keeps its soft, low-contrast chrome, they use three clearly separated
+ * surface levels — appBg/bodyBg (content), tabBarBg (one step towards the
+ * sidebar), sidebarBg/titlebarBg/statusbarBg (frame) — and tabActiveBg is
+ * the surface that stands out most from the tab bar. Tabs are
+ * tinted with each session's own colour on top of these (see TabBar).
+ * `itemActiveBg` is always accent at 10%; the active row is marked by
+ * background + type weight (no border-left). Terminal palettes: black =
+ * terminal bg lightened one step, brightBlack = dim, bright* = the base colour
+ * at +10–15% lightness with the hue kept. ok/warn/err stay semantic (red
+ * errors stay red in every theme).
  * ------------------------------------------------------------------------- */
 
 // Bundled via @fontsource-variable (imported in main.ts); the plain names
@@ -97,7 +99,7 @@ const fontMono = '"JetBrains Mono Variable", "JetBrains Mono", "Fira Code", ui-m
 /** Accent at 10% over transparent — shared recipe for the active-item fill. */
 const activeMix = (accent: string) => `color-mix(in srgb, ${accent} 10%, transparent)`
 
-// ── 1 · Parchment — warm light (refined original) ───────────────────────────
+// ── 1 · Parchment — warm light, soft ────────────────────────────────────────
 export const parchment: PylonTheme = {
   name: 'parchment',
   fontUi,
@@ -163,239 +165,41 @@ export const parchment: PylonTheme = {
   windowShadow: '0 24px 70px rgba(0,0,0,.15)',
 }
 
-// ── 2 · Oxide — warm dark, copper accent ────────────────────────────────────
-export const oxide: PylonTheme = {
-  name: 'oxide',
-  fontUi,
-  fontMono,
-
-  appBg: '#1d1a16',
-  bodyBg: '#1d1a16',
-  sidebarBg: '#262119',
-  titlebarBg: '#262119',
-  statusbarBg: '#262119',
-  tabBarBg: '#1d1a16',
-
-  tabActiveBg: '#262119',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(255,230,180,0.11)',
-  tabRadius: '7px',
-
-  accent: '#cf8a46',
-  accent2: '#7aa893',
-  onAccent: '#1d1a16',
-  itemHoverBg: 'rgba(255,230,180,0.05)',
-  itemActiveBg: activeMix('#cf8a46'),
-  itemActiveBorder: '#cf8a46',
-
-  textPrimary: '#eae3d4',
-  textMuted: '#a2967f',
-  textDim: '#81745f',
-
-  border: 'rgba(255,230,180,0.11)',
-  radius: '7px',
-
-  ok: '#6fbf8d',
-  warn: '#d8b16a',
-  err: '#e07b6d',
-
-  terminal: {
-    bg: '#15120e',
-    fg: '#ddd5c4',
-    cursor: '#cf8a46',
-    dim: '#746a58',
-    ok: '#7dbb82',
-    warn: '#d8a85e',
-    err: '#e07b6d',
-    black: '#1f1b15',
-    red: '#e07b6d',
-    green: '#7dbb82',
-    yellow: '#d8b75e',
-    blue: '#7a9ab8',
-    magenta: '#c490a8',
-    cyan: '#8fb8b7',
-    white: '#f2ecdf',
-    brightBlack: '#746a58',
-    brightRed: '#ea9285',
-    brightGreen: '#93cc97',
-    brightYellow: '#e2c678',
-    brightBlue: '#92aec8',
-    brightMagenta: '#d3a6bb',
-    brightCyan: '#a5c8c7',
-    brightWhite: '#fbf7ee',
-  },
-
-  glows: false,
-  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
-}
-
-// ── 3 · Fjord — cool dark, ice accent ───────────────────────────────────────
-export const fjord: PylonTheme = {
-  name: 'fjord',
-  fontUi,
-  fontMono,
-
-  appBg: '#161a21',
-  bodyBg: '#161a21',
-  sidebarBg: '#1d232c',
-  titlebarBg: '#1d232c',
-  statusbarBg: '#1d232c',
-  tabBarBg: '#161a21',
-
-  tabActiveBg: '#1d232c',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(180,210,255,0.11)',
-  tabRadius: '7px',
-
-  accent: '#5ca3d6',
-  accent2: '#d68a6e',
-  onAccent: '#161a21',
-  itemHoverBg: 'rgba(180,210,255,0.05)',
-  itemActiveBg: activeMix('#5ca3d6'),
-  itemActiveBorder: '#5ca3d6',
-
-  textPrimary: '#dee5ee',
-  textMuted: '#91a0b2',
-  textDim: '#677789',
-
-  border: 'rgba(180,210,255,0.11)',
-  radius: '7px',
-
-  ok: '#5fb784',
-  warn: '#d8b16a',
-  err: '#e07474',
-
-  terminal: {
-    bg: '#11141a',
-    fg: '#d3dce6',
-    cursor: '#8ab8e8',
-    dim: '#5c6d81',
-    ok: '#66bb8a',
-    warn: '#d8b16a',
-    err: '#e07474',
-    black: '#1a1f27',
-    red: '#e07474',
-    green: '#66bb8a',
-    yellow: '#d8b16a',
-    blue: '#829cd8',
-    magenta: '#b094cf',
-    cyan: '#6fd8d8',
-    white: '#eef3f8',
-    brightBlack: '#5c6d81',
-    brightRed: '#e98c8c',
-    brightGreen: '#7ecca0',
-    brightYellow: '#e2c184',
-    brightBlue: '#9ab0e4',
-    brightMagenta: '#c2a8dd',
-    brightCyan: '#88e4e4',
-    brightWhite: '#ffffff',
-  },
-
-  glows: false,
-  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
-}
-
-// ── 4 · Nocturne — violet dark, periwinkle accent ───────────────────────────
-export const nocturne: PylonTheme = {
-  name: 'nocturne',
-  fontUi,
-  fontMono,
-
-  appBg: '#181520',
-  bodyBg: '#181520',
-  sidebarBg: '#201c2c',
-  titlebarBg: '#201c2c',
-  statusbarBg: '#201c2c',
-  tabBarBg: '#181520',
-
-  tabActiveBg: '#201c2c',
-  tabIdleBg: 'transparent',
-  tabBorder: 'rgba(215,200,255,0.11)',
-  tabRadius: '7px',
-
-  accent: '#9d92ea',
-  accent2: '#5eb3b2',
-  onAccent: '#181520',
-  itemHoverBg: 'rgba(215,200,255,0.05)',
-  itemActiveBg: activeMix('#9d92ea'),
-  itemActiveBorder: '#9d92ea',
-
-  textPrimary: '#e6e2f0',
-  textMuted: '#9b93b4',
-  textDim: '#756c94',
-
-  border: 'rgba(215,200,255,0.11)',
-  radius: '7px',
-
-  ok: '#6fbf8d',
-  warn: '#d4a85a',
-  err: '#e07b8a',
-
-  terminal: {
-    bg: '#121019',
-    fg: '#dcd8e8',
-    cursor: '#b3a7f7',
-    dim: '#6d638f',
-    ok: '#6fbf8d',
-    warn: '#d8b16a',
-    err: '#e07b8a',
-    black: '#1b1825',
-    red: '#e07b8a',
-    green: '#6fbf8d',
-    yellow: '#d8b16a',
-    blue: '#8a9de8',
-    magenta: '#c9a3e8',
-    cyan: '#7fd0ce',
-    white: '#f0edf8',
-    brightBlack: '#6d638f',
-    brightRed: '#ea93a0',
-    brightGreen: '#86cda1',
-    brightYellow: '#e2c184',
-    brightBlue: '#a2b2ef',
-    brightMagenta: '#d7b8f0',
-    brightCyan: '#96dcda',
-    brightWhite: '#ffffff',
-  },
-
-  glows: false,
-  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
-}
-
-// ── 5 · Porcelain — cool light, steel-indigo accent ─────────────────────────
+// ── 2 · Porcelain — cool light, crisp blue accent ──────────────────────────
 export const porcelain: PylonTheme = {
   name: 'porcelain',
   fontUi,
   fontMono,
 
-  appBg: '#f3f5f7',
-  bodyBg: '#f3f5f7',
-  sidebarBg: '#e8ecf0',
-  titlebarBg: '#e8ecf0',
-  statusbarBg: '#e8ecf0',
-  tabBarBg: '#f3f5f7',
+  appBg: '#f3f6fa',
+  bodyBg: '#f3f6fa',
+  sidebarBg: '#e2e8f1',
+  titlebarBg: '#dde4ee',
+  statusbarBg: '#dde4ee',
+  tabBarBg: '#ebeff5',
 
-  tabActiveBg: '#e8ecf0',
+  tabActiveBg: '#fbfcfe',
   tabIdleBg: 'transparent',
-  tabBorder: 'rgba(40,60,90,0.15)',
+  tabBorder: 'rgba(40,60,90,0.22)',
   tabRadius: '7px',
 
-  accent: '#4a66a0',
-  accent2: '#b06a4f',
+  accent: '#2563d9',
+  accent2: '#d4602f',
   onAccent: '#f7f9fb',
-  itemHoverBg: 'rgba(40,60,90,0.05)',
-  itemActiveBg: activeMix('#4a66a0'),
-  itemActiveBorder: '#4a66a0',
+  itemHoverBg: 'rgba(40,60,90,0.07)',
+  itemActiveBg: activeMix('#2563d9'),
+  itemActiveBorder: '#2563d9',
 
-  textPrimary: '#252a31',
-  textMuted: '#5e6873',
-  textDim: '#707e8d',
+  textPrimary: '#1b2028',
+  textMuted: '#4a5563',
+  textDim: '#677282',
 
-  border: 'rgba(40,60,90,0.15)',
+  border: 'rgba(40,60,90,0.22)',
   radius: '7px',
 
-  ok: '#3b885b',
-  warn: '#a77924',
-  err: '#b13a3a',
+  ok: '#23885a',
+  warn: '#b5770f',
+  err: '#c43a3a',
 
   terminal: {
     bg: '#1f242e',
@@ -427,19 +231,225 @@ export const porcelain: PylonTheme = {
   windowShadow: '0 24px 70px rgba(0,0,0,.15)',
 }
 
+// ── 3 · Midnight — high-contrast dark, electric blue ───────────────────────
+export const midnight: PylonTheme = {
+  name: 'midnight',
+  fontUi,
+  fontMono,
+
+  appBg: '#0b0f15',
+  bodyBg: '#0b0f15',
+  sidebarBg: '#131a23',
+  titlebarBg: '#131a23',
+  statusbarBg: '#131a23',
+  tabBarBg: '#0f141c',
+
+  tabActiveBg: '#1b2430',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(190,215,255,0.18)',
+  tabRadius: '7px',
+
+  accent: '#4aa3ff',
+  accent2: '#ffb347',
+  onAccent: '#06111f',
+  itemHoverBg: 'rgba(190,215,255,0.07)',
+  itemActiveBg: activeMix('#4aa3ff'),
+  itemActiveBorder: '#4aa3ff',
+
+  textPrimary: '#f2f5f9',
+  textMuted: '#a9b5c3',
+  textDim: '#7b8796',
+
+  border: 'rgba(190,215,255,0.18)',
+  radius: '7px',
+
+  ok: '#5fb784',
+  warn: '#d8b16a',
+  err: '#e07474',
+
+  terminal: {
+    bg: '#080b10',
+    fg: '#d3dce6',
+    cursor: '#8ab8e8',
+    dim: '#5c6d81',
+    ok: '#66bb8a',
+    warn: '#d8b16a',
+    err: '#e07474',
+    black: '#1a1f27',
+    red: '#e07474',
+    green: '#66bb8a',
+    yellow: '#d8b16a',
+    blue: '#829cd8',
+    magenta: '#b094cf',
+    cyan: '#6fd8d8',
+    white: '#eef3f8',
+    brightBlack: '#5c6d81',
+    brightRed: '#e98c8c',
+    brightGreen: '#7ecca0',
+    brightYellow: '#e2c184',
+    brightBlue: '#9ab0e4',
+    brightMagenta: '#c2a8dd',
+    brightCyan: '#88e4e4',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
+}
+
+// ── 4 · Aurora — deep indigo with teal and pink ────────────────────────────
+export const aurora: PylonTheme = {
+  name: 'aurora',
+  fontUi,
+  fontMono,
+
+  appBg: '#17122b',
+  bodyBg: '#17122b',
+  sidebarBg: '#211a3c',
+  titlebarBg: '#211a3c',
+  statusbarBg: '#211a3c',
+  tabBarBg: '#1b1533',
+
+  tabActiveBg: '#2c2350',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(205,185,255,0.2)',
+  tabRadius: '7px',
+
+  accent: '#2fe0c0',
+  accent2: '#ff5fa8',
+  onAccent: '#0c1f1b',
+  itemHoverBg: 'rgba(205,185,255,0.08)',
+  itemActiveBg: activeMix('#2fe0c0'),
+  itemActiveBorder: '#2fe0c0',
+
+  textPrimary: '#f1ecff',
+  textMuted: '#b6acd9',
+  textDim: '#8a7fb5',
+
+  border: 'rgba(205,185,255,0.2)',
+  radius: '7px',
+
+  ok: '#6fbf8d',
+  warn: '#d4a85a',
+  err: '#e07b8a',
+
+  terminal: {
+    bg: '#100c1f',
+    fg: '#dcd8e8',
+    cursor: '#b3a7f7',
+    dim: '#6d638f',
+    ok: '#6fbf8d',
+    warn: '#d8b16a',
+    err: '#e07b8a',
+    black: '#1b1825',
+    red: '#e07b8a',
+    green: '#6fbf8d',
+    yellow: '#d8b16a',
+    blue: '#8a9de8',
+    magenta: '#c9a3e8',
+    cyan: '#7fd0ce',
+    white: '#f0edf8',
+    brightBlack: '#6d638f',
+    brightRed: '#ea93a0',
+    brightGreen: '#86cda1',
+    brightYellow: '#e2c184',
+    brightBlue: '#a2b2ef',
+    brightMagenta: '#d7b8f0',
+    brightCyan: '#96dcda',
+    brightWhite: '#ffffff',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
+}
+
+// ── 5 · Ember — warm dark, vivid orange ────────────────────────────────────
+export const ember: PylonTheme = {
+  name: 'ember',
+  fontUi,
+  fontMono,
+
+  appBg: '#1a1410',
+  bodyBg: '#1a1410',
+  sidebarBg: '#271e17',
+  titlebarBg: '#271e17',
+  statusbarBg: '#271e17',
+  tabBarBg: '#1f1813',
+
+  tabActiveBg: '#33281f',
+  tabIdleBg: 'transparent',
+  tabBorder: 'rgba(255,205,160,0.18)',
+  tabRadius: '7px',
+
+  accent: '#ff8a3d',
+  accent2: '#ffd166',
+  onAccent: '#1f1206',
+  itemHoverBg: 'rgba(255,205,160,0.07)',
+  itemActiveBg: activeMix('#ff8a3d'),
+  itemActiveBorder: '#ff8a3d',
+
+  textPrimary: '#f7ede2',
+  textMuted: '#c4af9a',
+  textDim: '#917d69',
+
+  border: 'rgba(255,205,160,0.18)',
+  radius: '7px',
+
+  ok: '#6fbf8d',
+  warn: '#d8b16a',
+  err: '#e07b6d',
+
+  terminal: {
+    bg: '#120d09',
+    fg: '#ddd5c4',
+    cursor: '#cf8a46',
+    dim: '#746a58',
+    ok: '#7dbb82',
+    warn: '#d8a85e',
+    err: '#e07b6d',
+    black: '#1f1b15',
+    red: '#e07b6d',
+    green: '#7dbb82',
+    yellow: '#d8b75e',
+    blue: '#7a9ab8',
+    magenta: '#c490a8',
+    cyan: '#8fb8b7',
+    white: '#f2ecdf',
+    brightBlack: '#746a58',
+    brightRed: '#ea9285',
+    brightGreen: '#93cc97',
+    brightYellow: '#e2c678',
+    brightBlue: '#92aec8',
+    brightMagenta: '#d3a6bb',
+    brightCyan: '#a5c8c7',
+    brightWhite: '#fbf7ee',
+  },
+
+  glows: false,
+  windowShadow: '0 24px 70px rgba(0,0,0,.5)',
+}
+
 export const themes: Record<string, PylonTheme> = {
   parchment,
-  oxide,
-  fjord,
-  nocturne,
   porcelain,
+  midnight,
+  aurora,
+  ember,
+}
+
+/** Themes renamed in 0.29.0 → their replacement, so a saved choice keeps a
+ *  similar look instead of falling back to the default. */
+export const themeAliases: Record<string, string> = {
+  fjord: 'midnight',
+  nocturne: 'aurora',
+  oxide: 'ember',
 }
 
 /** Display labels for menus / palette / about, keyed like `themes`. */
 export const themeLabels: Record<string, string> = {
   parchment: 'Parchment',
-  oxide: 'Oxide',
-  fjord: 'Fjord',
-  nocturne: 'Nocturne',
   porcelain: 'Porcelain',
+  midnight: 'Midnight',
+  aurora: 'Aurora',
+  ember: 'Ember',
 }

@@ -5,6 +5,22 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-11-08
+
+### Changed
+- **Coloured tabs.** Each tab is tinted with its session's colour, so tabs
+  are easy to tell apart; the active one stands out with a stronger tint, a
+  colour bar on top and a bold name. Before, the colour was only a thin line
+  on the tab's left edge and the active tab was hard to spot.
+- **Themes.** Porcelain has more contrast: the frame (sidebar, title and
+  status bars), the tab bar and the content are now clearly different
+  shades, secondary text is darker and the blue accent is livelier.
+  Parchment keeps its soft colours. The three dark themes, which looked
+  almost the same, are replaced by **Midnight** (high-contrast dark,
+  electric blue), **Aurora** (deep indigo with teal and pink) and **Ember**
+  (warm dark, vivid orange). Terminal text colours are unchanged. A saved
+  Fjord, Nocturne or Oxide choice switches to Midnight, Aurora or Ember.
+
 ## [0.28.0] - 2026-11-07
 
 ### Added
