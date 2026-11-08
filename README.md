@@ -104,7 +104,7 @@ The little things that add up across a long day:
 
 ### Make it yours
 
-- **5 full themes** — Parchment, Oxide, Fjord, Nocturne and Porcelain — each
+- **5 full themes** — Parchment and Porcelain (light), Midnight, Aurora and Ember (dark) — each
   restyling both the UI chrome and the terminal ANSI palette, with bundled
   Geist / JetBrains Mono fonts.
 - **Customizable shortcuts** for every action (**Settings → Shortcuts**).
