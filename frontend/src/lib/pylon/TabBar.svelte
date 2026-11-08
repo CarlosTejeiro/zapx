@@ -52,6 +52,15 @@
 
   let hoveredTab = $state<number | null>(null)
 
+  /** Each tab is a chip tinted with its session colour: a light wash when
+   *  idle, stronger on hover, and the active one a solid surface with a
+   *  clearer tint, so it reads at a glance which tab is which and which is
+   *  in front. */
+  function tabBackground(color: string, active: boolean, hovered: boolean): string {
+    if (active) return `color-mix(in srgb, ${color} 20%, ${theme.tabActiveBg})`
+    return `color-mix(in srgb, ${color} ${hovered ? 16 : 9}%, transparent)`
+  }
+
   // Swatch palette for the per-tab colour (right-click → colour).
   const TAB_COLORS = [
     '#ef4444',
@@ -111,12 +120,14 @@
         class="tab"
         class:tab-active={active}
         in:fly={{ y: -8, duration: 180, easing: cubicOut }}
-        style:background={active ? theme.tabActiveBg : theme.tabIdleBg}
-        style:border={active ? `1px solid ${theme.border}` : '1px solid transparent'}
+        style:background={tabBackground(tab.color, active, hovered)}
+        style:border="1px solid {active
+          ? `color-mix(in srgb, ${tab.color} 55%, ${theme.border})`
+          : `color-mix(in srgb, ${tab.color} 22%, transparent)`}"
         style:border-radius={theme.radius}
         style:box-shadow={active
-          ? `inset 3px 0 0 ${tab.color}, inset 0 -2px 0 ${theme.accent}`
-          : `inset 2px 0 0 color-mix(in srgb, ${tab.color} 55%, transparent)`}
+          ? `inset 0 3px 0 ${tab.color}, 0 1px 6px color-mix(in srgb, ${tab.color} 22%, transparent)`
+          : `inset 0 2px 0 color-mix(in srgb, ${tab.color} 60%, transparent)`}
         onclick={() => onActivate(tab.id)}
         ondblclick={() => startRename(tab)}
         oncontextmenu={(e) => openMenu(e, tab)}
@@ -289,13 +300,16 @@
     align-items: center;
     gap: 8px;
     height: 30px;
-    padding: 0 10px;
+    padding: 0 10px 0 11px;
     min-width: 140px;
     max-width: 220px;
     cursor: pointer;
     flex-shrink: 0;
     position: relative;
-    transition: background 0.1s;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      box-shadow 0.12s;
   }
 
   .tab-dot {
@@ -339,7 +353,7 @@
   }
 
   .tab-active .tab-label {
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .tab-close {
