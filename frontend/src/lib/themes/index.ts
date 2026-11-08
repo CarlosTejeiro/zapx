@@ -78,10 +78,11 @@ export interface PylonTheme {
 
 /* ---------------------------------------------------------------------------
  * The 5 bundled themes: two light (Parchment, Porcelain) and three dark with
- * distinct characters (Midnight, Aurora, Ember). The chrome uses three
- * clearly separated surface levels — appBg/bodyBg (content), tabBarBg (one
- * step towards the sidebar), sidebarBg/titlebarBg/statusbarBg (frame) — and
- * tabActiveBg is the surface that stands out most from the tab bar. Tabs are
+ * distinct characters (Midnight, Aurora, Ember). Except for Parchment, which
+ * keeps its soft, low-contrast chrome, they use three clearly separated
+ * surface levels — appBg/bodyBg (content), tabBarBg (one step towards the
+ * sidebar), sidebarBg/titlebarBg/statusbarBg (frame) — and tabActiveBg is
+ * the surface that stands out most from the tab bar. Tabs are
  * tinted with each session's own colour on top of these (see TabBar).
  * `itemActiveBg` is always accent at 10%; the active row is marked by
  * background + type weight (no border-left). Terminal palettes: black =
@@ -98,41 +99,41 @@ const fontMono = '"JetBrains Mono Variable", "JetBrains Mono", "Fira Code", ui-m
 /** Accent at 10% over transparent — shared recipe for the active-item fill. */
 const activeMix = (accent: string) => `color-mix(in srgb, ${accent} 10%, transparent)`
 
-// ── 1 · Parchment — warm light, more contrast between areas ─────────────────
+// ── 1 · Parchment — warm light, soft ────────────────────────────────────────
 export const parchment: PylonTheme = {
   name: 'parchment',
   fontUi,
   fontMono,
 
-  appBg: '#f6f1e6',
-  bodyBg: '#f6f1e6',
-  sidebarBg: '#ebe2cd',
-  titlebarBg: '#e7ddc6',
-  statusbarBg: '#e7ddc6',
-  tabBarBg: '#efe7d6',
+  appBg: '#f7f4ed',
+  bodyBg: '#f7f4ed',
+  sidebarBg: '#efebdf',
+  titlebarBg: '#efebdf',
+  statusbarBg: '#efebdf',
+  tabBarBg: '#f7f4ed',
 
-  tabActiveBg: '#fbf8f1',
+  tabActiveBg: '#efebdf',
   tabIdleBg: 'transparent',
-  tabBorder: 'rgba(82,68,40,0.24)',
+  tabBorder: 'rgba(82,68,40,0.16)',
   tabRadius: '7px',
 
-  accent: '#5546c2',
-  accent2: '#c06a1e',
+  accent: '#564ca0',
+  accent2: '#b3793a',
   onAccent: '#faf8f3',
-  itemHoverBg: 'rgba(82,68,40,0.08)',
-  itemActiveBg: activeMix('#5546c2'),
-  itemActiveBorder: '#5546c2',
+  itemHoverBg: 'rgba(82,68,40,0.06)',
+  itemActiveBg: activeMix('#564ca0'),
+  itemActiveBorder: '#564ca0',
 
-  textPrimary: '#231f19',
-  textMuted: '#5a5143',
-  textDim: '#7a6f5c',
+  textPrimary: '#2c2924',
+  textMuted: '#6c6354',
+  textDim: '#887d69',
 
-  border: 'rgba(82,68,40,0.24)',
+  border: 'rgba(82,68,40,0.16)',
   radius: '7px',
 
-  ok: '#2f8a55',
-  warn: '#b07812',
-  err: '#be3333',
+  ok: '#3b885b',
+  warn: '#a77924',
+  err: '#b13a3a',
 
   terminal: {
     bg: '#20212b',
