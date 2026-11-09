@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.29.2] - 2026-11-09
 
+### Changed
+- **Tab colours are random.** Each new tab (and each pane of a group grid)
+  gets a random colour, avoiding the ones the open tabs already use, so
+  neighbouring tabs are easy to tell apart. Before, the colour came from an
+  internal number, so different tabs often shared one (two pink tabs) and
+  always got the same. Right-click → colour still sets one by hand.
+
 ### Fixed
 - **Typing `exit` in an SSH tab reconnected you** two seconds later. A
   session the remote side ends cleanly (`exit`, logout, the device closing
