@@ -5,6 +5,28 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.4] - 2026-11-09
+
+### Fixed
+- **Sync: edits now reach the other devices.** Changing something on an
+  item both devices already had (a session's user, options, login script,
+  folder, jump host, forwards or triggers; a snippet or macro; a highlight
+  rule; a broadcast group; a vault entry's user or password; a session's
+  password) never arrived on the other device: the pull only added missing
+  items, and the other device then pushed its old copy back, undoing the
+  edit. Now, when the device pulling has no changes of its own since the
+  last sync, it takes the remote's edits. When both devices changed things
+  (a conflict), local edits are kept as before. Renames and deletions still
+  don't propagate.
+- **Session output triggers** were left out of exports, backups and sync,
+  so they were lost when moving to another machine. They now travel with
+  their session.
+- **Macro order** inside a folder was lost on import, restore and sync.
+- **Backup and sync passphrases with accents** (e.g. "ñ") typed on
+  different systems could produce different bytes for the same characters,
+  and the backup wouldn't open. Passphrases are now Unicode-normalised;
+  older backups still open as before.
+
 ## [0.29.3] - 2026-11-09
 
 ### Security

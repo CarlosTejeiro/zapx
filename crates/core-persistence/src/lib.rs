@@ -1218,6 +1218,40 @@ impl Database {
         Ok(conn.last_insert_rowid())
     }
 
+    /// Overwrite a rule's editable fields (its identity — pattern + regex
+    /// flag — stays). Used when a sync pull brings another device's edit.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_highlight_rule(
+        &self,
+        id: i64,
+        name: &str,
+        fg_color: Option<&str>,
+        bg_color: Option<&str>,
+        bold: bool,
+        underline: bool,
+        enabled: bool,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE highlight_rules
+             SET name=?1, fg_color=?2, bg_color=?3, bold=?4, underline=?5, enabled=?6
+             WHERE id=?7",
+            rusqlite::params![
+                name,
+                fg_color,
+                bg_color,
+                bold as i64,
+                underline as i64,
+                enabled as i64,
+                id
+            ],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
     pub fn toggle_highlight_rule(&self, id: i64, enabled: bool) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -1605,6 +1639,20 @@ impl Database {
         let n = conn.execute(
             "UPDATE snippets SET shortcut = ?1 WHERE id = ?2",
             rusqlite::params![shortcut, id],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Set (or clear) one macro's rank inside its folder, as carried by an
+    /// export/sync bundle.
+    pub fn set_snippet_position(&self, id: i64, position: Option<i64>) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE snippets SET position = ?1 WHERE id = ?2",
+            rusqlite::params![position, id],
         )?;
         if n == 0 {
             return Err(Error::NotFound);

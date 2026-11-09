@@ -16,3 +16,6 @@ sha2      = "0.10"
 rand      = "0.8"
 # Passphrase-based sealing of backup bundles (Argon2id KDF).
 argon2    = { version = "0.6", default-features = false, features = ["alloc"] }
+# Passphrases are NFC-normalised so "ñ" typed as one or two code points
+# (macOS vs Windows input) derives the same key.
+unicode-normalization = "0.1"

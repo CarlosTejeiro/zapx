@@ -28,6 +28,7 @@ pub fn envelope(folders: Vec<Folder>, sessions: Vec<SavedSession>) -> ExportFile
         snippets: vec![],
         highlight_rules: vec![],
         session_forwards: vec![],
+        session_triggers: vec![],
     }
 }
 

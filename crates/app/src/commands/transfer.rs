@@ -47,6 +47,17 @@ pub struct ExportFile {
     /// Port-forwards keyed by file-local session id (remapped on import).
     #[serde(default)]
     pub session_forwards: Vec<SessionForwards>,
+    /// Output triggers (JSON array) keyed by file-local session id. Like
+    /// login scripts they may auto-send text the user typed.
+    #[serde(default)]
+    pub session_triggers: Vec<SessionTriggers>,
+}
+
+/// The output triggers of one session, referenced by its file-local id.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionTriggers {
+    pub session_id: i64,
+    pub triggers_json: String,
 }
 
 /// The saved forwards of one session, referenced by its file-local id.
@@ -74,6 +85,9 @@ pub struct ImportSummary {
     pub groups_added: usize,
     pub snippets_added: usize,
     pub rules_added: usize,
+    /// Existing items whose fields were overwritten from the file (only in
+    /// update mode — a sync pull onto a device with no local changes).
+    pub items_updated: usize,
     pub warnings: Vec<String>,
     /// File-local session id → id in this database, for every session in the
     /// file (created *or* matched to an existing one). Internal: lets the
@@ -113,6 +127,18 @@ pub fn build_export(db: &Database, app_version: &str) -> Result<ExportFile, AppE
         }
         out
     };
+    // Triggers per session — only non-empty ones.
+    let mut session_triggers = Vec::new();
+    for s in &sessions {
+        if let Some(t) = db.get_session_triggers(s.id).map_err(internal)? {
+            if !is_empty_triggers(&t) {
+                session_triggers.push(SessionTriggers {
+                    session_id: s.id,
+                    triggers_json: t,
+                });
+            }
+        }
+    }
     Ok(ExportFile {
         zapx_export: EXPORT_VERSION,
         app_version: app_version.to_owned(),
@@ -123,13 +149,34 @@ pub fn build_export(db: &Database, app_version: &str) -> Result<ExportFile, AppE
         snippets: db.list_snippets().map_err(internal)?,
         highlight_rules: db.list_highlight_rules().map_err(internal)?,
         session_forwards,
+        session_triggers,
     })
+}
+
+/// `None`-equivalent trigger payloads: blank or an empty JSON array.
+fn is_empty_triggers(json: &str) -> bool {
+    let t = json.trim();
+    t.is_empty() || t == "[]" || t == "null"
 }
 
 // ── import ──────────────────────────────────────────────────────────────────
 
 /// Apply an export file onto `db`, skipping items that already exist.
 pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, AppError> {
+    apply_import_with(db, file, false)
+}
+
+/// [`apply_import`], optionally also overwriting the editable fields of items
+/// that already exist (`update_existing`). Identity fields (session name,
+/// protocol, host, port; snippet name + platform; rule pattern; group and
+/// folder names) never change, and nothing is deleted. Used by a sync pull
+/// when this device has no changes of its own since the last sync, so every
+/// difference is an edit made on another device.
+pub fn apply_import_with(
+    db: &Database,
+    file: &ExportFile,
+    update_existing: bool,
+) -> Result<ImportSummary, AppError> {
     if file.zapx_export > EXPORT_VERSION {
         return Err(AppError::Internal(format!(
             "el fichero es de una versión de ZAPX más nueva (export v{}, soportado v{EXPORT_VERSION})",
@@ -200,6 +247,8 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
     // their forwards applied, so re-import doesn't clobber existing sessions.
     let mut added_olds: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut needs_via: Vec<(i64, i64)> = Vec::new(); // (new_id, old_via_id)
+                                                     // Existing sessions refreshed in update mode: (file-local id, local id).
+    let mut refreshed: Vec<(i64, i64)> = Vec::new();
     for s in &file.sessions {
         if let Some(existing) = existing_sessions
             .iter()
@@ -207,6 +256,51 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         {
             session_map.insert(s.id, existing.id);
             summary.sessions_skipped += 1;
+            if update_existing {
+                let folder_new = s.folder_id.and_then(|f| folder_map.get(&f).copied());
+                let mut changed = false;
+                if existing.folder_id != folder_new
+                    || existing.username != s.username
+                    || existing.options_json != s.options_json
+                {
+                    db.update_session_fields(
+                        existing.id,
+                        &existing.name,
+                        folder_new,
+                        existing.host.as_deref(),
+                        existing.port,
+                        s.username.as_deref(),
+                        existing.via_session_id, // resolved in pass 3
+                        Some(&s.options_json),
+                    )
+                    .map_err(internal)?;
+                    changed = true;
+                }
+                if let Some(method) = s.auth_method.as_deref() {
+                    if existing.auth_method.as_deref() != Some(method) {
+                        db.set_session_auth(existing.id, existing.credential_id, method)
+                            .map_err(internal)?;
+                        changed = true;
+                    }
+                }
+                if existing.login_script_json != s.login_script_json {
+                    db.set_login_script(existing.id, s.login_script_json.as_deref())
+                        .map_err(internal)?;
+                    changed = true;
+                }
+                match s.via_session_id {
+                    Some(via) => needs_via.push((existing.id, via)),
+                    None if existing.via_session_id.is_some() => {
+                        db.set_session_via(existing.id, None).map_err(internal)?;
+                        changed = true;
+                    }
+                    None => {}
+                }
+                if changed {
+                    summary.items_updated += 1;
+                }
+                refreshed.push((s.id, existing.id));
+            }
             continue;
         }
         let folder_new = s.folder_id.and_then(|f| folder_map.get(&f).copied());
@@ -260,12 +354,63 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         }
     }
 
+    // 2b'. Update mode: existing sessions take the file's forwards and
+    //      triggers (an absent entry means "none").
+    for &(old, local) in &refreshed {
+        let file_fwds: &[SavedForward] = file
+            .session_forwards
+            .iter()
+            .find(|sf| sf.session_id == old)
+            .map(|sf| sf.forwards.as_slice())
+            .unwrap_or(&[]);
+        let local_fwds = db.list_session_forwards(local).map_err(internal)?;
+        let as_json = |f: &[SavedForward]| serde_json::to_value(f).unwrap_or_default();
+        if as_json(&local_fwds) != as_json(file_fwds) {
+            db.set_session_forwards(local, file_fwds)
+                .map_err(internal)?;
+            summary.items_updated += 1;
+        }
+        let file_tr = file
+            .session_triggers
+            .iter()
+            .find(|t| t.session_id == old && !is_empty_triggers(&t.triggers_json))
+            .map(|t| t.triggers_json.as_str());
+        let local_tr = db.get_session_triggers(local).map_err(internal)?;
+        let local_tr = local_tr.as_deref().filter(|t| !is_empty_triggers(t));
+        if local_tr != file_tr {
+            db.set_session_triggers(local, file_tr).map_err(internal)?;
+            summary.items_updated += 1;
+        }
+    }
+
+    // 2c. Output triggers — likewise only on sessions we just created.
+    for st in &file.session_triggers {
+        if !added_olds.contains(&st.session_id) || is_empty_triggers(&st.triggers_json) {
+            continue;
+        }
+        if let Some(&new_id) = session_map.get(&st.session_id) {
+            db.set_session_triggers(new_id, Some(&st.triggers_json))
+                .map_err(internal)?;
+        }
+    }
+
     // 3. Second pass: ProxyJump bastions, now that every id is known.
     for (new_id, old_via) in needs_via {
         match session_map.get(&old_via) {
-            Some(&via_new) => db
-                .set_session_via(new_id, Some(via_new))
-                .map_err(internal)?,
+            Some(&via_new) => {
+                let current = existing_sessions
+                    .iter()
+                    .find(|e| e.id == new_id)
+                    .and_then(|e| e.via_session_id);
+                if current != Some(via_new) {
+                    db.set_session_via(new_id, Some(via_new))
+                        .map_err(internal)?;
+                    // A pre-existing session re-pointed (update mode).
+                    if existing_sessions.iter().any(|e| e.id == new_id) {
+                        summary.items_updated += 1;
+                    }
+                }
+            }
             None => summary.warnings.push(format!(
                 "sesión id {new_id}: bastión (jump host) no incluido en el export — queda sin via"
             )),
@@ -275,14 +420,25 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
     // 4. Broadcast groups — identity: name.
     let existing_groups = db.list_broadcast_groups().map_err(internal)?;
     for g in &file.broadcast_groups {
-        if existing_groups.iter().any(|e| e.name == g.name) {
-            continue;
-        }
         let members: Vec<i64> = g
             .session_ids
             .iter()
             .filter_map(|old| session_map.get(old).copied())
             .collect();
+        if let Some(e) = existing_groups.iter().find(|e| e.name == g.name) {
+            if update_existing {
+                let mut want = members.clone();
+                let mut have = e.session_ids.clone();
+                want.sort_unstable();
+                have.sort_unstable();
+                if want != have {
+                    db.set_broadcast_group_members(e.id, &members)
+                        .map_err(internal)?;
+                    summary.items_updated += 1;
+                }
+            }
+            continue;
+        }
         if members.len() < g.session_ids.len() {
             summary.warnings.push(format!(
                 "grupo «{}»: {} miembro(s) no resueltos, omitidos",
@@ -309,10 +465,64 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         .filter_map(|e| e.shortcut.clone())
         .collect();
     for sn in &file.snippets {
-        if existing_snippets
+        if let Some(e) = existing_snippets
             .iter()
-            .any(|e| e.name == sn.name && e.platform == sn.platform)
+            .find(|e| e.name == sn.name && e.platform == sn.platform)
         {
+            if update_existing {
+                let mut changed = false;
+                if e.content != sn.content || e.color != sn.color {
+                    db.update_snippet(
+                        e.id,
+                        &e.name,
+                        &sn.content,
+                        e.platform.as_deref(),
+                        sn.color.as_deref(),
+                    )
+                    .map_err(internal)?;
+                    changed = true;
+                }
+                if e.steps_json != sn.steps_json {
+                    db.set_snippet_steps(e.id, sn.steps_json.as_deref())
+                        .map_err(internal)?;
+                    changed = true;
+                }
+                if e.folder != sn.folder {
+                    db.set_snippet_folder(e.id, sn.folder.as_deref())
+                        .map_err(internal)?;
+                    changed = true;
+                }
+                // After the folder: moving folders resets the position.
+                if e.position != sn.position || (changed && sn.position.is_some()) {
+                    db.set_snippet_position(e.id, sn.position)
+                        .map_err(internal)?;
+                    changed = true;
+                }
+                let want = sn.shortcut.as_deref().filter(|c| !c.trim().is_empty());
+                if e.shortcut.as_deref() != want {
+                    let clash = want.is_some_and(|c| {
+                        existing_snippets
+                            .iter()
+                            .any(|o| o.id != e.id && o.shortcut.as_deref() == Some(c))
+                    });
+                    if clash {
+                        summary.warnings.push(format!(
+                            "snippet «{}»: shortcut {} already used here — not changed",
+                            sn.name,
+                            want.unwrap_or_default()
+                        ));
+                    } else {
+                        db.set_snippet_shortcut(e.id, want).map_err(internal)?;
+                        if let Some(c) = want {
+                            taken_shortcuts.push(c.to_string());
+                        }
+                        changed = true;
+                    }
+                }
+                if changed {
+                    summary.items_updated += 1;
+                }
+            }
             continue;
         }
         let id = db
@@ -331,6 +541,9 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
             db.set_snippet_folder(id, sn.folder.as_deref())
                 .map_err(internal)?;
         }
+        if sn.position.is_some() {
+            db.set_snippet_position(id, sn.position).map_err(internal)?;
+        }
         if let Some(combo) = sn.shortcut.as_deref().filter(|c| !c.trim().is_empty()) {
             if !taken_shortcuts.iter().any(|t| t == combo) {
                 db.set_snippet_shortcut(id, Some(combo)).map_err(internal)?;
@@ -343,10 +556,30 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
     // 6. Highlight rules — identity: (pattern, is_regex).
     let existing_rules = db.list_highlight_rules().map_err(internal)?;
     for r in &file.highlight_rules {
-        if existing_rules
+        if let Some(e) = existing_rules
             .iter()
-            .any(|e| e.pattern == r.pattern && e.is_regex == r.is_regex)
+            .find(|e| e.pattern == r.pattern && e.is_regex == r.is_regex)
         {
+            if update_existing
+                && (e.name != r.name
+                    || e.fg_color != r.fg_color
+                    || e.bg_color != r.bg_color
+                    || e.bold != r.bold
+                    || e.underline != r.underline
+                    || e.enabled != r.enabled)
+            {
+                db.update_highlight_rule(
+                    e.id,
+                    &r.name,
+                    r.fg_color.as_deref(),
+                    r.bg_color.as_deref(),
+                    r.bold,
+                    r.underline,
+                    r.enabled,
+                )
+                .map_err(internal)?;
+                summary.items_updated += 1;
+            }
             continue;
         }
         let id = db
@@ -573,6 +806,9 @@ mod tests {
             }],
         )
         .unwrap();
+        let triggers = r#"[{"pattern":"Password:","action":"send","send":"x\r"}]"#;
+        src.set_session_triggers(spine, Some(triggers)).unwrap();
+        src.set_session_triggers(bastion, Some("[]")).unwrap(); // empty: not exported
         let gid = src.create_broadcast_group("grid").unwrap();
         src.set_broadcast_group_members(gid, &[bastion, spine])
             .unwrap();
@@ -594,6 +830,7 @@ mod tests {
 
         let export = build_export(&src, "test").unwrap();
         assert!(export.sessions.iter().all(|s| s.credential_id.is_none()));
+        assert_eq!(export.session_triggers.len(), 1);
 
         let (dst, dst_path) = temp_db("dst");
         let s1 = apply_import(&dst, &export).unwrap();
@@ -641,6 +878,12 @@ mod tests {
         assert_eq!(fwds[0].bind_port, 8080);
         assert_eq!(fwds[0].target_host.as_deref(), Some("10.0.0.9"));
         assert_eq!(fwds[0].name.as_deref(), Some("Web UI"));
+        // Output triggers travel with their session too.
+        assert_eq!(
+            dst.get_session_triggers(new_spine.id).unwrap().as_deref(),
+            Some(triggers)
+        );
+        assert_eq!(dst.get_session_triggers(new_bastion.id).unwrap(), None);
         let folders = dst.list_folders().unwrap();
         let new_child = folders.iter().find(|f| f.name == "Spines").unwrap();
         let new_parent = folders.iter().find(|f| f.name == "DC").unwrap();
@@ -677,6 +920,7 @@ mod tests {
             snippets: vec![],
             highlight_rules: vec![],
             session_forwards: vec![],
+            session_triggers: vec![],
         };
         assert!(apply_import(&db, &file).is_err());
         let _ = std::fs::remove_file(path);

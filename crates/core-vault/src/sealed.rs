@@ -27,7 +27,7 @@ use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::Error;
 
@@ -55,6 +55,11 @@ const MAX_P_COST: u32 = 16;
 /// Seal `plaintext` under `passphrase`. The result is self-describing and can
 /// be opened by [`open`] on any machine with the same passphrase.
 pub fn seal(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
+    seal_with_key_passphrase(&Zeroizing::new(nfc(passphrase)), plaintext)
+}
+
+/// [`seal`] deriving the key from `key_pass` exactly as given (no NFC).
+fn seal_with_key_passphrase(key_pass: &str, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
     let mut salt = [0u8; SALT_LEN];
     let mut nonce = [0u8; NONCE_LEN];
     rand::thread_rng().fill_bytes(&mut salt);
@@ -68,7 +73,7 @@ pub fn seal(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
     header.extend_from_slice(&salt);
     header.extend_from_slice(&nonce);
 
-    let mut key = derive_key(passphrase, &salt, M_COST_KIB, T_COST, P_COST)?;
+    let mut key = derive_key(key_pass, &salt, M_COST_KIB, T_COST, P_COST)?;
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
     let ct = cipher
         .encrypt(
@@ -125,17 +130,33 @@ pub fn open(passphrase: &str, blob: &[u8]) -> Result<Vec<u8>, Error> {
     let salt = &header[at..at + SALT_LEN];
     let nonce = &header[at + SALT_LEN..at + SALT_LEN + NONCE_LEN];
 
-    let mut key = derive_key(passphrase, salt, m_cost, t_cost, p_cost)?;
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
-    let pt = cipher.decrypt(
-        Nonce::from_slice(nonce),
-        Payload {
-            msg: ct,
-            aad: header,
-        },
-    );
-    key.zeroize();
-    pt.map_err(|_| Error::Crypto("wrong passphrase or corrupted bundle".into()))
+    let decrypt = |pass: &str| -> Result<Vec<u8>, Error> {
+        let mut key = derive_key(pass, salt, m_cost, t_cost, p_cost)?;
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+        let pt = cipher.decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: ct,
+                aad: header,
+            },
+        );
+        key.zeroize();
+        pt.map_err(|_| Error::Crypto("wrong passphrase or corrupted bundle".into()))
+    };
+    // Sealed since 0.29.4 with the NFC form; older bundles used the bytes
+    // as typed, so a passphrase that isn't already NFC gets a second try.
+    let normalized = Zeroizing::new(nfc(passphrase));
+    match decrypt(&normalized) {
+        Err(Error::Crypto(_)) if *normalized != passphrase => decrypt(passphrase),
+        other => other,
+    }
+}
+
+/// Unicode NFC form, so the same characters typed on different systems
+/// (precomposed "ñ" vs "n" + combining tilde) give the same key.
+fn nfc(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfc().collect()
 }
 
 fn derive_key(
@@ -167,6 +188,20 @@ mod tests {
             open("correct horse", &blob).unwrap(),
             b"{\"hello\":\"world\"}"
         );
+    }
+
+    #[test]
+    fn passphrase_is_unicode_normalized() {
+        let composed = "contrase\u{f1}a-larga"; // "ñ" as one code point
+        let decomposed = "contrasen\u{303}a-larga"; // "n" + combining tilde
+        let blob = seal(decomposed, b"hola").unwrap();
+        assert_eq!(open(composed, &blob).unwrap(), b"hola");
+        assert_eq!(open(decomposed, &blob).unwrap(), b"hola");
+        // A bundle from before normalisation (key from the raw bytes) still
+        // opens with the passphrase typed the same way.
+        let old = seal_with_key_passphrase(decomposed, b"vieja").unwrap();
+        assert_eq!(open(decomposed, &old).unwrap(), b"vieja");
+        assert!(open("otra-cosa-larga", &old).is_err());
     }
 
     #[test]

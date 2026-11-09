@@ -12,9 +12,9 @@
 //!   content changed since the last push/pull, unless the remote has changed
 //!   in the meantime.
 //! - **Pull**: open the remote bundle and merge it in (same rules as a manual
-//!   restore: existing sessions are kept, vault entries matched by name,
-//!   settings replaced, host keys added). Never automatic — it replaces
-//!   settings and needs a restart to show, so the UI asks first.
+//!   restore: missing items added, vault entries matched by name, settings
+//!   replaced, host keys added — plus edits, see below). Never automatic —
+//!   it replaces settings and needs a restart to show, so the UI asks first.
 //! - **Conflict**: the remote bundle is newer than what we last pulled *and*
 //!   the local content changed. Nothing is written; the UI offers "merge the
 //!   remote first, then publish mine" or "overwrite the remote with mine".
@@ -23,6 +23,11 @@
 //! ordering and timestamps stripped, identities instead of ids), so two
 //! devices holding the same sessions agree even though their row ids differ
 //! and the bundles stop ping-ponging once both sides converge.
+//!
+//! A pull onto a device with no changes since the last sync also takes the
+//! remote's edits to items both sides have (fields, passwords). When both
+//! sides changed (a conflict), local edits are kept and only missing items
+//! are added.
 //!
 //! Known limitation, by design of the merge: renames and deletions don't
 //! propagate — the other device's copy comes back on the next pull.
@@ -263,6 +268,15 @@ pub(crate) fn fingerprint(bundle: &Bundle, key: &str) -> String {
             })
         })
         .collect();
+    // Triggers join their session's entry only when set, so a session
+    // without any keeps the fingerprint it had before they travelled.
+    for st in &env.session_triggers {
+        if let Some(id) = session_identity(st.session_id) {
+            if let Some(v) = sessions.iter_mut().find(|v| v["id"] == json!(id)) {
+                v["triggers_json"] = json!(st.triggers_json);
+            }
+        }
+    }
     sessions.sort_by_key(|v| v["id"].to_string());
 
     let mut forwards: Vec<Value> = env
@@ -582,7 +596,15 @@ pub(crate) fn pull(
     let dir = sync_dir(ctx).ok_or_else(|| internal("sync folder not configured"))?;
     let passphrase = load_passphrase(ctx).ok_or_else(|| internal("sync passphrase not set"))?;
     let remote = backup::read_bundle(&dir.join(SYNC_BUNDLE_FILE), &passphrase)?;
-    let summary = backup::apply_bundle(ctx, &remote)?;
+    // Nothing changed here since the last sync → every difference is an edit
+    // made on another device, so the remote also wins on items both sides
+    // have. Otherwise (a conflict being merged) local edits are kept.
+    let unchanged_here = setting(ctx, SYNC_FINGERPRINT_KEY).is_some_and(|last| {
+        let mut w = Vec::new();
+        backup::build_bundle(ctx, app_version, &mut w)
+            .is_ok_and(|local| fingerprint(&local, ctx.vault_seed) == last)
+    });
+    let summary = backup::apply_bundle_with(ctx, &remote, unchanged_here)?;
     ctx.db
         .set_setting(SYNC_LAST_PULL_KEY, &remote.created_at)
         .map_err(internal)?;
@@ -1052,6 +1074,128 @@ mod tests {
         assert_ne!(unnamed, named, "a rename must count as a change to sync");
         a.db.set_session_forwards(id, &[fw(Some("RDP"))]).unwrap();
         assert_ne!(named, fp());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An edit on one device reaches the other when the other has no changes
+    /// of its own (before, the pull skipped it and the stale copy was pushed
+    /// back over it). With changes on both sides, local edits are kept.
+    #[test]
+    fn edits_propagate_when_nothing_changed_locally() {
+        let root = root("edits");
+        let shared = root.join("shared");
+        let a = Device::new(&root, "a");
+        let b = Device::new(&root, "b");
+        let core = a.add_ssh("core");
+        let rule =
+            a.db.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
+                .unwrap();
+        let snip = a.db.create_snippet("ver", "show ver", None, None).unwrap();
+        a.store.put("vault:x", "old-secret").unwrap();
+        a.db.create_vault_entry("lab", Some("ops"), "vault:x")
+            .unwrap();
+        configure(&a.ctx(), &shared, Some("shared passphrase"), "1").unwrap();
+        assert_eq!(auto(&a.ctx(), "1").unwrap().state, SyncState::InSync);
+        configure(&b.ctx(), &shared, Some("shared passphrase"), "1").unwrap();
+        let (_, st) = pull(&b.ctx(), "1").unwrap();
+        assert_eq!(st.state, SyncState::InSync, "{st:?}");
+
+        // A edits fields of items B already has, and rotates the password.
+        let s = a.db.get_session(core).unwrap();
+        a.db.update_session_fields(
+            core,
+            &s.name,
+            None,
+            s.host.as_deref(),
+            s.port,
+            Some("netops"),
+            None,
+            Some(r#"{"keepalive":30}"#),
+        )
+        .unwrap();
+        a.db.set_session_triggers(core, Some(r#"[{"pattern":"y/n"}]"#))
+            .unwrap();
+        a.db.update_highlight_rule(rule, "err", Some("#0f0"), None, false, true, false)
+            .unwrap();
+        a.db.update_snippet(snip, "ver", "show version", None, Some("#abc"))
+            .unwrap();
+        a.store.put("vault:x", "new-secret").unwrap();
+        assert_eq!(auto(&a.ctx(), "1").unwrap().state, SyncState::InSync);
+
+        // B hasn't touched anything → the pull takes every edit, and B ends
+        // in sync instead of pushing its stale copy back.
+        assert_eq!(status(&b.ctx(), "1").state, SyncState::RemoteChanges);
+        let (restore, st) = pull(&b.ctx(), "1").unwrap();
+        assert_eq!(st.state, SyncState::InSync, "{st:?} {restore:?}");
+        assert!(restore.environment.items_updated >= 4, "{restore:?}");
+        let bs = b.db.list_sessions().unwrap();
+        let bcore = bs.iter().find(|s| s.name == "core").unwrap();
+        assert_eq!(bcore.username.as_deref(), Some("netops"));
+        assert_eq!(bcore.options_json, r#"{"keepalive":30}"#);
+        assert!(b.db.get_session_triggers(bcore.id).unwrap().is_some());
+        let brule = b.db.list_highlight_rules().unwrap();
+        let brule = brule.iter().find(|r| r.pattern == "ERROR").unwrap();
+        assert_eq!(brule.fg_color.as_deref(), Some("#0f0"));
+        assert!(!brule.bold && brule.underline && !brule.enabled);
+        let bsnip = b.db.list_snippets().unwrap();
+        let bsnip = bsnip.iter().find(|s| s.name == "ver").unwrap();
+        assert_eq!(bsnip.content, "show version");
+        let bvault = b.db.get_credential_by_name("lab").unwrap().unwrap();
+        assert_eq!(
+            b.store.get(&bvault.keyring_key).as_deref(),
+            Some("new-secret")
+        );
+
+        // Both sides change: B's own edit to the same session is kept.
+        a.db.update_session_fields(
+            core,
+            &s.name,
+            None,
+            s.host.as_deref(),
+            s.port,
+            Some("from-a"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(auto(&a.ctx(), "1").unwrap().state, SyncState::InSync);
+        b.db.update_session_fields(
+            bcore.id,
+            &bcore.name,
+            None,
+            bcore.host.as_deref(),
+            bcore.port,
+            Some("from-b"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status(&b.ctx(), "1").state, SyncState::Conflict);
+        pull(&b.ctx(), "1").unwrap();
+        let bcore = b.db.get_session(bcore.id).unwrap();
+        assert_eq!(bcore.username.as_deref(), Some("from-b"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Output triggers count as content: editing them is a change to sync,
+    /// while a session without any keeps its old fingerprint.
+    #[test]
+    fn editing_triggers_changes_the_fingerprint() {
+        let root = root("triggers");
+        let a = Device::new(&root, "a");
+        let id = a.add_ssh("jump");
+        let mut w = Vec::new();
+        let mut fp = || fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap(), "k");
+        let none = fp();
+        a.db.set_session_triggers(id, Some("[]")).unwrap();
+        assert_eq!(none, fp(), "an empty trigger list is no change");
+        a.db.set_session_triggers(id, Some(r#"[{"pattern":"y/n"}]"#))
+            .unwrap();
+        let one = fp();
+        assert_ne!(none, one);
+        a.db.set_session_triggers(id, Some(r#"[{"pattern":"[y/N]"}]"#))
+            .unwrap();
+        assert_ne!(one, fp());
         let _ = std::fs::remove_dir_all(&root);
     }
 

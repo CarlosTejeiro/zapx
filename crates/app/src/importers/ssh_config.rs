@@ -182,6 +182,7 @@ pub fn parse(path: &Path, home: &Path) -> std::io::Result<ParsedSshConfig> {
             snippets: vec![],
             highlight_rules: vec![],
             session_forwards: vec![],
+            session_triggers: vec![],
         },
         warnings,
     })
