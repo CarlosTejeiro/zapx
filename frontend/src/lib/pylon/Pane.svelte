@@ -6,6 +6,7 @@
   import {
     cacheSessionPassword,
     forgetSessionPassword,
+    sessionPasswordSource,
     startSessionLogging,
     stopSessionLogging,
   } from '$lib/bridge/commands'
@@ -40,6 +41,9 @@
     /** A freshly-split placeholder pane with no session yet — renders a
      *  "pick a session" prompt and is filled by clicking a sidebar session. */
     empty?: boolean
+    /** Opened by a read-only script or notebook: don't run the session's
+     *  on-connect macro (it would type commands the allowlist never saw). */
+    skipOnConnectMacro?: boolean
   }
 
   type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
@@ -170,6 +174,10 @@
     // The form (or the failed terminal) stays until the password is cached:
     // mounting the terminal earlier would try the saved session without it.
     try {
+      if (forgetting) {
+        await forgetting
+        forgetting = null
+      }
       await cacheSessionPassword(savedId, pw)
       sshOverride = null
       retriedWithCache = true
@@ -189,17 +197,29 @@
 
   /// Shown above the password form after a typed password was rejected.
   let passwordError = $state('')
+  /// The backend forget of a rejected password, still running. A new password
+  /// is only cached once it is done, or the forget could erase it.
+  let forgetting: Promise<void> | null = null
 
   /// The server rejected the password. If it was one typed in this pane, it is
   /// wrong: forget it everywhere and ask again (instead of retrying it on
   /// every connect). A wrong password from the keyring stays a plain error —
   /// fix it in the session dialog.
-  function handleAuthFailed(): boolean {
+  async function handleAuthFailed(): Promise<boolean> {
     const s = pane.savedSession
-    if (!s || !retriedWithCache) return false
+    if (!s) return false
+    if (!retriedWithCache) {
+      // Not just typed here: act only when the open used a password typed in
+      // this pane earlier (kept in memory or encrypted), never on a wrong
+      // keyring entry or a non-password session.
+      const passwordAuth = s.auth_method == null || s.auth_method === 'password'
+      if (!passwordAuth) return false
+      const source = await sessionPasswordSource(s.id).catch(() => 'none')
+      if (source !== 'typed') return false
+    }
     retriedWithCache = false
     clearCachedPassword(s.id)
-    forgetSessionPassword(s.id).catch(console.error)
+    forgetting = forgetSessionPassword(s.id).catch(console.error)
     passwordError = 'Wrong password — try again.'
     needsPassword = true
     status = 'error'
@@ -291,6 +311,7 @@
       return
     }
     if (onConnectRan || onConnectMacroId === null || !runtimeSid) return
+    if (pane.skipOnConnectMacro) return
     const macro = snippets.find((s) => s.id === onConnectMacroId)
     if (!macro?.steps_json) return
     let steps: LoginStep[]

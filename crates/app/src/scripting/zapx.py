@@ -65,11 +65,20 @@ __all__ = [
 #: True when ZAPX started the script in dry-run mode.
 dry_run: bool = os.environ.get("ZAPX_DRY_RUN") == "1"
 
-#: True when ZAPX started the script in read-only mode: only display commands
-#: (``get``/``show`` by default) are typed; ZAPX skips the rest and logs them
-#: as "would run", and ``run()`` returns an empty string for those. From a
-#: notebook it reflects the connection's Read-only box when ``connect()`` ran.
-read_only: bool = os.environ.get("ZAPX_READ_ONLY") == "1"
+_env_read_only: bool = os.environ.get("ZAPX_READ_ONLY") == "1"
+
+
+def __getattr__(name: str):
+    """``zapx.read_only``: True in read-only mode — only display commands
+    (``get``/``show`` by default) are typed; ZAPX skips the rest and logs them
+    as "would run", and ``run()`` returns an empty string for those. For a
+    script it is fixed when ZAPX starts it; from a notebook it is asked on each
+    read, so it follows the connection's Read-only box in the panel."""
+    if name == "read_only":
+        if _notebook is not None:
+            return bool((_call("mode") or {}).get("read_only"))
+        return _env_read_only
+    raise AttributeError(f"module 'zapx' has no attribute {name!r}")
 
 
 class Error(Exception):
@@ -210,13 +219,10 @@ def connect(path: Optional[str] = None, port: Optional[int] = None, token: Optio
     If the connection drops later (ZAPX restarted, connection turned off and
     on), the next call reconnects on its own.
     """
-    global _notebook, read_only
+    global _notebook
     with _lock:
         _notebook = {"path": path, "port": port, "token": token}
         _connect_notebook()
-    # The notebook connection's Read-only box decides; ZAPX enforces it either
-    # way, this only lets the notebook's own code adapt (re-read on connect()).
-    read_only = bool((_call("mode") or {}).get("read_only"))
 
 
 def _call(method: str, **params):

@@ -94,10 +94,14 @@ export function parseAllowList(text: string | null | undefined): string[] {
  * Read-only mode: may `command` be typed? Only if it starts with one of
  * `allow` as whole words (`show` allows `show run`, not `shower`), and holds
  * nothing that could chain or redirect a second command on a shell-like CLI.
- * An empty line (a bare Enter) is always allowed.
+ * Control characters are refused outright: a CR/LF would end the checked line
+ * and start another, and backspace, Ctrl-U/W, Tab or an escape sequence (an
+ * arrow key recalling history) would make the device run something other
+ * than what was checked. An empty line (a bare Enter) is always allowed.
  */
 export function readOnlyAllows(command: string, allow: string[]): boolean {
-  const c = command.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(command)) return false
+  const c = command.trim().toLowerCase().replace(/ +/g, ' ')
   if (c === '') return true
   if (/[;|&`<>]|\$\(/.test(c)) return false
   return allow.some((p) => c === p || c.startsWith(p + ' '))

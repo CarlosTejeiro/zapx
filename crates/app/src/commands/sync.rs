@@ -245,14 +245,22 @@ pub(crate) fn fingerprint(bundle: &Bundle) -> String {
                 .forwards
                 .iter()
                 .map(|f| {
-                    format!(
+                    let mut line = format!(
                         "{}|{}|{}|{}|{}",
                         f.kind,
                         f.bind_addr,
                         f.bind_port,
                         f.target_host.as_deref().unwrap_or(""),
                         f.target_port.map(|p| p.to_string()).unwrap_or_default()
-                    )
+                    );
+                    // Only named forwards add the name, so an unnamed one keeps
+                    // the fingerprint it had before names existed (no spurious
+                    // "changed" after upgrading).
+                    if let Some(name) = f.name.as_deref() {
+                        line.push('|');
+                        line.push_str(name);
+                    }
+                    line
                 })
                 .collect();
             fw.sort();
@@ -904,6 +912,32 @@ mod tests {
             fb,
             fingerprint(&backup::build_bundle(&b.ctx(), "1", &mut w).unwrap())
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn renaming_a_forward_changes_the_fingerprint() {
+        let root = root("fwname");
+        let a = Device::new(&root, "a");
+        let id = a.add_ssh("jump");
+        let fw = |name: Option<&str>| core_persistence::SavedForward {
+            kind: "local".into(),
+            bind_addr: "127.0.0.1".into(),
+            bind_port: 8443,
+            target_host: Some("10.0.0.1".into()),
+            target_port: Some(443),
+            name: name.map(Into::into),
+        };
+        let mut w = Vec::new();
+        let mut fp = || fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap());
+        a.db.set_session_forwards(id, &[fw(None)]).unwrap();
+        let unnamed = fp();
+        a.db.set_session_forwards(id, &[fw(Some("FortiGate GUI"))])
+            .unwrap();
+        let named = fp();
+        assert_ne!(unnamed, named, "a rename must count as a change to sync");
+        a.db.set_session_forwards(id, &[fw(Some("RDP"))]).unwrap();
+        assert_ne!(named, fp());
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -42,7 +42,7 @@
     hostBusy,
     initScriptHost,
     scriptRun,
-    startNotebook,
+    startNotebookFromSettings,
     startScript,
   } from '$lib/scripting/scriptHost.svelte'
   import CommandPalette from '$lib/palette/CommandPalette.svelte'
@@ -96,13 +96,7 @@
     setBarContext,
     matchSnippetShortcut,
   } from '$lib/stores/snippets.svelte'
-  import {
-    getSessionPlatform,
-    getSessionTcpMss,
-    getSetting,
-    openExternal,
-  } from '$lib/bridge/commands'
-  import { parseAllowList } from '$lib/scripting/output'
+  import { getSessionPlatform, getSessionTcpMss, openExternal } from '$lib/bridge/commands'
   import {
     createSnippet,
     updateSnippet,
@@ -694,7 +688,7 @@
 
   // ── tab management ────────────────────────────────────────────────────────────
 
-  function openSavedSessionTab(s: SavedSession): number {
+  function openSavedSessionTab(s: SavedSession, skipOnConnectMacro = false): number {
     // If the focused pane is an empty split placeholder, open the session INTO
     // it (filling the pane the user just split) instead of a new tab.
     const activeT = tabs.find((t) => t.id === activeTabId)
@@ -707,11 +701,16 @@
         target.ssh = undefined
         target.telnet = undefined
         target.empty = false
+        target.skipOnConnectMacro = skipOnConnectMacro
         activeT.statuses.set(target.id, 'connecting')
         return target.id
       }
     }
-    const pane = mkPane(s.name, { savedSession: s, color: pickColor(s.id) } as Partial<PaneData>)
+    const pane = mkPane(s.name, {
+      savedSession: s,
+      color: pickColor(s.id),
+      skipOnConnectMacro,
+    } as Partial<PaneData>)
     pane.color = pickColor(s.id)
     const tab = mkTab(pane)
     tabs = [...tabs, tab]
@@ -765,12 +764,16 @@
       })
       return
     }
-    const [ro, allowText] = await Promise.all([
-      getSetting('notebook.read_only').catch(() => null),
-      getSetting('scripts.read_only_allow').catch(() => null),
-    ])
-    // Read-only unless the user switched it off before.
-    await startNotebook(ro !== '0', parseAllowList(allowText))
+    try {
+      await startNotebookFromSettings()
+    } catch (e) {
+      // e.g. a script was started while the settings were being read.
+      scriptRun.visible = true
+      await message(String(e instanceof Error ? e.message : e), {
+        title: 'Notebook connection',
+        kind: 'info',
+      })
+    }
   }
 
   /// Pane id + tab of the pane whose live session is `sessionId`.
@@ -1718,7 +1721,7 @@
       openSaved: (name) => {
         const s = sessions.find((x) => x.name === name)
         if (!s) throw new Error(`no saved session called "${name}"`)
-        return openSavedSessionTab(s)
+        return openSavedSessionTab(s, scriptRun.readOnly)
       },
       paneStatus: (paneId) => {
         const tab = tabs.find((t) => tabPanes(t).some((p) => p.id === paneId))
@@ -1792,7 +1795,7 @@
       {folders}
       activeSessionId={focusedPaneData?.savedSession?.id}
       {sessionStatuses}
-      onSelect={openSavedSessionTab}
+      onSelect={(s) => openSavedSessionTab(s)}
       onEdit={(s) => (editingSession = s)}
       onDuplicate={async (s) => {
         try {

@@ -18,7 +18,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { onTerminalData } from '$lib/bridge/events'
-import { promptReturned, sendVaultField } from '$lib/bridge/commands'
+import { getSetting, promptReturned, sendVaultField } from '$lib/bridge/commands'
 import { paneToSession } from '$lib/stores/sessionRuntime.svelte'
 import {
   DEFAULT_READ_ONLY_ALLOW,
@@ -26,6 +26,7 @@ import {
   lastLine,
   looksLikePrompt,
   MORE_RE,
+  parseAllowList,
   readOnlyAllows,
   stripAnsi,
 } from './output'
@@ -223,7 +224,6 @@ export async function initScriptHost(hostApi: ScriptHostApi): Promise<() => void
   }
 }
 
-/** Start `path`. Opens the panel; progress arrives through events. */
 /** Read-only gate for text about to be typed in `sessionId`: true when it may
  *  be sent; otherwise logs what would have been and returns false. */
 function readOnlyLets(sessionId: string, text: string, verb: string): boolean {
@@ -232,6 +232,7 @@ function readOnlyLets(sessionId: string, text: string, verb: string): boolean {
   return false
 }
 
+/** Start `path`. Opens the panel; progress arrives through events. */
 export async function startScript(
   path: string,
   dryRun: boolean,
@@ -292,6 +293,17 @@ export async function stopScript(): Promise<void> {
 }
 
 /** Turn on the notebook connection and show the panel with how to connect. */
+/** Turn the notebook connection on with the saved choices: read-only unless
+ *  the user switched it off before (`notebook.read_only`), with their
+ *  allowlist (`scripts.read_only_allow`). Used by every "turn on" path. */
+export async function startNotebookFromSettings(): Promise<void> {
+  const [ro, allowText] = await Promise.all([
+    getSetting('notebook.read_only').catch(() => null),
+    getSetting('scripts.read_only_allow').catch(() => null),
+  ])
+  await startNotebook(ro !== '0', parseAllowList(allowText))
+}
+
 export async function startNotebook(
   readOnly = true,
   allow: string[] = DEFAULT_READ_ONLY_ALLOW,
@@ -458,6 +470,11 @@ async function dispatch(
       }
       if (scriptRun.dryRun) {
         log(`[dry-run] ${name(sid)}: would type the vault ${field} of "${ref.slice(0, dot)}"`)
+        return null
+      }
+      if (scriptRun.readOnly) {
+        // Not a display command, and typed blind: keep it out of read-only.
+        log(`[read-only] ${name(sid)}: would type the vault ${field} of "${ref.slice(0, dot)}"`)
         return null
       }
       attach(sid)

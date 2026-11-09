@@ -5,6 +5,34 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] - 2026-11-08
+
+### Fixed
+- **Read-only mode could be got around.** A command with a second line hidden
+  after a line break, or with backspaces, Ctrl-U or an arrow key (which
+  recalls an earlier command), passed the `get`/`show` check and the device
+  ran something else; such lines are now held back. `send_secret()` no longer
+  types anything in read-only, and a saved session opened by a read-only
+  script no longer runs its on-connect macro.
+- **Notebook connection:** the panel's **Turn on** button ignored the saved
+  Read-only choice and allowlist (the Tools menu used them). `zapx.read_only`
+  now follows the panel's Read-only box instead of keeping the value it had at
+  `connect()`.
+- **Jump host passwords.** A jump host with a wrong or missing password made
+  the tab ask for the *target's* password (and forget it, even when it was
+  right), again and again. The message now names the jump host instead.
+- **A typed password that later stopped working** (changed on the server) was
+  kept and retried on every open with only "Authentication failed"; it is now
+  forgotten and the tab asks for the new one.
+- **Key sessions:** a password typed for the session is no longer tried as
+  the key's passphrase.
+- **Closing a tab while it was still connecting** left that connection
+  running in the background.
+- **A tab could stay blank in "connecting"** when it opened before the app
+  had finished starting.
+- **Sync:** renaming a saved port forward didn't count as a change, so the
+  name never reached your other devices.
+
 ## [0.29.0] - 2026-11-08
 
 ### Changed
