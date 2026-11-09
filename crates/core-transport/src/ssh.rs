@@ -191,13 +191,17 @@ fn host_key_of(presented: &PublicKeyOrCertificate) -> PublicKey {
     }
 }
 
-/// Expand a leading `~/` to the user's home directory (`load_secret_key` opens
-/// the path verbatim and does not expand `~`).
+/// Expand a leading `~`, `~/` or `~\` to the user's home directory
+/// (`load_secret_key` opens the path verbatim and does not expand `~`). Uses
+/// the same home lookup as `known_hosts`.
 fn expand_tilde(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-            return std::path::Path::new(&home).join(rest);
-        }
+    let rest = if path == "~" {
+        Some("")
+    } else {
+        path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
+    };
+    if let (Some(rest), Some(home)) = (rest, home::home_dir()) {
+        return home.join(rest);
     }
     std::path::PathBuf::from(path)
 }
@@ -238,7 +242,13 @@ impl client::Handler for SshClientHandler {
     ) -> Result<bool, Self::Error> {
         let key = host_key_of(presented);
         let server_public_key = &key;
-        match keys::check_known_hosts(&self.host, self.port, server_public_key) {
+        // known_hosts is read (and possibly written) with blocking file I/O:
+        // keep it off the async worker, which also drives other sessions.
+        let (host, port, k) = (self.host.clone(), self.port, key.clone());
+        let checked = tokio::task::spawn_blocking(move || keys::check_known_hosts(&host, port, &k))
+            .await
+            .unwrap_or_else(|e| Err(keys::Error::IO(std::io::Error::other(e.to_string()))));
+        match checked {
             // Recorded and matches → accept.
             Ok(true) => Ok(true),
             // Recorded but DIFFERENT → possible MITM; reject (fail closed).
@@ -265,8 +275,11 @@ impl client::Handler for SshClientHandler {
                     fingerprint = %fingerprint(server_public_key),
                     "trusting unknown host key on first use (reachable only via jump host)"
                 );
-                let _ =
-                    keys::known_hosts::learn_known_hosts(&self.host, self.port, server_public_key);
+                let (host, port, k) = (self.host.clone(), self.port, key.clone());
+                let _ = tokio::task::spawn_blocking(move || {
+                    keys::known_hosts::learn_known_hosts(&host, port, &k)
+                })
+                .await;
                 Ok(true)
             }
         }
@@ -305,22 +318,33 @@ impl client::Handler for SshClientHandler {
                 .await;
             return Ok(());
         };
+        // Connect to the local target first and answer the open by the
+        // result, like OpenSSH: a down target is refused cleanly instead of
+        // looking like a connection that opened and closed at once. Bounded,
+        // since this runs on the session task.
+        let connect = tokio::net::TcpStream::connect((target.host.as_str(), target.port));
+        let mut local = match tokio::time::timeout(std::time::Duration::from_secs(5), connect).await
+        {
+            Ok(Ok(local)) => local,
+            outcome => {
+                let why = match outcome {
+                    Ok(Err(e)) => e.to_string(),
+                    _ => "timed out".into(),
+                };
+                tracing::warn!(
+                    "remote forward → {}:{} connect failed: {why}",
+                    target.host,
+                    target.port
+                );
+                reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+                return Ok(());
+            }
+        };
         reply.accept().await;
         tokio::spawn(async move {
             let mut remote = channel.into_stream();
-            match tokio::net::TcpStream::connect((target.host.as_str(), target.port)).await {
-                Ok(mut local) => {
-                    if let Err(e) = tokio::io::copy_bidirectional(&mut remote, &mut local).await {
-                        tracing::debug!("remote forward bridge ended: {e}");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "remote forward → {}:{} connect failed: {e}",
-                        target.host,
-                        target.port
-                    );
-                }
+            if let Err(e) = tokio::io::copy_bidirectional(&mut remote, &mut local).await {
+                tracing::debug!("remote forward bridge ended: {e}");
             }
         });
         Ok(())
@@ -346,6 +370,27 @@ impl client::Handler for KeyCaptureHandler {
     }
 }
 
+/// Longest wait for the SSH banner + key exchange (before authentication,
+/// which can be interactive and is never bounded). A host that accepts TCP
+/// but never speaks SSH — wrong port, tarpit, half-dead middlebox — would
+/// otherwise hang the tab forever.
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+async fn within_handshake<T>(
+    fut: impl Future<Output = Result<T, russh::Error>>,
+) -> Result<T, Error> {
+    match tokio::time::timeout(HANDSHAKE_TIMEOUT, fut).await {
+        Ok(res) => res.map_err(Error::Ssh),
+        Err(_) => Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!(
+                "no SSH handshake after {}s (is it an SSH port?)",
+                HANDSHAKE_TIMEOUT.as_secs()
+            ),
+        ))),
+    }
+}
+
 /// Open a throwaway connection, capture the host key, and return it.
 async fn capture_host_key(host: &str, port: u16) -> Result<PublicKey, Error> {
     let captured = Arc::new(Mutex::new(None));
@@ -354,9 +399,8 @@ async fn capture_host_key(host: &str, port: u16) -> Result<PublicKey, Error> {
     };
     let config = build_client_config();
     // The session is dropped at the end of this fn, closing the connection.
-    let _session = client::connect(config, (host.to_owned(), port), handler)
-        .await
-        .map_err(Error::Ssh)?;
+    let _session =
+        within_handshake(client::connect(config, (host.to_owned(), port), handler)).await?;
     let key = captured
         .lock()
         .unwrap()
@@ -399,7 +443,7 @@ pub async fn trust_host_key(host: String, port: u16, expected_fp: String) -> Res
         });
     }
     keys::known_hosts::learn_known_hosts(&host, port, &key)
-        .map_err(|e| Error::KeyLoad(e.to_string()))?;
+        .map_err(|e| Error::KnownHosts(e.to_string()))?;
     Ok(())
 }
 
@@ -408,7 +452,7 @@ pub async fn trust_host_key(host: String, port: u16, expected_fp: String) -> Res
 /// `known_hosts_path`). Older russh used `%USERPROFILE%\ssh\known_hosts` (no
 /// dot) on Windows — see [`migrate_legacy_known_hosts`] for the one-time move.
 fn known_hosts_file() -> Result<std::path::PathBuf, Error> {
-    let home = home::home_dir().ok_or_else(|| Error::KeyLoad("no home directory".into()))?;
+    let home = home::home_dir().ok_or_else(|| Error::KnownHosts("no home directory".into()))?;
     Ok(home.join(".ssh").join("known_hosts"))
 }
 
@@ -462,29 +506,67 @@ fn merge_known_hosts(legacy: &std::path::Path, target: &std::path::Path) -> std:
 /// `old` text into `target`, adding only the lines it lacks. Creates `target`
 /// (and its directory) if missing. Returns how many lines were added.
 pub fn merge_known_hosts_text(old: &str, target: &std::path::Path) -> std::io::Result<usize> {
-    let existing = std::fs::read_to_string(target).unwrap_or_default();
-    let have: std::collections::HashSet<&str> = existing.lines().map(str::trim).collect();
-    let mut out = existing.clone();
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
-    }
+    use std::io::Write;
+    // Read the current file as bytes: a missing file is empty, any other read
+    // error aborts (never rewrite a file we couldn't read), and the existing
+    // content is never rewritten — new lines are only appended — so a byte
+    // that isn't valid UTF-8 (a Latin-1 comment) survives untouched.
+    let existing = match std::fs::read(target) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let existing_text = String::from_utf8_lossy(&existing);
+    let have: std::collections::HashSet<&str> = existing_text.lines().map(str::trim).collect();
+    // Host + key type already recorded: an incoming line with another key for
+    // the same pair is an older key (a backup made before the server was
+    // reinstalled) and would make every connect report "HOST KEY CHANGED".
+    let have_hosts: std::collections::HashSet<(&str, &str)> = existing_text
+        .lines()
+        .filter_map(host_and_key_type)
+        .collect();
+    let mut add = String::new();
     let mut added = 0usize;
     for line in old.lines() {
         let t = line.trim();
         if t.is_empty() || t.starts_with('#') || have.contains(t) {
             continue;
         }
-        out.push_str(t);
-        out.push('\n');
+        if host_and_key_type(t).is_some_and(|k| have_hosts.contains(&k)) {
+            continue;
+        }
+        add.push_str(t);
+        add.push('\n');
         added += 1;
     }
     if added > 0 {
         if let Some(dir) = target.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(target, out)?;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(target)?;
+        if !existing.is_empty() && !existing.ends_with(b"\n") {
+            f.write_all(b"\n")?;
+        }
+        f.write_all(add.as_bytes())?;
     }
     Ok(added)
+}
+
+/// `(hosts, key type)` of a `known_hosts` line, skipping a leading
+/// `@cert-authority` / `@revoked` marker; None for blanks and comments.
+fn host_and_key_type(line: &str) -> Option<(&str, &str)> {
+    let mut fields = line.split_whitespace();
+    let mut first = fields.next()?;
+    if first.starts_with('#') {
+        return None;
+    }
+    if first.starts_with('@') {
+        first = fields.next()?;
+    }
+    Some((first, fields.next()?))
 }
 
 /// Drop every plaintext `known_hosts` entry for `host` (keyed `[host]:port` when
@@ -554,16 +636,15 @@ pub async fn overwrite_host_key(host: String, port: u16, expected_fp: String) ->
         });
     }
     let path = known_hosts_file()?;
-    remove_known_hosts_lines(&path, &host, port)
-        .map_err(|e| Error::KeyLoad(format!("known_hosts: {e}")))?;
+    remove_known_hosts_lines(&path, &host, port).map_err(|e| Error::KnownHosts(e.to_string()))?;
     keys::known_hosts::learn_known_hosts(&host, port, &key)
-        .map_err(|e| Error::KeyLoad(e.to_string()))?;
+        .map_err(|e| Error::KnownHosts(e.to_string()))?;
     // Confirm the new key now validates. If a stale entry we couldn't match
     // (e.g. a hashed one) still lingers, russh reports KeyChanged again — fail
     // loudly with a manual next step instead of leaving a silently-broken host.
     match keys::check_known_hosts(&host, port, &key) {
         Ok(true) => Ok(()),
-        _ => Err(Error::KeyLoad(format!(
+        _ => Err(Error::KnownHosts(format!(
             "the old host key entry could not be removed automatically \
              (it may be stored hashed); remove it manually with `ssh-keygen -R {host}`"
         ))),
@@ -576,11 +657,10 @@ pub async fn overwrite_host_key(host: String, port: u16, expected_fp: String) ->
 
 pub struct SshTransport {
     /// Shared so the app layer can open port-forwards on this session without
-    /// stealing the handle from the I/O task. Wrapped in a `tokio::sync::Mutex`
-    /// because russh's `tcpip_forward` (`-R`) takes `&mut self`; the lock is
-    /// only held for the duration of one short channel/request roundtrip.
+    /// stealing the handle from the I/O task. Every `Handle` method used takes
+    /// `&self`, so users take a read lock and don't block each other.
     /// Dropping the last `Arc` closes the SSH connection.
-    session: Arc<tokio::sync::Mutex<client::Handle<SshClientHandler>>>,
+    session: Arc<tokio::sync::RwLock<client::Handle<SshClientHandler>>>,
     channel: russh::Channel<client::Msg>,
     /// Chain of bastion handles whose `direct-tcpip` channels carry this
     /// session. Kept alive for the duration of the transport — dropping any
@@ -670,73 +750,96 @@ impl SshTransport {
     pub fn start_io_loop(
         self,
         on_data: impl Fn(Vec<u8>) + Send + Sync + 'static,
-        on_close: impl FnOnce() + Send + 'static,
+        on_close: impl FnOnce(crate::CloseReason) + Send + 'static,
     ) -> (
         tokio::sync::mpsc::UnboundedSender<SessionCmd>,
-        Arc<tokio::sync::Mutex<client::Handle<SshClientHandler>>>,
+        Arc<tokio::sync::RwLock<client::Handle<SshClientHandler>>>,
         RemoteForwardRegistry,
     ) {
+        use crate::CloseReason;
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
-        let mut channel = self.channel;
+        let (mut read_half, write_half) = self.channel.split();
         let session = self.session;
         let session_for_task = Arc::clone(&session);
         let bastions = self._bastions;
         let forwards = self.forwards;
+
+        // Writer on its own task: `data()` waits for the server's window, and
+        // the reader below must keep draining output (and with it the
+        // WINDOW_ADJUSTs) meanwhile — a long paste to a device that echoes
+        // every line would otherwise stall both directions for good.
+        // Returns true when a write failed (link gone), false when the app
+        // dropped `cmd_tx` (tab closed).
+        let mut writer = tokio::spawn(async move {
+            while let Some(cmd) = rx.recv().await {
+                match cmd {
+                    SessionCmd::Data(data) => {
+                        if write_half.data(data.as_ref()).await.is_err() {
+                            return true;
+                        }
+                    }
+                    SessionCmd::Resize { cols, rows } => {
+                        write_half
+                            .window_change(cols.into(), rows.into(), 0, 0)
+                            .await
+                            .ok();
+                    }
+                }
+            }
+            false
+        });
 
         tokio::spawn(async move {
             // Keep session AND any bastion handles alive for the duration of
             // the I/O loop — dropping bastions would tear the tunnel down.
             let _session = session_for_task;
             let _bastions = bastions;
-            // Did the loop end because the REMOTE side closed (vs. the user
-            // closing the tab, which drops cmd_tx)? Only the former should fire
-            // on_close → the app emits a disconnect event and may reconnect.
-            let mut remote_closed = false;
-            loop {
+            // Some servers send exit-status before the last output and EOF:
+            // keep reading briefly after it so trailing bytes aren't lost.
+            let mut exit_grace: Option<tokio::time::Instant> = None;
+            let reason: Option<CloseReason> = loop {
+                let grace = async {
+                    match exit_grace {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                };
                 tokio::select! {
-                    cmd = rx.recv() => {
-                        match cmd {
-                            Some(SessionCmd::Data(data)) => {
-                                if channel.data(data.as_ref()).await.is_err() {
-                                    // Write failed → the link is gone.
-                                    remote_closed = true;
-                                    break;
-                                }
-                            }
-                            Some(SessionCmd::Resize { cols, rows }) => {
-                                channel
-                                    .window_change(cols.into(), rows.into(), 0, 0)
-                                    .await
-                                    .ok();
-                            }
-                            None => break, // cmd_tx dropped → user closed the tab
-                        }
+                    res = &mut writer => {
+                        // Write failed → link gone; channel dropped → tab closed
+                        // by the app, which needs no event.
+                        break if matches!(res, Ok(true)) { Some(CloseReason::Lost) } else { None };
                     }
-                    msg = channel.wait() => {
-                        match msg {
-                            Some(ChannelMsg::Data { ref data }) => {
-                                on_data(data.to_vec());
-                            }
-                            // stderr stream — treat as regular output
-                            Some(ChannelMsg::ExtendedData { ref data, .. }) => {
-                                on_data(data.to_vec());
-                            }
-                            // Channel closed or shell exited (incl. dropped link
-                            // after keepalives went unanswered).
-                            Some(ChannelMsg::ExitStatus { .. })
-                            | Some(ChannelMsg::Close)
-                            | Some(ChannelMsg::Eof)
-                            | None => {
-                                remote_closed = true;
-                                break;
-                            }
-                            _ => {}
+                    msg = read_half.wait() => match msg {
+                        Some(ChannelMsg::Data { ref data }) => on_data(data.to_vec()),
+                        // stderr stream — treat as regular output
+                        Some(ChannelMsg::ExtendedData { ref data, .. }) => on_data(data.to_vec()),
+                        Some(ChannelMsg::ExitStatus { .. }) | Some(ChannelMsg::ExitSignal { .. }) => {
+                            exit_grace.get_or_insert_with(|| {
+                                tokio::time::Instant::now() + std::time::Duration::from_millis(500)
+                            });
                         }
-                    }
+                        // The shell exited / the server closed the channel.
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => {
+                            break Some(CloseReason::Ended);
+                        }
+                        // The session went away without closing the channel
+                        // (dropped link, keepalives unanswered).
+                        None => {
+                            break Some(if exit_grace.is_some() {
+                                CloseReason::Ended
+                            } else {
+                                CloseReason::Lost
+                            });
+                        }
+                        _ => {}
+                    },
+                    _ = grace => break Some(CloseReason::Ended),
                 }
-            }
-            if remote_closed {
-                on_close();
+            };
+            writer.abort();
+            if let Some(reason) = reason {
+                on_close(reason);
             }
         });
 
@@ -768,7 +871,7 @@ async fn open_shell_async(
     }
     let channel = open_pty_shell(&mut session, cols, rows).await?;
     Ok(SshTransport {
-        session: Arc::new(tokio::sync::Mutex::new(session)),
+        session: Arc::new(tokio::sync::RwLock::new(session)),
         channel,
         _bastions: Vec::new(),
         forwards,
@@ -825,9 +928,7 @@ async fn connect_only(
         allow_tofu,
         forwards: Arc::clone(&forwards),
     };
-    let handle = client::connect_stream(config, stream, handler)
-        .await
-        .map_err(Error::Ssh)?;
+    let handle = within_handshake(client::connect_stream(config, stream, handler)).await?;
     Ok((handle, forwards, mss, watcher))
 }
 
@@ -858,21 +959,37 @@ async fn perform_auth(
     auth: SshAuth,
 ) -> Result<bool, Error> {
     match auth {
-        SshAuth::Password(password) => Ok(matches!(
-            session
-                .authenticate_password(user, password)
+        SshAuth::Password(password) => {
+            let result = session
+                .authenticate_password(user.clone(), password.clone())
                 .await
-                .map_err(Error::Ssh)?,
-            AuthResult::Success
-        )),
+                .map_err(Error::Ssh)?;
+            match result {
+                AuthResult::Success => Ok(true),
+                // Many PAM servers turn plain password auth off and ask for
+                // the password through keyboard-interactive instead; answer
+                // it with the same password, as OpenSSH does.
+                AuthResult::Failure {
+                    remaining_methods, ..
+                } if remaining_methods.contains(&russh::MethodKind::KeyboardInteractive) => {
+                    password_via_keyboard_interactive(session, user, &password).await
+                }
+                AuthResult::Failure { .. } => Ok(false),
+            }
+        }
         SshAuth::PublicKey {
             key_path,
             passphrase,
         } => {
             let key = keys::load_secret_key(expand_tilde(&key_path), passphrase.as_deref())
                 .map_err(|e| match e {
-                    // Encrypted key with no/empty passphrase, or a wrong one.
+                    // Encrypted key with no/empty passphrase.
                     keys::Error::KeyIsEncrypted => Error::KeyPassphrase,
+                    // A missing/unreadable file is that, whatever passphrase
+                    // was given — not "wrong passphrase".
+                    keys::Error::IO(io) => Error::KeyLoad(format!("{}: {io}", key_path)),
+                    // Decrypting with the given passphrase failed: most
+                    // likely a wrong one.
                     _ if passphrase.is_some() => Error::KeyPassphrase,
                     other => Error::KeyLoad(other.to_string()),
                 })?;
@@ -905,6 +1022,17 @@ async fn perform_auth(
                 match response {
                     KeyboardInteractiveAuthResponse::Success => return Ok(true),
                     KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
+                    // No questions (some PAM stacks send one after the last
+                    // step, or one carrying only instructions): answer it
+                    // empty instead of showing the user a blank dialog.
+                    KeyboardInteractiveAuthResponse::InfoRequest { ref prompts, .. }
+                        if prompts.is_empty() =>
+                    {
+                        response = session
+                            .authenticate_keyboard_interactive_respond(Vec::new())
+                            .await
+                            .map_err(Error::Ssh)?;
+                    }
                     KeyboardInteractiveAuthResponse::InfoRequest {
                         name,
                         instructions,
@@ -932,6 +1060,37 @@ async fn perform_auth(
         }
         SshAuth::Agent { priority } => agent_auth(session, user, priority).await,
     }
+}
+
+/// Keyboard-interactive login that answers every hidden prompt with
+/// `password`. Gives up (false) on a visible prompt (an OTP code, a username)
+/// or after a few rounds — those need the interactive dialog.
+async fn password_via_keyboard_interactive(
+    session: &mut client::Handle<SshClientHandler>,
+    user: String,
+    password: &str,
+) -> Result<bool, Error> {
+    let mut response = session
+        .authenticate_keyboard_interactive_start(user, None)
+        .await
+        .map_err(Error::Ssh)?;
+    for _ in 0..4 {
+        match response {
+            KeyboardInteractiveAuthResponse::Success => return Ok(true),
+            KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
+            KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+                if prompts.iter().any(|p| p.echo) {
+                    return Ok(false);
+                }
+                let answers = prompts.iter().map(|_| password.to_string()).collect();
+                response = session
+                    .authenticate_keyboard_interactive_respond(answers)
+                    .await
+                    .map_err(Error::Ssh)?;
+            }
+        }
+    }
+    Ok(false)
 }
 
 async fn open_pty_shell(
@@ -962,10 +1121,13 @@ pub async fn connect_authenticated(
 ) -> Result<client::Handle<SshClientHandler>, Error> {
     // Bastion-only path: -R against a bastion is not supported, so we drop
     // the registry returned by `connect_only`. MSS is dropped too — we only
-    // care about the FINAL session's MSS, not each bastion hop. Bastions are
-    // not preflighted by the UI, so TOFU their host key on first use.
+    // care about the FINAL session's MSS, not each bastion hop. This first
+    // hop is a direct TCP connection, so the UI preflights its host key like
+    // any direct host (see `ssh_direct_endpoint` in the app): no TOFU here — an
+    // unknown key is rejected rather than trusted, and its credentials sent,
+    // blindly.
     let (mut session, _bastion_forwards, _bastion_mss, _bastion_watcher) =
-        connect_only(host, port, true).await?;
+        connect_only(host, port, false).await?;
     let authenticated = perform_auth(&mut session, user, auth).await?;
     if !authenticated {
         return Err(Error::AuthFailed);
@@ -997,9 +1159,7 @@ pub async fn connect_authenticated_via(
         allow_tofu: true,
         forwards: new_remote_forward_registry(),
     };
-    let mut session = client::connect_stream(config, stream, handler)
-        .await
-        .map_err(Error::Ssh)?;
+    let mut session = within_handshake(client::connect_stream(config, stream, handler)).await?;
     let authenticated = perform_auth(&mut session, user, auth).await?;
     if !authenticated {
         return Err(Error::AuthFailed);
@@ -1019,9 +1179,9 @@ async fn open_shell_via_async(
     cols: u16,
     rows: u16,
 ) -> Result<SshTransport, Error> {
-    let last = bastions
-        .last()
-        .ok_or_else(|| Error::Agent("open_shell_via called with empty bastion chain".into()))?;
+    let last = bastions.last().ok_or_else(|| {
+        Error::InvalidSetup("open_shell_via called with empty bastion chain".into())
+    })?;
 
     // Tunnel to (target_host, target_port) via the last bastion.
     let channel = last
@@ -1042,9 +1202,7 @@ async fn open_shell_via_async(
         allow_tofu: true,
         forwards: Arc::clone(&forwards),
     };
-    let mut session = client::connect_stream(config, stream, handler)
-        .await
-        .map_err(Error::Ssh)?;
+    let mut session = within_handshake(client::connect_stream(config, stream, handler)).await?;
 
     let authenticated = perform_auth(&mut session, target_user, target_auth).await?;
     if !authenticated {
@@ -1054,7 +1212,7 @@ async fn open_shell_via_async(
     let channel = open_pty_shell(&mut session, cols, rows).await?;
 
     Ok(SshTransport {
-        session: Arc::new(tokio::sync::Mutex::new(session)),
+        session: Arc::new(tokio::sync::RwLock::new(session)),
         channel,
         _bastions: bastions,
         forwards,
@@ -1241,7 +1399,26 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_known_hosts, remove_known_hosts_lines, AgentPriority};
+    use super::{expand_tilde, merge_known_hosts, remove_known_hosts_lines, AgentPriority};
+
+    #[test]
+    fn expand_tilde_handles_unix_and_windows_forms() {
+        let home = home::home_dir().unwrap();
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(
+            expand_tilde("~/.ssh/id_ed25519"),
+            home.join(".ssh/id_ed25519")
+        );
+        assert_eq!(expand_tilde("~\\.ssh\\id"), home.join(".ssh\\id"));
+        assert_eq!(
+            expand_tilde("/abs/key"),
+            std::path::PathBuf::from("/abs/key")
+        );
+        assert_eq!(
+            expand_tilde("~other/key"),
+            std::path::PathBuf::from("~other/key")
+        );
+    }
 
     /// The legacy-Windows migration merges only lines the standard file lacks,
     /// skips blanks/comments, creates the target (and its directory) when
@@ -1280,6 +1457,33 @@ mod tests {
             std::fs::read_to_string(&target).unwrap(),
             "10.0.0.2 ssh-ed25519 AAAATWO\n10.0.0.1 ssh-ed25519 AAAAONE\n"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A merge never drops what the target holds: an unreadable target is an
+    /// error (not "empty"), bytes that aren't UTF-8 survive, and an incoming
+    /// older key for a host + key type already present is not appended.
+    #[test]
+    fn merge_known_hosts_keeps_existing_entries() {
+        let dir = std::env::temp_dir().join(format!("zapx-kh-keep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("known_hosts");
+
+        // Latin-1 comment byte + an entry; the merge appends, never rewrites.
+        let mut original = b"# caf\xe9\n10.0.0.1 ssh-ed25519 AAAANEW\n".to_vec();
+        std::fs::write(&target, &original).unwrap();
+        let incoming = "10.0.0.1 ssh-ed25519 AAAAOLD\n\
+                        10.0.0.1 ssh-rsa AAAARSA\n\
+                        10.0.0.3 ssh-ed25519 AAAATHREE\n";
+        assert_eq!(super::merge_known_hosts_text(incoming, &target).unwrap(), 2);
+        original.extend_from_slice(b"10.0.0.1 ssh-rsa AAAARSA\n10.0.0.3 ssh-ed25519 AAAATHREE\n");
+        assert_eq!(std::fs::read(&target).unwrap(), original);
+
+        // A target that can't be read (here: a directory) is an error, and
+        // nothing is written.
+        let not_a_file = dir.join("dir_target");
+        std::fs::create_dir_all(&not_a_file).unwrap();
+        assert!(super::merge_known_hosts_text(incoming, &not_a_file).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

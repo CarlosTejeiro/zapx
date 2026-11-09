@@ -50,7 +50,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 zeroize = { version = "1", features = ["derive"] }
 
 # Async traits — needed until AFIT is fully object-safe in stable Rust
-async-trait = "0.1"
 
 # Bloque 1 — local PTY and terminal emulation
 portable-pty = "0.8"

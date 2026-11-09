@@ -2,11 +2,13 @@
 // for its libc FFI. Every other module in this crate still rejects unsafe.
 #![deny(unsafe_code)]
 
-//! `core-transport` — the [`Transport`] trait and per-protocol implementations.
+//! `core-transport` — the per-protocol session transports (SSH, Telnet,
+//! serial, local PTY), port forwarding and SFTP.
 //!
 //! This crate owns the boundary between session management and the underlying
-//! network/serial protocols. Protocol-specific code must not leak past this crate's
-//! public API (see style guide §2, API design).
+//! network/serial protocols. Each transport exposes the same shape: open it,
+//! then `start_io_loop` with an output callback and a close callback, and
+//! drive it with [`SessionCmd`]s.
 
 pub mod error;
 pub mod forwards;
@@ -39,40 +41,29 @@ pub use ssh::{
 /// passes around as a bastion link in ProxyJump chains.
 pub type SshHandle = russh::client::Handle<ssh::SshClientHandler>;
 
-/// Shared, mutex-protected version of [`SshHandle`] used for the *primary*
-/// SSH session of a tab. russh's `Handle` exposes most channel methods as
-/// `&self`, but `tcpip_forward` (`-R`) takes `&mut self`; wrapping in a
-/// `tokio::sync::Mutex` lets us call both shapes uniformly. Locks are held
-/// only for the duration of one channel/request roundtrip so contention
-/// stays negligible in practice.
-pub type SharedSshHandle = std::sync::Arc<tokio::sync::Mutex<SshHandle>>;
+/// Shared version of [`SshHandle`] used for the *primary* SSH session of a
+/// tab (shell, SFTP, port forwards). Every russh `Handle` method used here
+/// takes `&self`, so callers take a *read* lock and run concurrently — a slow
+/// `direct-tcpip` open (the server connecting to a dead target) no longer
+/// holds up the other tunnels or SFTP on the same session.
+pub type SharedSshHandle = std::sync::Arc<tokio::sync::RwLock<SshHandle>>;
 pub use telnet::TelnetTransport;
+
+/// Why a session's I/O loop ended by itself (it never fires when the app
+/// closed the session).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseReason {
+    /// The remote end finished the session cleanly: the shell exited, the
+    /// device logged the user out, the server closed the connection.
+    Ended,
+    /// The link failed: a read/write error, unanswered keepalives, an
+    /// unplugged serial adapter. Worth reconnecting.
+    Lost,
+}
 
 /// Commands sent to a live session's I/O task.
 #[derive(Debug)]
 pub enum SessionCmd {
     Data(Vec<u8>),
     Resize { cols: u16, rows: u16 },
-}
-
-/// A bidirectional byte stream with session lifecycle management.
-///
-/// Each protocol (SSH, Telnet, Serial, Local PTY) provides its own implementation.
-/// The trait is the only API surface that the rest of the application sees;
-/// protocol-specific types stay private to this crate.
-///
-/// # Cancellation safety
-///
-/// Every `async fn` in this trait must be cancellation-safe: dropping the future
-/// mid-await must leave the world in a consistent state.
-#[async_trait::async_trait]
-pub trait Transport: Send + Sync {
-    /// Establish the connection. Idempotent if already connected.
-    async fn connect(&mut self) -> Result<(), error::Error>;
-
-    /// Tear down the connection gracefully.
-    async fn disconnect(&mut self) -> Result<(), error::Error>;
-
-    /// Notify the remote end of a terminal resize.
-    async fn resize(&mut self, cols: u16, rows: u16) -> Result<(), error::Error>;
 }

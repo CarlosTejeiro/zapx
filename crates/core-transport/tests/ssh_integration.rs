@@ -90,7 +90,7 @@ async fn shell_marker(
     let out = Arc::new(Mutex::new(Vec::<u8>::new()));
     let sink = Arc::clone(&out);
     let (tx, handle, registry) =
-        transport.start_io_loop(move |bytes| sink.lock().unwrap().extend(bytes), || {});
+        transport.start_io_loop(move |bytes| sink.lock().unwrap().extend(bytes), |_| {});
     tx.send(SessionCmd::Data(b"echo ZAPX_MARK_$((6*7))\n".to_vec()))
         .expect("send to shell");
     wait_for_output(&out, "ZAPX_MARK_42", label).await;
@@ -337,9 +337,51 @@ async fn ssh_end_to_end_against_real_openssh() {
     echo_roundtrip(local.info.bind_port, "ping over -L\n", "local forward").await;
     drop(local);
 
+    // ── Shell lifecycle: long paste, then `exit` ───────────────────────────
+    {
+        let transport = within(
+            "open lifecycle shell",
+            SshTransport::open_shell(
+                e.host.clone(),
+                e.port,
+                e.user.clone(),
+                SshAuth::Password(e.password.clone()),
+                80,
+                24,
+            ),
+        )
+        .await
+        .expect("open_shell");
+        let out = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&out);
+        let (closed_tx, closed_rx) = tokio::sync::oneshot::channel();
+        let (tx, _h, _r) = transport.start_io_loop(
+            move |b| sink.lock().unwrap().extend(b),
+            move |reason| {
+                let _ = closed_tx.send(reason);
+            },
+        );
+        // A long paste the shell echoes back: writing must not stall reading
+        // (writer and reader run separately).
+        let mut paste = Vec::new();
+        for i in 0..2000 {
+            paste.extend_from_slice(format!(": line {i} of a long pasted config\n").as_bytes());
+        }
+        paste.extend_from_slice(b"echo PASTE_$((40+2))_DONE\n");
+        tx.send(SessionCmd::Data(paste)).unwrap();
+        wait_for_output(&out, "PASTE_42_DONE", "long paste").await;
+        // `exit` ends the session cleanly: reported as Ended (no reconnect).
+        tx.send(SessionCmd::Data(b"exit\n".to_vec())).unwrap();
+        let reason = tokio::time::timeout(Duration::from_secs(10), closed_rx)
+            .await
+            .expect("on_close not called after exit")
+            .unwrap();
+        assert_eq!(reason, core_transport::CloseReason::Ended);
+    }
+
     // ── SFTP on the password session ───────────────────────────────────────
     {
-        let guard = handle.lock().await;
+        let guard = handle.read().await;
         let sftp = within("sftp open", SftpClient::open(&guard))
             .await
             .expect("SftpClient::open");
@@ -531,7 +573,7 @@ async fn ssh_end_to_end_against_real_openssh() {
     .expect("open_shell_via");
     let out = Arc::new(Mutex::new(Vec::<u8>::new()));
     let sink = Arc::clone(&out);
-    let (tx, _h, _r) = via.start_io_loop(move |b| sink.lock().unwrap().extend(b), || {});
+    let (tx, _h, _r) = via.start_io_loop(move |b| sink.lock().unwrap().extend(b), |_| {});
     tx.send(SessionCmd::Data(b"echo ZAPX_MARK_$((6*7))\n".to_vec()))
         .unwrap();
     wait_for_output(&out, "ZAPX_MARK_42", "jump").await;

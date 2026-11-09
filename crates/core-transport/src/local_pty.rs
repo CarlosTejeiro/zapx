@@ -9,7 +9,7 @@ use crate::error::Error;
 ///
 /// Created via [`LocalPty::spawn`]. Dropping it tears down the PTY and the child process.
 pub struct LocalPty {
-    pair: portable_pty::PtyPair,
+    master: Box<dyn portable_pty::MasterPty + Send>,
     child: Box<dyn portable_pty::Child + Send>,
     /// Shared writer so it can be held by the session while reading runs in a task.
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -32,7 +32,7 @@ impl LocalPty {
 
         let shell = detect_shell();
         let mut cmd = CommandBuilder::new(&shell);
-        if let Some(home) = home_dir() {
+        if let Some(home) = home::home_dir() {
             cmd.cwd(home);
         }
         // Force TERM so shells launched from the macOS .app bundle (which
@@ -50,14 +50,18 @@ impl LocalPty {
             .slave
             .spawn_command(cmd)
             .map_err(|e| Error::SpawnFailed(e.to_string()))?;
+        // Close our copy of the slave end: only the child may hold it, so that
+        // reads on the master end (EOF / EIO) when the shell exits. Keeping it
+        // would leave the reader blocked forever after `exit`.
+        let portable_pty::PtyPair { master, slave } = pair;
+        drop(slave);
 
-        let writer = pair
-            .master
+        let writer = master
             .take_writer()
             .map_err(|e| Error::SpawnFailed(e.to_string()))?;
 
         Ok(Self {
-            pair,
+            master,
             child,
             writer: Arc::new(Mutex::new(writer)),
             cols,
@@ -69,8 +73,7 @@ impl LocalPty {
     ///
     /// The returned reader is blocking; run it inside `tokio::task::spawn_blocking`.
     pub fn take_reader(&self) -> Result<Box<dyn Read + Send>, Error> {
-        self.pair
-            .master
+        self.master
             .try_clone_reader()
             .map_err(|e| Error::SpawnFailed(e.to_string()))
     }
@@ -82,8 +85,7 @@ impl LocalPty {
 
     /// Resize the PTY window and update stored dimensions.
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), Error> {
-        self.pair
-            .master
+        self.master
             .resize(PtySize {
                 rows,
                 cols,
@@ -101,6 +103,12 @@ impl LocalPty {
         matches!(self.child.try_wait(), Ok(Some(_)))
     }
 
+    /// A handle that can kill the child from another thread (the reader loop
+    /// owns the `LocalPty` itself while it blocks on reads).
+    pub fn killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+        self.child.clone_killer()
+    }
+
     /// Kill the child process. Idempotent.
     pub fn kill(&mut self) {
         let _ = self.child.kill();
@@ -116,11 +124,4 @@ fn detect_shell() -> String {
     {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
     }
-}
-
-fn home_dir() -> Option<std::path::PathBuf> {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .ok()
-        .map(Into::into)
 }

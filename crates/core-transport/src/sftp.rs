@@ -105,13 +105,9 @@ impl SftpClient {
                 mtime: md.mtime.map(u64::from),
             });
         }
-        // Stable ordering: directories first, then files; case-insensitive name.
-        entries.sort_by(|a, b| {
-            let ad = a.kind == "dir";
-            let bd = b.kind == "dir";
-            bd.cmp(&ad)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
+        // Stable ordering: directories first, then files; case-insensitive name
+        // (each name lowercased once, not on every comparison).
+        entries.sort_by_cached_key(|e| (e.kind != "dir", e.name.to_lowercase()));
         Ok(entries)
     }
 
@@ -195,7 +191,8 @@ impl SftpClient {
     /// [`STREAM_CHUNK`]-sized buffers and writing them to `local_path`.
     /// `progress` is called after every chunk with `(bytes_done, total)`.
     /// `cancel` is checked after every chunk; setting it makes the function
-    /// return [`Error::Cancelled`] and removes the partial local file.
+    /// return [`Error::Cancelled`]. On cancel or any error the partial local
+    /// file is removed.
     pub async fn download_streaming(
         &self,
         remote_path: &str,
@@ -222,21 +219,30 @@ impl SftpClient {
         let mut done: u64 = 0;
         let mut buf = vec![0u8; STREAM_CHUNK];
         progress(0, total);
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                drop(local);
-                let _ = tokio::fs::remove_file(local_path).await;
-                return Err(Error::Cancelled);
+        let copied: Result<(), Error> = async {
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(Error::Cancelled);
+                }
+                let n = remote.read(&mut buf).await.map_err(Error::Io)?;
+                if n == 0 {
+                    break;
+                }
+                local.write_all(&buf[..n]).await.map_err(Error::Io)?;
+                done += n as u64;
+                progress(done, total);
             }
-            let n = remote.read(&mut buf).await.map_err(Error::Io)?;
-            if n == 0 {
-                break;
-            }
-            local.write_all(&buf[..n]).await.map_err(Error::Io)?;
-            done += n as u64;
-            progress(done, total);
+            local.flush().await.map_err(Error::Io)
         }
-        local.flush().await.map_err(Error::Io)?;
+        .await;
+        if let Err(e) = copied {
+            // Cancelled, or the read/write/link failed part-way: don't leave a
+            // truncated file under the target name, where it could pass for a
+            // complete download.
+            drop(local);
+            let _ = tokio::fs::remove_file(local_path).await;
+            return Err(e);
+        }
         Ok(done)
     }
 

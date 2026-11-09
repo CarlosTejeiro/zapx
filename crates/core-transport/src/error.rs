@@ -5,14 +5,8 @@ pub enum Error {
     #[error("failed to spawn shell process: {0}")]
     SpawnFailed(String),
 
-    #[error("I/O closed unexpectedly")]
-    IoClosed,
-
     #[error("failed to resize terminal: {0}")]
     ResizeFailed(String),
-
-    #[error("not connected")]
-    NotConnected,
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -29,14 +23,14 @@ pub enum Error {
     #[error("wrong or missing passphrase for private key")]
     KeyPassphrase,
 
-    #[error("unknown host key (fingerprint {fingerprint})")]
-    HostKeyUnknown { fingerprint: String },
-
     #[error("HOST KEY CHANGED — possible MITM (fingerprint {fingerprint})")]
     HostKeyChanged { fingerprint: String },
 
-    #[error("host key rejected")]
-    HostKeyRejected,
+    #[error("known_hosts: {0}")]
+    KnownHosts(String),
+
+    #[error("invalid connection setup: {0}")]
+    InvalidSetup(String),
 
     #[error("ssh agent error: {0}")]
     Agent(String),

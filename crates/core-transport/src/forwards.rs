@@ -57,6 +57,7 @@ type DropCleanup =
 pub struct ForwardController {
     pub info: ForwardInfo,
     task: Option<tokio::task::AbortHandle>,
+    bridges: Bridges,
     cleanup: Option<DropCleanup>,
 }
 
@@ -65,19 +66,47 @@ impl Drop for ForwardController {
         if let Some(t) = self.task.take() {
             t.abort();
         }
+        for t in self.bridges.lock().unwrap().drain(..) {
+            t.abort();
+        }
         if let Some(c) = self.cleanup.take() {
-            // Best-effort: detach the async cleanup. If the tokio runtime
-            // has already shut down, the cancel-tcpip-forward simply doesn't
-            // reach the server — which is fine, the connection is closing.
-            tokio::spawn(c());
+            // Best-effort: detach the async cleanup. Without a runtime (a
+            // drop from a plain thread, or after shutdown) it can't run —
+            // `tokio::spawn` would panic, and a panic in Drop can abort the
+            // process — so skip it: the connection is closing anyway.
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                rt.spawn(c());
+            }
         }
     }
+}
+
+/// Per-connection bridge tasks of a forward, aborted with it: closing a
+/// forward (or its tab) ends the tunnels already open through it too —
+/// otherwise each one would keep the SSH connection alive.
+type Bridges = Arc<std::sync::Mutex<Vec<tokio::task::AbortHandle>>>;
+
+/// Track a new bridge task, dropping finished ones so the list stays small.
+fn track_bridge(bridges: &Bridges, task: tokio::task::AbortHandle) {
+    let mut list = bridges.lock().unwrap();
+    list.retain(|t| !t.is_finished());
+    list.push(task);
+}
+
+/// Accept errors that only mean "try again" (one connection aborted before
+/// we got it, or a momentary fd shortage): keep the listener alive.
+fn accept_error_is_transient(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind::*;
+    matches!(
+        e.kind(),
+        ConnectionAborted | ConnectionReset | Interrupted | WouldBlock
+    ) || matches!(e.raw_os_error(), Some(23 | 24)) // ENFILE / EMFILE
 }
 
 /// Open a local TCP listener on `bind_addr:bind_port`; tunnel every connection
 /// to `(target_host, target_port)` via `direct-tcpip` over `handle`.
 pub async fn open_local_forward(
-    handle: Arc<tokio::sync::Mutex<russh::client::Handle<SshClientHandler>>>,
+    handle: Arc<tokio::sync::RwLock<russh::client::Handle<SshClientHandler>>>,
     bind_addr: String,
     bind_port: u16,
     target_host: String,
@@ -91,19 +120,26 @@ pub async fn open_local_forward(
     let resolved_bind_port = local_addr.port();
 
     let target_host_loop = target_host.clone();
+    let bridges: Bridges = Arc::default();
+    let bridges_loop = Arc::clone(&bridges);
     let join = tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, peer)) => {
                     let handle = Arc::clone(&handle);
                     let target_host = target_host_loop.clone();
-                    tokio::spawn(async move {
+                    let task = tokio::spawn(async move {
                         if let Err(e) =
                             bridge_local(stream, peer, handle, target_host, target_port).await
                         {
                             tracing::debug!("local forward bridge ended: {e}");
                         }
                     });
+                    track_bridge(&bridges_loop, task.abort_handle());
+                }
+                Err(e) if accept_error_is_transient(&e) => {
+                    tracing::debug!("local forward accept error (retrying): {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
                 Err(e) => {
                     tracing::warn!("local forward accept error: {e}");
@@ -124,6 +160,7 @@ pub async fn open_local_forward(
             name: None,
         },
         task: Some(join.abort_handle()),
+        bridges,
         cleanup: None,
     })
 }
@@ -131,7 +168,7 @@ pub async fn open_local_forward(
 /// Open a local TCP listener serving SOCKS5; each accepted client's CONNECT
 /// request determines the target for the `direct-tcpip` channel.
 pub async fn open_dynamic_forward(
-    handle: Arc<tokio::sync::Mutex<russh::client::Handle<SshClientHandler>>>,
+    handle: Arc<tokio::sync::RwLock<russh::client::Handle<SshClientHandler>>>,
     bind_addr: String,
     bind_port: u16,
 ) -> Result<ForwardController, Error> {
@@ -141,16 +178,23 @@ pub async fn open_dynamic_forward(
     let local_addr = listener.local_addr().map_err(Error::Io)?;
     let resolved_bind_port = local_addr.port();
 
+    let bridges: Bridges = Arc::default();
+    let bridges_loop = Arc::clone(&bridges);
     let join = tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, peer)) => {
                     let handle = Arc::clone(&handle);
-                    tokio::spawn(async move {
+                    let task = tokio::spawn(async move {
                         if let Err(e) = bridge_socks5(stream, peer, handle).await {
                             tracing::debug!("dynamic forward bridge ended: {e}");
                         }
                     });
+                    track_bridge(&bridges_loop, task.abort_handle());
+                }
+                Err(e) if accept_error_is_transient(&e) => {
+                    tracing::debug!("dynamic forward accept error (retrying): {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
                 Err(e) => {
                     tracing::warn!("dynamic forward accept error: {e}");
@@ -171,6 +215,7 @@ pub async fn open_dynamic_forward(
             name: None,
         },
         task: Some(join.abort_handle()),
+        bridges,
         cleanup: None,
     })
 }
@@ -187,7 +232,7 @@ pub async fn open_dynamic_forward(
 /// is removed and a `cancel-tcpip-forward` request is sent on a detached
 /// task so the server stops accepting new connections.
 pub async fn open_remote_forward(
-    handle: Arc<tokio::sync::Mutex<russh::client::Handle<SshClientHandler>>>,
+    handle: Arc<tokio::sync::RwLock<russh::client::Handle<SshClientHandler>>>,
     registry: RemoteForwardRegistry,
     bind_addr: String,
     bind_port: u16,
@@ -197,20 +242,31 @@ pub async fn open_remote_forward(
     // Register the target BEFORE telling the server, so the moment it starts
     // forwarding channels we know where to send them.
     let key = (bind_addr.clone(), bind_port);
-    registry.lock().unwrap().insert(
-        key.clone(),
-        RemoteTarget {
-            host: target_host.clone(),
-            port: target_port,
-        },
-    );
+    {
+        let mut map = registry.lock().unwrap();
+        // A forward on this bind is already live: refuse rather than
+        // overwrite its target (and have the rollback below delete it).
+        if bind_port != 0 && map.contains_key(&key) {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::AddrInUse,
+                format!("a remote forward on {bind_addr}:{bind_port} is already active"),
+            )));
+        }
+        map.insert(
+            key.clone(),
+            RemoteTarget {
+                host: target_host.clone(),
+                port: target_port,
+            },
+        );
+    }
 
     // Some servers reply with an unsolicited port when bind_port == 0; russh
     // exposes it as the future's return value. Non-zero requests get back the
     // same port (or 0 to indicate "OK" with a literal bind on the requested
     // port — we treat 0 as "use what we asked for").
     let granted = match handle
-        .lock()
+        .read()
         .await
         .tcpip_forward(bind_addr.clone(), u32::from(bind_port))
         .await
@@ -249,7 +305,7 @@ pub async fn open_remote_forward(
             // `cancel_tcpip_forward` is `&self` on russh's Handle, so the
             // shared lock is enough here.
             if let Err(e) = cleanup_handle
-                .lock()
+                .read()
                 .await
                 .cancel_tcpip_forward(cleanup_addr.clone(), u32::from(resolved_port))
                 .await
@@ -270,6 +326,7 @@ pub async fn open_remote_forward(
             name: None,
         },
         task: None,
+        bridges: Arc::default(),
         cleanup: Some(cleanup),
     })
 }
@@ -281,12 +338,12 @@ pub async fn open_remote_forward(
 async fn bridge_local(
     mut local: TcpStream,
     peer: SocketAddr,
-    handle: Arc<tokio::sync::Mutex<russh::client::Handle<SshClientHandler>>>,
+    handle: Arc<tokio::sync::RwLock<russh::client::Handle<SshClientHandler>>>,
     target_host: String,
     target_port: u16,
 ) -> Result<(), Error> {
     let channel = handle
-        .lock()
+        .read()
         .await
         .channel_open_direct_tcpip(
             target_host,
@@ -306,11 +363,11 @@ async fn bridge_local(
 async fn bridge_socks5(
     mut local: TcpStream,
     peer: SocketAddr,
-    handle: Arc<tokio::sync::Mutex<russh::client::Handle<SshClientHandler>>>,
+    handle: Arc<tokio::sync::RwLock<russh::client::Handle<SshClientHandler>>>,
 ) -> Result<(), Error> {
     let (target_host, target_port) = socks5_handshake(&mut local).await?;
     let channel_result = handle
-        .lock()
+        .read()
         .await
         .channel_open_direct_tcpip(
             target_host,
@@ -425,4 +482,62 @@ async fn socks5_handshake(s: &mut TcpStream) -> Result<(String, u16), Error> {
     s.read_exact(&mut port_bytes).await.map_err(Error::Io)?;
     let port = u16::from_be_bytes(port_bytes);
     Ok((host, port))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info() -> ForwardInfo {
+        ForwardInfo {
+            id: "t".into(),
+            kind: "remote".into(),
+            bind_addr: "127.0.0.1".into(),
+            bind_port: 1,
+            target_host: None,
+            target_port: None,
+            name: None,
+        }
+    }
+
+    /// Dropping a controller outside a Tokio runtime must not panic (a panic
+    /// in Drop during unwinding aborts the process).
+    #[test]
+    fn drop_without_a_runtime_skips_the_cleanup() {
+        let cleanup: DropCleanup = Box::new(|| Box::pin(async {}));
+        let c = ForwardController {
+            info: info(),
+            task: None,
+            bridges: Arc::default(),
+            cleanup: Some(cleanup),
+        };
+        drop(c);
+    }
+
+    /// Closing a forward also ends the tunnels already open through it.
+    #[tokio::test]
+    async fn drop_aborts_open_bridges() {
+        let bridges: Bridges = Arc::default();
+        let bridge = tokio::spawn(std::future::pending::<()>());
+        track_bridge(&bridges, bridge.abort_handle());
+        drop(ForwardController {
+            info: info(),
+            task: None,
+            bridges,
+            cleanup: None,
+        });
+        assert!(bridge.await.unwrap_err().is_cancelled());
+    }
+
+    #[test]
+    fn only_transient_accept_errors_keep_the_listener() {
+        use std::io::{Error, ErrorKind};
+        assert!(accept_error_is_transient(&Error::from(
+            ErrorKind::ConnectionAborted
+        )));
+        assert!(accept_error_is_transient(&Error::from_raw_os_error(24)));
+        assert!(!accept_error_is_transient(&Error::from(
+            ErrorKind::PermissionDenied
+        )));
+    }
 }
