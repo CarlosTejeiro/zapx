@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import Icon from '$lib/icons/Icon.svelte'
   import {
     listHighlightRules,
@@ -46,7 +47,7 @@
     try {
       regex = new RegExp(newIsRegex ? newPattern : escapeRegex(newPattern), 'g')
     } catch (e) {
-      testError = String(e)
+      testError = errorText(e)
       return [{ text: testInput, fg: null, bg: null, bold: false, underline: false }]
     }
 
@@ -89,7 +90,7 @@
     try {
       rules = await listHighlightRules()
     } catch (e) {
-      error = String(e)
+      error = errorText(e)
     } finally {
       loading = false
     }
@@ -133,7 +134,7 @@
       newUnderline = false
       await load()
     } catch (e) {
-      formError = String(e)
+      formError = errorText(e)
     } finally {
       creating = false
     }
@@ -144,7 +145,7 @@
       await toggleHighlightRule(rule.id, !rule.enabled)
       await load()
     } catch (e) {
-      error = String(e)
+      error = errorText(e)
     }
   }
 
@@ -153,7 +154,7 @@
       await deleteHighlightRule(id)
       await load()
     } catch (e) {
-      error = String(e)
+      error = errorText(e)
     }
   }
 

@@ -12,6 +12,7 @@ import {
   type SyncStatus,
 } from '$lib/bridge/commands'
 import { showToast } from '$lib/ui/toast-store.svelte'
+import { errorText } from '$lib/bridge/errors'
 
 export const SYNC_STATE_LABELS: Record<SyncStatus['state'], string> = {
   disabled: 'Off',
@@ -71,7 +72,7 @@ export async function pullAndReport(): Promise<SyncStatus | null> {
     if (yes) await restartApp()
     return r.status
   } catch (e) {
-    showToast({ kind: 'error', title: 'Sync failed', detail: String(e) })
+    showToast({ kind: 'error', title: 'Sync failed', detail: errorText(e) })
     return null
   }
 }
@@ -112,7 +113,7 @@ export async function handleSyncStatus(st: SyncStatus): Promise<SyncStatus> {
         })
         return after
       } catch (e) {
-        showToast({ kind: 'error', title: 'Sync failed', detail: String(e) })
+        showToast({ kind: 'error', title: 'Sync failed', detail: errorText(e) })
         return st
       }
     }

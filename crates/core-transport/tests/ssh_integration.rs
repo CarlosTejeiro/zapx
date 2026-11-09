@@ -452,6 +452,27 @@ async fn ssh_end_to_end_against_real_openssh() {
             payload,
             "streaming SFTP round-trip bytes"
         );
+        // A cancelled download over an existing local file leaves it as it
+        // was (it used to be truncated, then deleted) and no partial file.
+        let keep = home.join("keep.txt");
+        std::fs::write(&keep, b"precious").unwrap();
+        let cancelled = new_cancel_token();
+        cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        let res = within(
+            "sftp download_streaming (cancelled)",
+            sftp.download_streaming(&remote_stream, &keep, cancelled, Arc::new(|_, _| {})),
+        )
+        .await;
+        assert!(res.is_err(), "a cancelled download must fail");
+        assert_eq!(std::fs::read(&keep).unwrap(), b"precious");
+        assert!(
+            !std::fs::read_dir(&home).unwrap().any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".zapx-part-")),
+            "no partial file may be left behind"
+        );
         sftp.remove_file(&remote_stream)
             .await
             .expect("remove_file (stream)");

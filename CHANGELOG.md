@@ -5,6 +5,29 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.7] - 2026-11-09
+
+### Fixed
+- **Delete buttons deleted without asking.** On Linux, the confirmation
+  before deleting a remote file or folder (SFTP browser) silently answered
+  "yes". The same affected deleting a snippet or a broadcast group, and
+  clearing the command history. They now show a real Yes/No dialog.
+- **A cancelled or failed SFTP download deleted the local file** when it
+  was saved over an existing one. Downloads now go to a temporary file
+  next to the target and replace it only once complete. A cancelled
+  download leaves the original as it was, and never leaves a partial file.
+- **Uploading over an existing remote file** now asks first, and refuses to
+  overwrite a folder of that name.
+- **Errors showed as "[object Object]"** across the app: SFTP, tunnels,
+  logging, backup and sync, imports, data folder, highlight rules, the
+  vault, and script errors sent back to Python. They now show the actual
+  message.
+- **SFTP on a host without SFTP** (many network devices, or a server with
+  SFTP disabled) waited 10 seconds and then failed with an unclear error.
+  It now says right away that the server refused SFTP.
+- **Double-clicking a symlink to a file** in the SFTP browser left it inside
+  an unreadable path. It now stays in the folder and offers the download.
+
 ## [0.29.6] - 2026-11-09
 
 ### Changed

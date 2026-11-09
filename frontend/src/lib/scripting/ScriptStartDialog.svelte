@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   /// Confirms a Python script run: shows the file, the tab it starts on, the
   /// interpreter ZAPX will use (overridable) and the mode: dry run, read-only
   /// (only allowlisted display commands are typed) or for real.
@@ -33,8 +34,7 @@
       const text = await invoke<string>('script_python_info', { python: override })
       pythonInfo = { ok: true, text }
     } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e)
-      pythonInfo = { ok: false, text: raw.replace(/^\{"Internal":"(.*)"\}$/, '$1') }
+      pythonInfo = { ok: false, text: errorText(e) }
     } finally {
       checking = false
     }

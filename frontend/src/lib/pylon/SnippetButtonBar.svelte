@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   /// Bottom snippet bar.
   ///
   /// Two zones:
@@ -68,7 +69,7 @@
       await setSnippetsOrder(ids)
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
     } catch (e) {
-      flash('err', e instanceof Error ? e.message : String(e))
+      flash('err', errorText(e))
     }
   }
 
@@ -97,7 +98,7 @@
       editing = null
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
     } catch (e) {
-      flash('err', e instanceof Error ? e.message : String(e))
+      flash('err', errorText(e))
     }
   }
 
@@ -108,7 +109,7 @@
       await Promise.all([loadVisibleSnippets(), loadSnippets()])
       showToast({ kind: 'info', title: 'Button deleted', detail: s.name })
     } catch (e) {
-      flash('err', e instanceof Error ? e.message : String(e))
+      flash('err', errorText(e))
     }
   }
 
@@ -144,7 +145,7 @@
         flash('ok', `Sent "${label}"`)
       }
     } catch (e) {
-      flash('err', e instanceof Error ? e.message : String(e))
+      flash('err', errorText(e))
     }
   }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   /// Manage reusable credential ("vault") entries: list, add, edit, delete.
   /// Secrets never come back over the bridge — editing leaves the password
   /// field blank and only rotates the secret when the user types a new one.
@@ -69,7 +70,7 @@
       showForm = false
       await refresh()
     } catch (e) {
-      showToast({ kind: 'error', title: `Vault save failed: ${e}` })
+      showToast({ kind: 'error', title: 'Vault save failed', detail: errorText(e) })
     }
   }
 
@@ -78,7 +79,7 @@
       await deleteVaultEntry(e.id)
       await refresh()
     } catch (err) {
-      showToast({ kind: 'error', title: `Vault delete failed: ${err}` })
+      showToast({ kind: 'error', title: 'Vault delete failed', detail: errorText(err) })
     }
   }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import { open as openDialog, ask } from '@tauri-apps/plugin-dialog'
   import {
@@ -26,7 +27,7 @@
     try {
       info = await getDataDirInfo()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Data', detail: String(e) })
+      showToast({ kind: 'error', title: 'Data', detail: errorText(e) })
     }
   })
 
@@ -49,7 +50,7 @@
       showToast({ kind: 'success', title: 'Data folder', detail: summary })
       await promptRestart()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Data folder', detail: String(e) })
+      showToast({ kind: 'error', title: 'Data folder', detail: errorText(e) })
     } finally {
       busy = false
     }
@@ -68,7 +69,7 @@
       })
       await promptRestart()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Data folder', detail: String(e) })
+      showToast({ kind: 'error', title: 'Data folder', detail: errorText(e) })
     } finally {
       busy = false
     }

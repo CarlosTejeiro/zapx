@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount, onDestroy } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+  import { open as openDialog, save as saveDialog, ask } from '@tauri-apps/plugin-dialog'
   import {
     sftpCanonicalize,
     sftpListDir,
@@ -112,15 +113,18 @@
     unlistenProgress?.()
   })
 
-  async function refresh() {
+  /** List `path`; false (with the error shown) when it can't be listed. */
+  async function refresh(): Promise<boolean> {
     loading = true
     error = ''
     try {
       entries = await sftpListDir(sessionId, path)
       selected = null
+      return true
     } catch (e) {
       error = fmt(e)
       entries = []
+      return false
     } finally {
       loading = false
     }
@@ -153,12 +157,19 @@
     if (entry.kind === 'dir') {
       await goTo(full)
     } else if (entry.kind === 'symlink') {
-      // Symlinks could point anywhere; try to enter as a directory, fall back to download prompt.
-      await goTo(full).catch(() => {
-        downloadTo = ''
+      // Symlinks could point anywhere: try to enter it as a directory; if it
+      // can't be listed (a link to a file), stay here and offer the download.
+      // (`refresh` reports failure instead of throwing, so a `.catch` never
+      // ran and the browser was left inside an unlistable path.)
+      const here = path
+      path = full
+      if (!(await refresh())) {
+        path = here
+        await refresh()
         selected = entry.name
+        downloadTo = ''
         showDownload = true
-      })
+      }
     } else {
       selected = entry.name
       downloadTo = ''
@@ -212,7 +223,7 @@
         detail: `${selectedEntry.name} — saves upload back automatically`,
       })
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      error = errorText(e)
     }
   }
 
@@ -220,7 +231,13 @@
     if (!selectedEntry) return
     const full = joinPath(path, selectedEntry.name)
     const isDir = selectedEntry.kind === 'dir'
-    if (!confirm(`Delete ${isDir ? 'directory' : 'file'} "${selectedEntry.name}"?`)) return
+    if (
+      !(await ask(`Delete ${isDir ? 'directory' : 'file'} "${selectedEntry.name}"?`, {
+        title: 'SFTP',
+        kind: 'warning',
+      }))
+    )
+      return
     busy = 'delete'
     error = ''
     try {
@@ -276,6 +293,21 @@
       error = 'Remote name required.'
       return
     }
+    // The upload writes the remote file in place: an existing one is replaced
+    // (and left truncated if the upload is cancelled), so ask first.
+    const existing = entries.find((e) => e.name === remoteName)
+    if (existing?.kind === 'dir') {
+      error = `"${remoteName}" is a folder here — choose another name.`
+      return
+    }
+    if (
+      existing &&
+      !(await ask(`"${remoteName}" already exists here. Replace it?`, {
+        title: 'SFTP',
+        kind: 'warning',
+      }))
+    )
+      return
     busy = 'upload'
     error = ''
     const id = newTransferId()
@@ -310,7 +342,7 @@
   }
 
   function fmt(e: unknown): string {
-    return e instanceof Error ? e.message : String(e)
+    return errorText(e)
   }
 
   /// Native picker for "where do I save this remote file locally?".

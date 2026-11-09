@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount, onDestroy } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import { Terminal } from '@xterm/xterm'
@@ -448,7 +449,7 @@
         isLogging = false
         logPath = null
       } catch (e) {
-        logError = String(e)
+        logError = errorText(e)
       }
     } else {
       const name = savedSession?.name ?? ssh?.host ?? 'local'
@@ -457,7 +458,7 @@
         logPath = await startSessionLogging(sessionId, saved_session_id, name)
         isLogging = true
       } catch (e) {
-        logError = String(e)
+        logError = errorText(e)
       }
     }
   }

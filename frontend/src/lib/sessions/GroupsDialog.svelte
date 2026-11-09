@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ask } from '@tauri-apps/plugin-dialog'
+  import { errorText } from '$lib/bridge/errors'
   import type { SavedSession, BroadcastGroup } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
   import {
@@ -27,7 +29,7 @@
   let editMembers = $state<Set<number>>(new Set())
 
   function fmt(e: unknown): string {
-    return e instanceof Error ? e.message : String(e)
+    return errorText(e)
   }
 
   async function create() {
@@ -76,7 +78,7 @@
   }
 
   async function destroy(g: BroadcastGroup) {
-    if (!confirm(`Delete group "${g.name}"?`)) return
+    if (!(await ask(`Delete group "${g.name}"?`, { title: 'Groups', kind: 'warning' }))) return
     try {
       await removeGroup(g.id)
       if (editingId === g.id) cancelEdit()

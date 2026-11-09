@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import {
@@ -80,7 +81,7 @@
       name = ''
       await refresh()
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      error = errorText(e)
     } finally {
       busy = false
     }
@@ -91,7 +92,7 @@
       await removeForward(sessionId, id)
       await refresh()
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      error = errorText(e)
     }
   }
 

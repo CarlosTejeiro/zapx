@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   /// Centered modal to create or edit a macro from the sidebar Macros section.
   /// Hosts the shared MacroStepEditor plus name/colour. Saving is delegated to
   /// the caller (App.svelte) which persists via createSnippet/updateSnippet +
@@ -155,7 +156,7 @@
         steps = parseStepsJson(jsonText)
         jsonError = null
       } catch (e) {
-        jsonError = e instanceof Error ? e.message : String(e)
+        jsonError = errorText(e)
         return
       }
     }
@@ -169,7 +170,7 @@
       parseStepsJson(jsonText)
       jsonError = null
     } catch (e) {
-      jsonError = e instanceof Error ? e.message : String(e)
+      jsonError = errorText(e)
     }
   })
 
@@ -186,7 +187,7 @@
       try {
         finalSteps = parseStepsJson(jsonText)
       } catch (e) {
-        jsonError = e instanceof Error ? e.message : String(e)
+        jsonError = errorText(e)
         return
       }
     }

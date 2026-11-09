@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ask } from '@tauri-apps/plugin-dialog'
+  import { errorText } from '$lib/bridge/errors'
   import { onMount, onDestroy } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -38,7 +40,7 @@
       catalogDir = path
       flashCatalog('ok', path ? `Carpeta abierta: ${path}` : 'Carpeta no configurada.')
     } catch (e) {
-      flashCatalog('err', e instanceof Error ? e.message : String(e))
+      flashCatalog('err', errorText(e))
     }
   }
 
@@ -53,7 +55,7 @@
           : `Reloaded: ${n} catalog${n === 1 ? '' : 's'} replaced by your files.`,
       )
     } catch (e) {
-      flashCatalog('err', e instanceof Error ? e.message : String(e))
+      flashCatalog('err', errorText(e))
     } finally {
       reloading = false
     }
@@ -64,7 +66,13 @@
   }
 
   async function clearAllHistory() {
-    if (!confirm("Clear the entire command history? This can't be undone.")) return
+    if (
+      !(await ask("Clear the entire command history? This can't be undone.", {
+        title: 'Hints',
+        kind: 'warning',
+      }))
+    )
+      return
     clearingHistory = true
     try {
       await clearCommandHistory(null)
