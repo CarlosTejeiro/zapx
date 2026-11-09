@@ -49,8 +49,36 @@ pub const DEVICE_ID_KEY: &str = "backup.device_id";
 /// Settings that describe *this* install and must neither travel in a bundle
 /// nor be overwritten by one.
 const LOCAL_SETTING_PREFIXES: &[&str] = &["backup."];
+/// Settings that belong to this machine, not to the environment: a Python
+/// path (`C:\Python312\python.exe` means nothing on a Mac) and window
+/// layout (a sidebar drag would otherwise count as a change to sync and
+/// overwrite the other devices' layout).
+const LOCAL_SETTING_KEYS: &[&str] = &["scripts.python", "ui.sidebar_width"];
 
 // ── bundle format ───────────────────────────────────────────────────────────
+
+// Debug for the secret-carrying parts prints everything but the secret, so a
+// `{:?}` in a log line or a test message can't leak passwords.
+impl std::fmt::Debug for BundleVaultEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BundleVaultEntry")
+            .field("name", &self.name)
+            .field("username", &self.username)
+            .field("secret", &"<redacted>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for BundleSessionCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BundleSessionCredential")
+            .field("session_id", &self.session_id)
+            .field("vault_name", &self.vault_name)
+            .field("kind", &self.kind)
+            .field("secret", &self.secret.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Bundle {
@@ -80,7 +108,7 @@ pub struct DeviceInfo {
 }
 
 /// A reusable vault entry with its secret. Matched by `name` on restore.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct BundleVaultEntry {
     pub name: String,
     #[serde(default)]
@@ -97,7 +125,7 @@ impl Drop for BundleVaultEntry {
 /// The credential of one session, referenced by its file-local id. Either a
 /// link to a vault entry (`vault_name`) or a private secret (`kind` +
 /// `secret`).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct BundleSessionCredential {
     pub session_id: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -191,16 +219,14 @@ pub(crate) trait SecretStore {
 }
 
 /// OS keyring, with the same portable-mode tolerance as session creation.
-pub(crate) struct KeyringStore {
-    pub portable: bool,
-}
+pub(crate) struct KeyringStore;
 
 impl SecretStore for KeyringStore {
     fn get(&self, key: &str) -> Option<String> {
         core_vault::Vault::retrieve(key).ok()
     }
     fn put(&self, key: &str, secret: &str) -> Result<(), AppError> {
-        super::sessions::store_secret_in_keyring(key, secret, self.portable)
+        core_vault::Vault::store(key, secret).map_err(|e| AppError::Internal(e.to_string()))
     }
     fn delete(&self, key: &str) {
         core_vault::Vault::delete(key).ok();
@@ -268,22 +294,28 @@ impl<'a> BackupCtx<'a> {
             .or_else(|| self.credential_secret(cred))
     }
 
-    /// Persist the encrypted-DB fallback blob for a credential (best effort,
-    /// mirrors `create_vault_entry`).
-    fn write_credential_fallback(&self, credential_id: i64, secret: &str) {
-        match core_vault::encrypt_with_seed(self.vault_seed, secret) {
-            Ok(blob) => {
-                if let Err(e) = self.db.set_credential_secret(credential_id, &blob) {
-                    tracing::warn!(credential_id, "persist credential_secret failed: {e}");
-                }
-            }
-            Err(e) => tracing::warn!(credential_id, "encrypt credential_secret failed: {e}"),
-        }
+    /// After `secrets.put` (`in_keyring` = it succeeded): keep the encrypted
+    /// database copy only where the policy in `crate::secrets` wants it —
+    /// the same rule as creating a session or vault entry.
+    fn settle_secret(
+        &self,
+        target: crate::secrets::Fallback,
+        secret: &str,
+        in_keyring: bool,
+    ) -> Result<(), String> {
+        crate::secrets::settle_fallback(
+            self.db,
+            self.vault_seed,
+            target,
+            secret,
+            in_keyring,
+            self.portable,
+        )
     }
 }
 
 fn is_local_setting(key: &str) -> bool {
-    LOCAL_SETTING_PREFIXES.iter().any(|p| key.starts_with(p))
+    LOCAL_SETTING_PREFIXES.iter().any(|p| key.starts_with(p)) || LOCAL_SETTING_KEYS.contains(&key)
 }
 
 fn internal(e: impl std::fmt::Display) -> AppError {
@@ -294,7 +326,13 @@ fn internal(e: impl std::fmt::Display) -> AppError {
 pub(crate) fn device_info(db: &Database) -> DeviceInfo {
     let id = match db.get_setting(DEVICE_ID_KEY) {
         Ok(Some(v)) if !v.trim().is_empty() => v,
-        _ => {
+        // A read error (database busy…) must not replace this install's
+        // identity: use a throwaway id for this bundle only.
+        Err(e) => {
+            tracing::warn!("could not read device id: {e}");
+            Uuid::new_v4().to_string()
+        }
+        Ok(_) => {
             let v = Uuid::new_v4().to_string();
             if let Err(e) = db.set_setting(DEVICE_ID_KEY, &v) {
                 tracing::warn!("could not persist device id: {e}");
@@ -410,28 +448,36 @@ pub(crate) fn apply_bundle(
         ..Default::default()
     };
 
-    // 1. Vault entries by name — before sessions so links resolve.
+    // 1. Vault entries by name — before sessions so links resolve. An entry
+    // this device already has keeps its own password (the bundle's may be
+    // older — a sync pull must not undo a rotation made here); only a
+    // missing secret is filled in.
     let existing = db.list_vault_entries().map_err(internal)?;
     for entry in &bundle.vault_entries {
         if let Some(ex) = existing.iter().find(|e| e.name == entry.name) {
-            if let Err(e) = ctx.secrets.put(&ex.keyring_key, &entry.secret) {
-                summary
-                    .warnings
-                    .push(format!("vault entry «{}»: {e}", entry.name));
-                continue;
+            match ctx.credential_secret(ex) {
+                Some(local) if local == entry.secret => {}
+                Some(_) => summary.warnings.push(format!(
+                    "vault entry «{}»: kept this device's password (the backup has a different one)",
+                    entry.name
+                )),
+                None => {
+                    let in_keyring = ctx.secrets.put(&ex.keyring_key, &entry.secret).is_ok();
+                    match ctx.settle_secret(
+                        crate::secrets::Fallback::Credential(ex.id),
+                        &entry.secret,
+                        in_keyring,
+                    ) {
+                        Ok(()) => summary.vault_updated += 1,
+                        Err(e) => summary
+                            .warnings
+                            .push(format!("vault entry «{}»: {e}", entry.name)),
+                    }
+                }
             }
-            db.update_credential_meta(ex.id, &entry.name, entry.username.as_deref())
-                .map_err(internal)?;
-            ctx.write_credential_fallback(ex.id, &entry.secret);
-            summary.vault_updated += 1;
         } else {
             let key = format!("vault:{}", Uuid::new_v4());
-            if let Err(e) = ctx.secrets.put(&key, &entry.secret) {
-                summary
-                    .warnings
-                    .push(format!("vault entry «{}»: {e}", entry.name));
-                continue;
-            }
+            let in_keyring = ctx.secrets.put(&key, &entry.secret).is_ok();
             let id = match db.create_vault_entry(&entry.name, entry.username.as_deref(), &key) {
                 Ok(id) => id,
                 Err(e) => {
@@ -442,7 +488,17 @@ pub(crate) fn apply_bundle(
                     continue;
                 }
             };
-            ctx.write_credential_fallback(id, &entry.secret);
+            if let Err(e) = ctx.settle_secret(
+                crate::secrets::Fallback::Credential(id),
+                &entry.secret,
+                in_keyring,
+            ) {
+                db.delete_credential(id).ok();
+                summary
+                    .warnings
+                    .push(format!("vault entry «{}»: {e}", entry.name));
+                continue;
+            }
             summary.vault_added += 1;
         }
     }
@@ -479,12 +535,7 @@ pub(crate) fn apply_bundle(
         };
         let kind = sc.kind.as_deref().unwrap_or("ssh_password");
         let key = format!("ssh:{}", Uuid::new_v4());
-        if let Err(e) = ctx.secrets.put(&key, secret) {
-            summary
-                .warnings
-                .push(format!("session «{}»: {e}", session.name));
-            continue;
-        }
+        let in_keyring = ctx.secrets.put(&key, secret).is_ok();
         let cred_id = db
             .create_credential(&session.name, kind, session.username.as_deref(), &key)
             .map_err(internal)?;
@@ -500,15 +551,15 @@ pub(crate) fn apply_bundle(
         if let Some(cache) = ctx.password_cache {
             cache.lock().unwrap().insert(new_id, secret.to_owned());
         }
-        if ctx.portable {
-            match core_vault::encrypt_with_seed(ctx.vault_seed, secret) {
-                Ok(blob) => {
-                    if let Err(e) = db.set_session_secret(new_id, &blob) {
-                        tracing::warn!(new_id, "persist portable session_secret failed: {e}");
-                    }
-                }
-                Err(e) => tracing::warn!(new_id, "encrypt portable session_secret failed: {e}"),
-            }
+        if let Err(e) = ctx.settle_secret(
+            crate::secrets::Fallback::Session(new_id),
+            secret,
+            in_keyring,
+        ) {
+            summary
+                .warnings
+                .push(format!("session «{}»: {e}", session.name));
+            continue;
         }
         summary.credentials_linked += 1;
     }
@@ -558,8 +609,24 @@ pub(crate) fn write_bundle(path: &Path, passphrase: &str, bundle: &Bundle) -> Re
     let sealed = core_vault::seal(passphrase, &json);
     json.zeroize();
     let sealed = sealed.map_err(internal)?;
-    let tmp = path.with_extension(format!("{BUNDLE_EXTENSION}.tmp"));
-    std::fs::write(&tmp, &sealed).map_err(|e| internal(format!("{}: {e}", tmp.display())))?;
+    // Temp name unique to this device+process (a shared sync folder may see
+    // two devices push at once), contents synced to disk before the rename
+    // (a power cut must not leave a zero-length bundle in place of the old).
+    let tmp = path.with_extension(format!(
+        "{BUNDLE_EXTENSION}.{}.{}.tmp",
+        std::process::id(),
+        Uuid::new_v4().simple()
+    ));
+    let written = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(&sealed)?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(internal(format!("{}: {e}", tmp.display())));
+    }
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
         return Err(internal(format!("{}: {e}", path.display())));
@@ -594,9 +661,7 @@ pub async fn backup_export(
     passphrase: String,
 ) -> Result<BackupExportSummary, AppError> {
     validate_passphrase(&passphrase)?;
-    let store = KeyringStore {
-        portable: state.data_dir.is_portable(),
-    };
+    let store = KeyringStore;
     let ctx = BackupCtx::from_state(&state, &store);
     let version = app.package_info().version.to_string();
     let mut warnings = Vec::new();
@@ -622,11 +687,17 @@ pub async fn backup_restore(
     passphrase: String,
 ) -> Result<RestoreSummary, AppError> {
     let bundle = read_bundle(Path::new(&path), &passphrase)?;
-    let store = KeyringStore {
-        portable: state.data_dir.is_portable(),
-    };
+    let store = KeyringStore;
     let ctx = BackupCtx::from_state(&state, &store);
-    let summary = apply_bundle(&ctx, &bundle)?;
+    // Not while the background sync is fingerprinting/pushing or a pull is
+    // applying: it would publish a half-restored state, or both could create
+    // the same sessions.
+    let summary = {
+        let _g = super::sync::SYNC_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        apply_bundle(&ctx, &bundle)?
+    };
     if summary.environment.rules_added > 0 {
         super::highlight::rebuild_highlighter(&state);
     }
@@ -849,10 +920,30 @@ mod tests {
         assert_eq!(s2.environment.sessions_added, 0);
         assert_eq!(s2.environment.sessions_skipped, 4);
         assert_eq!(s2.vault_added, 0);
-        assert_eq!(s2.vault_updated, 1);
+        // Same password here already: nothing to update.
+        assert_eq!(s2.vault_updated, 0);
+        assert!(s2.warnings.is_empty(), "{:?}", s2.warnings);
         assert_eq!(s2.credentials_linked, 0);
         assert_eq!(s2.known_hosts_added, 0);
         assert_eq!(dst.db.list_vault_entries().unwrap().len(), 1);
+
+        // A vault password changed on this device since the backup is kept
+        // (a restore or sync pull must not undo a rotation), with a warning.
+        let entry = dst.db.list_vault_entries().unwrap().remove(0);
+        dst.store.put(&entry.keyring_key, "rotated-here").unwrap();
+        let s3 = apply_bundle(&dst.ctx(), &opened).unwrap();
+        assert_eq!(s3.vault_updated, 0);
+        assert_eq!(
+            dst.store.get(&entry.keyring_key).as_deref(),
+            Some("rotated-here")
+        );
+        assert!(
+            s3.warnings
+                .iter()
+                .any(|w| w.contains("kept this device's password")),
+            "{:?}",
+            s3.warnings
+        );
     }
 
     /// A secret the device can't produce is a warning, not a failure — the
@@ -909,14 +1000,24 @@ mod tests {
         assert_eq!(x.credential_id, Some(local));
         assert_eq!(dst.store.get("ssh:local").as_deref(), Some("local-pw"));
 
-        // A credential-less local session does get the dangling link reported.
+        // On a fresh device the session's own credential comes first, so the
+        // second (dangling) entry for the same session is simply skipped.
         let dst2 = Fixture::new("dst3");
         let s = apply_bundle(&dst2.ctx(), &bundle).unwrap();
         assert_eq!(s.credentials_linked, 1);
-        assert_eq!(
-            s.warnings.len(),
-            0,
-            "first entry wins, second skipped: {:?}",
+        assert!(s.warnings.is_empty(), "{:?}", s.warnings);
+
+        // With only the dangling vault link, the missing entry is reported.
+        bundle
+            .session_credentials
+            .retain(|c| c.vault_name.is_some());
+        let dst3 = Fixture::new("dst4");
+        let s = apply_bundle(&dst3.ctx(), &bundle).unwrap();
+        assert_eq!(s.credentials_linked, 0);
+        assert_eq!(s.warnings.len(), 1, "{:?}", s.warnings);
+        assert!(
+            s.warnings[0].contains("«nope» not available"),
+            "{:?}",
             s.warnings
         );
     }

@@ -1,10 +1,15 @@
 #![forbid(unsafe_code)]
 
-//! `core-vault` — credential storage backed by the OS keyring.
+//! `core-vault` — credential storage: the OS keyring, the encrypted local
+//! fallback, and the sealed backup format.
 //!
-//! Secrets (passwords, passphrases) are stored in Windows Credential Manager,
-//! macOS Keychain, or Linux Secret Service. The database only holds an opaque
-//! `keyring_key` reference — the secret itself never enters SQLite or logs.
+//! Secrets (passwords, passphrases) go to Windows Credential Manager, macOS
+//! Keychain or Linux Secret Service; the database holds an opaque
+//! `keyring_key` reference. When the keyring can't hold a secret (no Secret
+//! Service running, access denied) or on portable installs, the app keeps an
+//! AES-256-GCM copy in the database instead, keyed off the per-install
+//! `vault.key` (see the app's `secrets` module for the policy). Secrets never
+//! go to logs.
 
 pub mod error;
 pub mod sealed;
@@ -37,9 +42,8 @@ impl Vault {
 }
 
 // ---------------------------------------------------------------------------
-// Local-fallback encryption — used when the OS keyring is unusable (e.g.
-// macOS dev builds where the unsigned binary is denied read access to its
-// own Keychain entry, or portable mode).
+// Local-fallback encryption — used when the OS keyring can't hold a secret
+// (no Secret Service, access denied…) or on portable installs.
 //
 // The AES-256 key is derived from a high-entropy *seed*: 32 random bytes
 // generated on first run and persisted to `vault.key` (mode 0600 on Unix) via
@@ -63,52 +67,104 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use zeroize::Zeroize;
 
-/// Load the local-fallback seed from `dir/vault.key`, generating it on first
-/// use. The seed is 32 random bytes, hex-encoded. On Unix the file is created
-/// with mode 0600 so other users on the machine cannot read it.
+/// Load the local-fallback seed from `dir/vault.key`, generating it only when
+/// the file doesn't exist. The seed is 32 random bytes, hex-encoded. On Unix
+/// the file is owner-only (0600; an existing looser one is tightened).
 ///
 /// Pass the returned seed to [`encrypt_with_seed`] / [`decrypt_with_seed`].
 /// On failure (e.g. a read-only data dir) the caller is responsible for
 /// choosing a degraded fallback.
 pub fn load_or_create_seed(dir: &Path) -> Result<String, Error> {
     let key_path = dir.join("vault.key");
-    if let Ok(existing) = std::fs::read_to_string(&key_path) {
-        let trimmed = existing.trim();
-        // 32 random bytes hex-encode to 64 chars; accept anything long enough
-        // to carry adequate entropy so a truncated/garbled file is regenerated.
-        if trimmed.len() >= 32 {
-            return Ok(trimmed.to_string());
+    match std::fs::read(&key_path) {
+        Ok(bytes) => {
+            // Only a missing file may be replaced: any key that exists is the
+            // one every stored secret is encrypted with. A file that can't be
+            // used is an error, never a reason to write a new key over it
+            // (that would make every saved secret undecryptable for good).
+            let text = std::str::from_utf8(&bytes).map_err(|_| {
+                Error::Io(format!("{} is not a valid key file", key_path.display()))
+            })?;
+            let trimmed = text.trim();
+            if trimmed.len() < 32 {
+                return Err(Error::Io(format!(
+                    "{} is damaged (too short); restore it from a backup or move it away to start fresh",
+                    key_path.display()
+                )));
+            }
+            #[cfg(unix)]
+            tighten_permissions(&key_path);
+            Ok(trimmed.to_string())
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut bytes = [0u8; 32];
+            rand::thread_rng().fill_bytes(&mut bytes);
+            let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+            bytes.zeroize();
+            match create_new_private(&key_path, hex.as_bytes()) {
+                Ok(()) => Ok(hex),
+                // Another instance created it first: use theirs.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => load_or_create_seed(dir),
+                Err(e) => Err(Error::Io(e.to_string())),
+            }
+        }
+        Err(e) => Err(Error::Io(format!(
+            "cannot read {}: {e}",
+            key_path.display()
+        ))),
     }
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    bytes.zeroize();
-    write_private(&key_path, hex.as_bytes()).map_err(|e| Error::Io(e.to_string()))?;
-    Ok(hex)
 }
 
-/// Write `contents` to `path`, restricting access to the owner (mode 0600) on
-/// Unix. On other platforms the file inherits default permissions.
-fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        f.write_all(contents)?;
-        f.flush()
+/// An existing key file readable by others (e.g. copied with 0644) is
+/// restricted to the owner.
+#[cfg(unix)]
+fn tighten_permissions(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(md) = std::fs::metadata(path) {
+        if md.permissions().mode() & 0o077 != 0 {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
     }
-    #[cfg(not(unix))]
+}
+
+/// Create `path` with `contents`, owner-only (0600 on Unix), never replacing
+/// an existing file: written to a temp file, synced, then linked into place
+/// (fails with AlreadyExists if another process got there first), so a crash
+/// can't leave a half-written key and two first runs can't each keep a
+/// different key.
+fn create_new_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     {
-        let mut f = std::fs::File::create(path)?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
         f.write_all(contents)?;
-        f.flush()
+        f.sync_all()?;
+    }
+    let linked = std::fs::hard_link(&tmp, path);
+    let _ = std::fs::remove_file(&tmp);
+    match linked {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+            // No hard links here (FAT/exFAT USB stick, some network shares):
+            // create the file in place instead — still never replacing one.
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut f = opts.open(path)?;
+            f.write_all(contents)?;
+            f.sync_all()
+        }
+        other => other,
     }
 }
 
@@ -223,5 +279,68 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod seed_tests {
+    use super::*;
+
+    fn dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("zapx-seed-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn created_once_then_reused() {
+        let d = dir("reuse");
+        let a = load_or_create_seed(&d).unwrap();
+        assert_eq!(a.len(), 64);
+        assert_eq!(load_or_create_seed(&d).unwrap(), a);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(d.join("vault.key"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A key file that exists but can't be used is an error — never silently
+    /// replaced, which would make every stored secret undecryptable.
+    #[test]
+    fn a_damaged_key_file_is_not_overwritten() {
+        let d = dir("damaged");
+        std::fs::write(d.join("vault.key"), b"short").unwrap();
+        assert!(load_or_create_seed(&d).is_err());
+        assert_eq!(std::fs::read(d.join("vault.key")).unwrap(), b"short");
+        std::fs::write(d.join("vault.key"), [0xffu8; 70]).unwrap();
+        assert!(load_or_create_seed(&d).is_err());
+        assert_eq!(
+            std::fs::read(d.join("vault.key")).unwrap(),
+            vec![0xffu8; 70]
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_world_readable_key_file_is_tightened() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir("perm");
+        let p = d.join("vault.key");
+        std::fs::write(&p, "a".repeat(64)).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        load_or_create_seed(&d).unwrap();
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

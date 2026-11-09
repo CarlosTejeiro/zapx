@@ -166,6 +166,9 @@ pub struct SavedSession {
 // ---------------------------------------------------------------------------
 
 // rusqlite::Connection is Send; Mutex<Connection> is therefore Send + Sync.
+/// Highest schema version this build knows (the last migration file).
+pub const LATEST_SCHEMA: i64 = 25;
+
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -187,99 +190,205 @@ impl Database {
     /// via `VACUUM INTO` — safe while the connection is open (no WAL/SHM
     /// sidecar files to copy). `dest` must not already exist.
     pub fn vacuum_into(&self, dest: &Path) -> Result<(), Error> {
+        // SQLite takes the path as text: a path that isn't valid UTF-8 would
+        // be rewritten (U+FFFD) and the snapshot land in another file.
+        let dest = dest.to_str().ok_or_else(|| {
+            Error::InvalidPath(format!("{} is not a valid UTF-8 path", dest.display()))
+        })?;
         let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "VACUUM INTO ?1",
-            rusqlite::params![dest.to_string_lossy().into_owned()],
-        )?;
+        conn.execute("VACUUM INTO ?1", rusqlite::params![dest])?;
         Ok(())
     }
 
     fn run_migrations(&self) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
-        let version: i64 = conn
-            .query_row(
+        // A fresh database has no schema_version table yet (version 0); on an
+        // existing one a failing query is a real error, not "start over" —
+        // re-running 001 on a populated database would fail confusingly.
+        let has_table: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version')",
+            [],
+            |row| row.get(0),
+        )?;
+        let version: i64 = if has_table {
+            conn.query_row(
                 "SELECT COALESCE(MAX(version),0) FROM schema_version",
                 [],
                 |row| row.get(0),
-            )
-            .unwrap_or(0);
+            )?
+        } else {
+            0
+        };
+        if version > LATEST_SCHEMA {
+            return Err(Error::NewerSchema {
+                found: version,
+                supported: LATEST_SCHEMA,
+            });
+        }
 
-        if version < 1 {
-            conn.execute_batch(include_str!("migrations/001_initial.sql"))?;
+        /// Run migration `n` if the database is below it, inside a
+        /// transaction: an interruption (crash, power loss, full disk) rolls
+        /// it back whole, instead of leaving half a migration that the next
+        /// start can't get past ("duplicate column").
+        fn apply(
+            conn: &rusqlite::Connection,
+            version: i64,
+            n: i64,
+            sql: &str,
+        ) -> Result<(), Error> {
+            if version < n {
+                let tx = conn.unchecked_transaction()?;
+                tx.execute_batch(sql)?;
+                tx.commit()?;
+            }
+            Ok(())
         }
-        if version < 2 {
-            conn.execute_batch(include_str!("migrations/002_highlight_rules.sql"))?;
-        }
-        if version < 3 {
-            conn.execute_batch(include_str!("migrations/003_session_logs.sql"))?;
-        }
-        if version < 4 {
-            conn.execute_batch(include_str!("migrations/004_appearance.sql"))?;
-        }
-        if version < 5 {
-            conn.execute_batch(include_str!("migrations/005_ssh_key_auth.sql"))?;
-        }
-        if version < 6 {
-            conn.execute_batch(include_str!("migrations/006_jump_host.sql"))?;
-        }
-        if version < 7 {
-            conn.execute_batch(include_str!("migrations/007_snippets.sql"))?;
-        }
-        if version < 8 {
-            conn.execute_batch(include_str!("migrations/008_login_script.sql"))?;
-        }
-        if version < 9 {
-            conn.execute_batch(include_str!("migrations/009_hints.sql"))?;
-        }
-        if version < 10 {
-            conn.execute_batch(include_str!("migrations/010_session_secrets.sql"))?;
-        }
-        if version < 11 {
-            conn.execute_batch(include_str!("migrations/011_session_order.sql"))?;
-        }
-        if version < 12 {
-            conn.execute_batch(include_str!("migrations/012_snippet_platform.sql"))?;
-        }
-        if version < 13 {
-            conn.execute_batch(include_str!("migrations/013_broadcast_groups.sql"))?;
-        }
-        if version < 14 {
-            conn.execute_batch(include_str!("migrations/014_snippet_color.sql"))?;
-        }
-        if version < 15 {
-            conn.execute_batch(include_str!("migrations/015_session_forwards.sql"))?;
-        }
-        if version < 16 {
-            conn.execute_batch(include_str!("migrations/016_command_transitions.sql"))?;
-        }
-        if version < 17 {
-            conn.execute_batch(include_str!("migrations/017_session_triggers.sql"))?;
-        }
-        if version < 18 {
-            conn.execute_batch(include_str!("migrations/018_snippet_steps.sql"))?;
-        }
-        if version < 19 {
-            conn.execute_batch(include_str!("migrations/019_snippet_folder.sql"))?;
-        }
-        if version < 20 {
-            conn.execute_batch(include_str!("migrations/020_vault_entries.sql"))?;
-        }
-        if version < 21 {
-            conn.execute_batch(include_str!("migrations/021_vault_unique_name.sql"))?;
-        }
-        if version < 22 {
-            conn.execute_batch(include_str!("migrations/022_snippet_position.sql"))?;
-        }
-        if version < 23 {
-            conn.execute_batch(include_str!("migrations/023_credential_secrets.sql"))?;
-        }
-        if version < 24 {
-            conn.execute_batch(include_str!("migrations/024_snippet_shortcut.sql"))?;
-        }
-        if version < 25 {
-            conn.execute_batch(include_str!("migrations/025_forward_name.sql"))?;
-        }
+
+        apply(
+            &conn,
+            version,
+            1,
+            include_str!("migrations/001_initial.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            2,
+            include_str!("migrations/002_highlight_rules.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            3,
+            include_str!("migrations/003_session_logs.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            4,
+            include_str!("migrations/004_appearance.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            5,
+            include_str!("migrations/005_ssh_key_auth.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            6,
+            include_str!("migrations/006_jump_host.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            7,
+            include_str!("migrations/007_snippets.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            8,
+            include_str!("migrations/008_login_script.sql"),
+        )?;
+        apply(&conn, version, 9, include_str!("migrations/009_hints.sql"))?;
+        apply(
+            &conn,
+            version,
+            10,
+            include_str!("migrations/010_session_secrets.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            11,
+            include_str!("migrations/011_session_order.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            12,
+            include_str!("migrations/012_snippet_platform.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            13,
+            include_str!("migrations/013_broadcast_groups.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            14,
+            include_str!("migrations/014_snippet_color.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            15,
+            include_str!("migrations/015_session_forwards.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            16,
+            include_str!("migrations/016_command_transitions.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            17,
+            include_str!("migrations/017_session_triggers.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            18,
+            include_str!("migrations/018_snippet_steps.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            19,
+            include_str!("migrations/019_snippet_folder.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            20,
+            include_str!("migrations/020_vault_entries.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            21,
+            include_str!("migrations/021_vault_unique_name.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            22,
+            include_str!("migrations/022_snippet_position.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            23,
+            include_str!("migrations/023_credential_secrets.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            24,
+            include_str!("migrations/024_snippet_shortcut.sql"),
+        )?;
+        apply(
+            &conn,
+            version,
+            25,
+            include_str!("migrations/025_forward_name.sql"),
+        )?;
         Ok(())
     }
 
@@ -1006,10 +1115,14 @@ impl Database {
         username: Option<&str>,
     ) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
+        let changed = conn.execute(
             "UPDATE credentials SET name=?2, username=?3 WHERE id=?1",
             rusqlite::params![id, name, username],
         )?;
+        // Deleted meanwhile (another window): say so instead of "saved".
+        if changed == 0 {
+            return Err(Error::NotFound);
+        }
         Ok(())
     }
 
@@ -2070,5 +2183,69 @@ mod tests {
         assert_eq!(find(&db, id).position, Some(0));
 
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("zapx-mig-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("zapx.db")
+    }
+
+    /// A database from a newer ZAPX is refused with a clear error instead of
+    /// being used (and half-understood) by this one.
+    #[test]
+    fn a_newer_schema_is_refused() {
+        let path = temp_db("newer");
+        drop(Database::open(&path).unwrap());
+        {
+            let c = rusqlite::Connection::open(&path).unwrap();
+            c.execute(
+                "INSERT INTO schema_version(version) VALUES (?1)",
+                [LATEST_SCHEMA + 1],
+            )
+            .unwrap();
+        }
+        let err = Database::open(&path).err().expect("must be refused");
+        assert!(err.to_string().contains("newer ZAPX"), "{err}");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// Reopening an up-to-date database runs nothing again.
+    #[test]
+    fn reopening_is_idempotent() {
+        let path = temp_db("reopen");
+        drop(Database::open(&path).unwrap());
+        drop(Database::open(&path).unwrap());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 0.13.0 allowed duplicate vault names; 021 renames the extras instead
+    /// of failing (which used to block the upgrade for good).
+    #[test]
+    fn migration_021_renames_duplicate_vault_names() {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE schema_version(version INTEGER PRIMARY KEY);
+             CREATE TABLE credentials(id INTEGER PRIMARY KEY, name TEXT, reusable INTEGER);
+             INSERT INTO credentials(id, name, reusable) VALUES
+               (1, 'prod-root', 1), (2, 'prod-root', 1), (3, 'prod-root', 0), (4, 'lab', 1);",
+        )
+        .unwrap();
+        c.execute_batch(include_str!("migrations/021_vault_unique_name.sql"))
+            .unwrap();
+        let names: Vec<String> = c
+            .prepare("SELECT name FROM credentials ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(names, ["prod-root", "prod-root (2)", "prod-root", "lab"]);
     }
 }

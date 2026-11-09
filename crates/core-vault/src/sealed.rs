@@ -46,6 +46,11 @@ const P_COST: u32 = 1;
 /// Upper bound accepted when *opening* a blob, so a malicious header can't
 /// make us allocate gigabytes before the AEAD check even runs.
 const MAX_M_COST_KIB: u32 = 1024 * 1024;
+/// Caps for the other two cost parameters, read from the unauthenticated
+/// header before the AEAD check: without them a planted file (e.g. in a shared
+/// sync folder) could make opening it run practically forever.
+const MAX_T_COST: u32 = 16;
+const MAX_P_COST: u32 = 16;
 
 /// Seal `plaintext` under `passphrase`. The result is self-describing and can
 /// be opened by [`open`] on any machine with the same passphrase.
@@ -86,6 +91,15 @@ pub fn seal(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
 /// byte all surface as [`Error::Crypto`]; a blob that isn't ours at all is
 /// [`Error::BadCiphertext`].
 pub fn open(passphrase: &str, blob: &[u8]) -> Result<Vec<u8>, Error> {
+    // Same "ZAPXB" family, other format version: a newer ZAPX wrote it.
+    if blob.len() >= MAGIC.len()
+        && blob[..MAGIC.len() - 1] == MAGIC[..MAGIC.len() - 1]
+        && blob[MAGIC.len() - 1] > MAGIC[MAGIC.len() - 1]
+    {
+        return Err(Error::Crypto(
+            "this backup was made by a newer ZAPX — update ZAPX to open it".into(),
+        ));
+    }
     if blob.len() < HEADER_LEN + 16 || &blob[..MAGIC.len()] != MAGIC {
         return Err(Error::BadCiphertext);
     }
@@ -99,7 +113,13 @@ pub fn open(passphrase: &str, blob: &[u8]) -> Result<Vec<u8>, Error> {
     let m_cost = u32_at(&mut at);
     let t_cost = u32_at(&mut at);
     let p_cost = u32_at(&mut at);
-    if m_cost == 0 || m_cost > MAX_M_COST_KIB || t_cost == 0 || p_cost == 0 {
+    if m_cost == 0
+        || m_cost > MAX_M_COST_KIB
+        || t_cost == 0
+        || t_cost > MAX_T_COST
+        || p_cost == 0
+        || p_cost > MAX_P_COST
+    {
         return Err(Error::BadCiphertext);
     }
     let salt = &header[at..at + SALT_LEN];
@@ -171,6 +191,20 @@ mod tests {
         let mut header = blob.clone();
         header[6..10].copy_from_slice(&1024u32.to_le_bytes());
         assert!(open("pw", &header).is_err());
+    }
+
+    #[test]
+    fn absurd_costs_and_newer_formats_are_rejected_before_argon2() {
+        let mut blob = seal("pw", b"data").unwrap();
+        // t_cost = u32::MAX in the header: refused at once, not computed.
+        blob[MAGIC.len() + 4..MAGIC.len() + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+        let started = std::time::Instant::now();
+        assert!(matches!(open("pw", &blob), Err(Error::BadCiphertext)));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        let mut newer = seal("pw", b"data").unwrap();
+        newer[MAGIC.len() - 1] = 0x02;
+        let err = open("pw", &newer).unwrap_err().to_string();
+        assert!(err.contains("newer ZAPX"), "{err}");
     }
 
     #[test]

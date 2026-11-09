@@ -65,8 +65,9 @@ pub async fn create_vault_entry(
         )));
     }
     let keyring_key = format!("vault:{}", Uuid::new_v4());
-    core_vault::Vault::store(&keyring_key, &password)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    // OS keyring first; when it can't take the secret, the encrypted database
+    // copy written below holds it instead (see `crate::secrets`).
+    let in_keyring = crate::secrets::keyring_put(&keyring_key, &password);
     // The pre-check above is racy: two same-name creates can both pass it, and
     // the partial unique index (migration 021) then rejects the second insert.
     // Don't leak the just-stored keyring secret on ANY insert failure — delete
@@ -76,18 +77,17 @@ pub async fn create_vault_entry(
         .create_vault_entry(name.trim(), username.as_deref(), &keyring_key)
     {
         Ok(id) => {
-            // Best-effort encrypted-DB fallback so the entry keeps working on a
-            // keyring-denying (unsigned) build where `Vault::retrieve` fails.
-            // The blob is AES-256-GCM under `vault_seed`; never returned/logged.
-            match core_vault::encrypt_with_seed(&state.vault_seed, &password) {
-                Ok(blob) => {
-                    if let Err(e) = state.db.set_credential_secret(id, &blob) {
-                        tracing::warn!(credential_id = id, "persist credential_secret failed: {e}");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(credential_id = id, "encrypt credential_secret failed: {e}")
-                }
+            if let Err(e) = crate::secrets::settle_fallback(
+                &state.db,
+                &state.vault_seed,
+                crate::secrets::Fallback::Credential(id),
+                &password,
+                in_keyring,
+                state.data_dir.is_portable(),
+            ) {
+                // Stored nowhere: don't leave an entry that can't work.
+                state.db.delete_credential(id).ok();
+                return Err(AppError::Internal(e));
             }
             Ok(id)
         }
@@ -143,46 +143,73 @@ pub async fn update_vault_entry(
             name.trim()
         )));
     }
+    let cred = vault_credential(&state, id)?;
+    // Store the new secret first, then rename: a failure leaves the entry as
+    // it was instead of renamed with the old password.
+    if let Some(pw) = password {
+        crate::secrets::persist(
+            &state.db,
+            &state.vault_seed,
+            &cred.keyring_key,
+            crate::secrets::Fallback::Credential(id),
+            &pw,
+            state.data_dir.is_portable(),
+        )
+        .map_err(AppError::Internal)?;
+    }
     state
         .db
         .update_credential_meta(id, name.trim(), username.as_deref())
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    if let Some(pw) = password {
-        let key = state
-            .db
-            .get_credential_keyring_key(id)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        core_vault::Vault::store(&key, &pw).map_err(|e| AppError::Internal(e.to_string()))?;
-        // Refresh the encrypted-DB fallback to match the rotated secret. This is
-        // best-effort: if it fails, the keyring already has the new secret, so
-        // the only consequence is a stale fallback blob (the PREVIOUS password)
-        // that would be used solely on a keyring-denied build — not a bug, and
-        // the warning below records it.
-        match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
-            Ok(blob) => {
-                if let Err(e) = state.db.set_credential_secret(id, &blob) {
-                    tracing::warn!(credential_id = id, "persist credential_secret failed: {e}");
-                }
-            }
-            Err(e) => tracing::warn!(credential_id = id, "encrypt credential_secret failed: {e}"),
-        }
-    }
     Ok(())
+}
+
+/// The vault entry `id` — refusing a session's own (private) credential: the
+/// vault commands must never read, change or delete one of those.
+fn vault_credential(state: &AppState, id: i64) -> Result<core_persistence::Credential, AppError> {
+    let cred = state
+        .db
+        .get_credential(id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if !cred.reusable {
+        return Err(AppError::Internal(format!(
+            "credential {id} is not a vault entry"
+        )));
+    }
+    Ok(cred)
+}
+
+/// The secret of a vault entry: keyring, else its encrypted database copy.
+fn vault_secret(state: &AppState, cred: &core_persistence::Credential) -> Result<String, AppError> {
+    crate::secrets::resolve(
+        &state.db,
+        &state.vault_seed,
+        &cred.keyring_key,
+        crate::secrets::Fallback::Credential(cred.id),
+        state.data_dir.is_portable(),
+    )
+    .ok_or_else(|| {
+        AppError::Internal(format!(
+            "the password of vault entry «{}» is unavailable (not in the OS keyring and no saved copy) — set it again in the vault",
+            cred.name
+        ))
+    })
 }
 
 /// Delete a vault entry: remove its keyring secret and its credential row.
 /// Sessions referencing it have their `credential_id` set to NULL by the FK.
 #[tauri::command]
 pub async fn delete_vault_entry(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
-    if let Ok(key) = state.db.get_credential_keyring_key(id) {
-        core_vault::Vault::delete(&key).ok();
-    }
-    // The FK `ON DELETE CASCADE` also removes this, but be explicit.
-    state.db.delete_credential_secret(id).ok();
+    let cred = vault_credential(&state, id)?;
+    // Row first: if it can't be deleted the entry stays intact; only then
+    // drop its secret (the FK cascade also removes the database copy).
     state
         .db
         .delete_credential(id)
-        .map_err(|e| AppError::Internal(e.to_string()))
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    core_vault::Vault::delete(&cred.keyring_key).ok();
+    state.db.delete_credential_secret(id).ok();
+    Ok(())
 }
 
 /// Security-critical: send a vault entry's secret to a live session's PTY.
@@ -197,30 +224,8 @@ pub async fn send_vault_secret(
     vault_entry_id: i64,
     enter: bool,
 ) -> Result<(), AppError> {
-    let key = state
-        .db
-        .get_credential_keyring_key(vault_entry_id)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    // Keyring first; on ANY keyring error fall back to the encrypted DB blob
-    // (unsigned builds are routinely denied read access to their own entry).
-    let mut bytes = match core_vault::Vault::retrieve(&key) {
-        Ok(s) => s.into_bytes(),
-        Err(_) => {
-            let blob = state
-                .db
-                .get_credential_secret(vault_entry_id)
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::Internal(
-                        "vault secret unavailable (keyring denied and no local fallback — re-save this vault entry)"
-                            .into(),
-                    )
-                })?;
-            core_vault::decrypt_with_seed(&state.vault_seed, &blob)
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .into_bytes()
-        }
-    };
+    let cred = vault_credential(&state, vault_entry_id)?;
+    let mut bytes = vault_secret(&state, &cred)?.into_bytes();
     if enter {
         bytes.push(b'\r');
     }
@@ -249,26 +254,7 @@ pub async fn send_vault_field(
         .ok_or_else(|| AppError::Internal(format!("no vault credential named '{name}'")))?;
 
     let mut bytes = match field.to_ascii_lowercase().as_str() {
-        // Keyring first; fall back to the encrypted DB blob on ANY keyring error
-        // (unsigned builds are routinely denied read access to their own entry).
-        "password" => match core_vault::Vault::retrieve(&cred.keyring_key) {
-            Ok(s) => s.into_bytes(),
-            Err(_) => {
-                let blob = state
-                    .db
-                    .get_credential_secret(cred.id)
-                    .map_err(|e| AppError::Internal(e.to_string()))?
-                    .ok_or_else(|| {
-                        AppError::Internal(
-                            "vault secret unavailable (keyring denied and no local fallback — re-save this vault entry)"
-                                .into(),
-                        )
-                    })?;
-                core_vault::decrypt_with_seed(&state.vault_seed, &blob)
-                    .map_err(|e| AppError::Internal(e.to_string()))?
-                    .into_bytes()
-            }
-        },
+        "password" => vault_secret(&state, &cred)?.into_bytes(),
         "username" => cred.username.unwrap_or_default().into_bytes(),
         other => {
             return Err(AppError::Internal(format!(
@@ -289,8 +275,11 @@ fn write_to_session(state: &AppState, session_id: &str, bytes: Vec<u8>) -> Resul
     let session = sessions
         .get(session_id)
         .ok_or_else(|| AppError::Internal(format!("unknown session: {session_id}")))?;
-    session.cmd_tx.send(SessionCmd::Data(bytes)).ok();
-    Ok(())
+    // The session's I/O task may have just ended: report it, not success.
+    session
+        .cmd_tx
+        .send(SessionCmd::Data(bytes))
+        .map_err(|_| AppError::Internal(format!("session {session_id} is no longer connected")))
 }
 
 #[cfg(test)]

@@ -44,6 +44,10 @@ pub const SYNC_DIR_KEY: &str = "backup.sync.dir";
 pub const SYNC_LAST_PUSH_KEY: &str = "backup.sync.last_push";
 pub const SYNC_LAST_PULL_KEY: &str = "backup.sync.last_pull";
 pub const SYNC_FINGERPRINT_KEY: &str = "backup.sync.fingerprint";
+/// `written_at` of the folder's bundle as this device last saw it (after its
+/// own push, or a pull). A different value in the folder = remote news —
+/// compared for equality, never ordered, so devices' clocks don't matter.
+pub const SYNC_SEEN_REMOTE_KEY: &str = "backup.sync.seen_remote";
 /// Encrypted-DB fallback for the passphrase (hex of `encrypt_with_seed`),
 /// consulted when the keyring won't hand it back (unsigned/portable builds).
 pub const SYNC_PASSPHRASE_KEY: &str = "backup.sync.passphrase";
@@ -61,7 +65,7 @@ const SYNC_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// One sync operation at a time — the background thread and the UI commands
 /// share the folder and the settings rows.
-static SYNC_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static SYNC_LOCK: Mutex<()> = Mutex::new(());
 
 // ── wire types ──────────────────────────────────────────────────────────────
 
@@ -107,6 +111,9 @@ pub struct SyncStatus {
     /// Sidecar of the bundle currently in the folder, if any.
     pub remote: Option<SyncMeta>,
     pub detail: Option<String>,
+    /// Some secrets couldn't be read right now and are missing from the
+    /// bundle (`detail` says which); the unattended push waits.
+    pub incomplete: bool,
     pub checked_at: String,
 }
 
@@ -134,26 +141,38 @@ fn sync_dir(ctx: &BackupCtx<'_>) -> Option<PathBuf> {
     setting(ctx, SYNC_DIR_KEY).map(PathBuf::from)
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn hex_decode(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn hex_decode(s: &str) -> Option<Vec<u8>> {
     if !s.len().is_multiple_of(2) {
         return None;
     }
+    // `get` instead of slicing: a non-ASCII (corrupted) value must give None,
+    // not panic — a panic here would kill the background sync thread.
     (0..s.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
         .collect()
 }
 
-/// Keyring first (best effort), encrypted-DB fallback always — the sync
-/// passphrase must survive a keyring that denies reads, or the background
-/// push would silently stop working on unsigned builds.
+/// Same rule as every other secret (`crate::secrets`): OS keyring first, the
+/// encrypted database copy only when the keyring can't take it or on a
+/// portable install. When the keyring write fails, an older value it may
+/// still hold is removed so it can't shadow the new passphrase.
 fn store_passphrase(ctx: &BackupCtx<'_>, passphrase: &str) -> Result<(), AppError> {
-    if let Err(e) = ctx.secrets.put(SYNC_KEYRING_KEY, passphrase) {
-        tracing::warn!("sync passphrase not stored in keyring: {e}");
+    let in_keyring = match ctx.secrets.put(SYNC_KEYRING_KEY, passphrase) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("sync passphrase not stored in keyring: {e}");
+            ctx.secrets.delete(SYNC_KEYRING_KEY);
+            false
+        }
+    };
+    if in_keyring && !ctx.portable {
+        ctx.db.delete_setting(SYNC_PASSPHRASE_KEY).ok();
+        return Ok(());
     }
     let blob = core_vault::encrypt_with_seed(ctx.vault_seed, passphrase).map_err(internal)?;
     ctx.db
@@ -161,12 +180,22 @@ fn store_passphrase(ctx: &BackupCtx<'_>, passphrase: &str) -> Result<(), AppErro
         .map_err(internal)
 }
 
+/// Keyring first, then the database copy — moved into the keyring when it
+/// works (written, read back, then the copy dropped).
 fn load_passphrase(ctx: &BackupCtx<'_>) -> Option<String> {
-    ctx.secrets.get(SYNC_KEYRING_KEY).or_else(|| {
-        let hex = setting(ctx, SYNC_PASSPHRASE_KEY)?;
-        let blob = hex_decode(&hex)?;
-        core_vault::decrypt_with_seed(ctx.vault_seed, &blob).ok()
-    })
+    if let Some(p) = ctx.secrets.get(SYNC_KEYRING_KEY) {
+        return Some(p);
+    }
+    let hex = setting(ctx, SYNC_PASSPHRASE_KEY)?;
+    let blob = hex_decode(&hex)?;
+    let p = core_vault::decrypt_with_seed(ctx.vault_seed, &blob).ok()?;
+    if !ctx.portable
+        && ctx.secrets.put(SYNC_KEYRING_KEY, &p).is_ok()
+        && ctx.secrets.get(SYNC_KEYRING_KEY).as_deref() == Some(p.as_str())
+    {
+        ctx.db.delete_setting(SYNC_PASSPHRASE_KEY).ok();
+    }
+    Some(p)
 }
 
 fn clear_passphrase(ctx: &BackupCtx<'_>) {
@@ -179,7 +208,7 @@ fn clear_passphrase(ctx: &BackupCtx<'_>) {
 /// Hash of the bundle's *content*, independent of row ids, ordering,
 /// timestamps and the writing device. Two devices holding the same
 /// environment produce the same fingerprint even though every id differs.
-pub(crate) fn fingerprint(bundle: &Bundle) -> String {
+pub(crate) fn fingerprint(bundle: &Bundle, key: &str) -> String {
     use serde_json::{json, Value};
     let env = &bundle.environment;
 
@@ -288,10 +317,19 @@ pub(crate) fn fingerprint(bundle: &Bundle) -> String {
         .snippets
         .iter()
         .map(|s| {
-            json!({
+            let mut v = json!({
                 "name": s.name, "platform": s.platform, "content": s.content,
                 "color": s.color, "steps_json": s.steps_json, "folder": s.folder,
-            })
+            });
+            // Only when set, so snippets without them keep their old
+            // fingerprint.
+            if let Some(k) = &s.shortcut {
+                v["shortcut"] = json!(k);
+            }
+            if let Some(p) = s.position {
+                v["position"] = json!(p);
+            }
+            v
         })
         .collect();
     snippets.sort_by_key(|v| format!("{}|{}", v["name"], v["platform"]));
@@ -351,7 +389,15 @@ pub(crate) fn fingerprint(bundle: &Bundle) -> String {
         "known_hosts": known_hosts,
     });
     let bytes = serde_json::to_vec(&canonical).unwrap_or_default();
-    hex_encode(&Sha256::digest(&bytes))
+    // Keyed with this install's secret key: the canonical form includes
+    // passwords, and a plain hash kept in the database would let anyone with
+    // a copy of it test password guesses offline at hash speed.
+    let mut h = Sha256::new();
+    h.update(b"zapx-sync-fp-v2\0");
+    h.update(key.as_bytes());
+    h.update(b"\0");
+    h.update(&bytes);
+    hex_encode(&h.finalize())
 }
 
 // ── engine ──────────────────────────────────────────────────────────────────
@@ -372,9 +418,24 @@ fn read_meta(dir: &Path) -> Result<Option<SyncMeta>, String> {
 
 fn write_meta(dir: &Path, meta: &SyncMeta) -> Result<(), AppError> {
     let path = dir.join(SYNC_META_FILE);
-    let tmp = dir.join(format!("{SYNC_META_FILE}.tmp"));
+    // Unique temp name (two devices may write at once) and synced before the
+    // rename, like the bundle itself.
+    let tmp = dir.join(format!(
+        "{SYNC_META_FILE}.{}.{}.tmp",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
     let json = serde_json::to_string_pretty(meta).map_err(internal)?;
-    std::fs::write(&tmp, json).map_err(|e| internal(format!("{}: {e}", tmp.display())))?;
+    let written = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(json.as_bytes())?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(internal(format!("{}: {e}", tmp.display())));
+    }
     std::fs::rename(&tmp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         internal(format!("{}: {e}", path.display()))
@@ -402,6 +463,7 @@ fn base_status(ctx: &BackupCtx<'_>, state: SyncState, detail: Option<String>) ->
         last_pull: setting(ctx, SYNC_LAST_PULL_KEY),
         remote: None,
         detail,
+        incomplete: false,
         checked_at: chrono::Utc::now().to_rfc3339(),
     }
 }
@@ -420,7 +482,7 @@ pub(crate) fn status(ctx: &BackupCtx<'_>, app_version: &str) -> SyncStatus {
     };
     let mut warnings = Vec::new();
     let local_fp = match backup::build_bundle(ctx, app_version, &mut warnings) {
-        Ok(b) => fingerprint(&b),
+        Ok(b) => fingerprint(&b, ctx.vault_seed),
         Err(e) => return base_status(ctx, SyncState::Error, Some(e.to_string())),
     };
     // No fingerprint yet = this device never synced with this folder. If the
@@ -430,30 +492,55 @@ pub(crate) fn status(ctx: &BackupCtx<'_>, app_version: &str) -> SyncStatus {
         None => remote.is_none(),
         Some(fp) => fp != local_fp,
     };
-    let last_push = setting(ctx, SYNC_LAST_PUSH_KEY);
-    let last_pull = setting(ctx, SYNC_LAST_PULL_KEY);
-    let remote_newer = remote.as_ref().is_some_and(|m| {
-        // Our own last push is not "remote news"; anything else newer than
-        // the last pull is.
-        last_push.as_deref() != Some(m.written_at.as_str())
-            && last_pull
-                .as_deref()
-                .is_none_or(|lp| newer(&m.written_at, lp))
-    });
+    let remote_newer = remote
+        .as_ref()
+        .is_some_and(|m| match setting(ctx, SYNC_SEEN_REMOTE_KEY) {
+            // Anything other than the bundle we last pushed or pulled is news.
+            Some(seen) => seen != m.written_at,
+            // Bookkeeping from before SYNC_SEEN_REMOTE_KEY: our own last push is
+            // not news; anything newer than the last pull is.
+            None => {
+                setting(ctx, SYNC_LAST_PUSH_KEY).as_deref() != Some(m.written_at.as_str())
+                    && setting(ctx, SYNC_LAST_PULL_KEY)
+                        .as_deref()
+                        .is_none_or(|lp| newer(&m.written_at, lp))
+            }
+        });
     let state = match (local_changed, remote_newer) {
         (true, true) => SyncState::Conflict,
         (false, true) => SyncState::RemoteChanges,
         (true, false) => SyncState::LocalChanges,
         (false, false) => SyncState::InSync,
     };
-    let mut st = base_status(ctx, state, None);
+    // Secrets that couldn't be read right now (keyring locked…) are missing
+    // from the bundle: say so, and the unattended push holds off (`auto`).
+    let detail = (!warnings.is_empty()).then(|| warnings.join("; "));
+    let mut st = base_status(ctx, state, detail);
+    st.incomplete = !warnings.is_empty();
     st.remote = remote;
     st
 }
 
 /// Seal the local environment into the folder, overwriting what's there.
 pub(crate) fn push(ctx: &BackupCtx<'_>, app_version: &str) -> Result<SyncStatus, AppError> {
+    push_checked(ctx, app_version, None)
+}
+
+/// [`push`], refusing when `expect_remote` is set and the folder's bundle is
+/// no longer the one the caller decided on (another device pushed in the
+/// meantime) — the unattended push must never overwrite unseen work.
+fn push_checked(
+    ctx: &BackupCtx<'_>,
+    app_version: &str,
+    expect_remote: Option<Option<String>>,
+) -> Result<SyncStatus, AppError> {
     let dir = sync_dir(ctx).ok_or_else(|| internal("sync folder not configured"))?;
+    if let Some(expected) = expect_remote {
+        let now = read_meta(&dir).map_err(internal)?.map(|m| m.written_at);
+        if now != expected {
+            return Ok(status(ctx, app_version));
+        }
+    }
     let passphrase = load_passphrase(ctx).ok_or_else(|| internal("sync passphrase not set"))?;
     std::fs::create_dir_all(&dir).map_err(|e| internal(format!("{}: {e}", dir.display())))?;
     let mut warnings = Vec::new();
@@ -476,7 +563,10 @@ pub(crate) fn push(ctx: &BackupCtx<'_>, app_version: &str) -> Result<SyncStatus,
         .set_setting(SYNC_LAST_PUSH_KEY, &bundle.created_at)
         .map_err(internal)?;
     ctx.db
-        .set_setting(SYNC_FINGERPRINT_KEY, &fingerprint(&bundle))
+        .set_setting(SYNC_SEEN_REMOTE_KEY, &bundle.created_at)
+        .map_err(internal)?;
+    ctx.db
+        .set_setting(SYNC_FINGERPRINT_KEY, &fingerprint(&bundle, ctx.vault_seed))
         .map_err(internal)?;
     tracing::info!(dir = %dir.display(), "sync bundle pushed");
     Ok(status(ctx, app_version))
@@ -496,17 +586,15 @@ pub(crate) fn pull(
     ctx.db
         .set_setting(SYNC_LAST_PULL_KEY, &remote.created_at)
         .map_err(internal)?;
-    // Converged? Then record it so we don't push an identical bundle back.
-    let mut warnings = Vec::new();
-    let local = backup::build_bundle(ctx, app_version, &mut warnings)?;
-    if fingerprint(&local) == fingerprint(&remote) {
-        ctx.db
-            .set_setting(SYNC_FINGERPRINT_KEY, &fingerprint(&local))
-            .map_err(internal)?;
-        ctx.db
-            .set_setting(SYNC_LAST_PUSH_KEY, &remote.created_at)
-            .map_err(internal)?;
-    }
+    ctx.db
+        .set_setting(SYNC_SEEN_REMOTE_KEY, &remote.created_at)
+        .map_err(internal)?;
+    // The fingerprint records what the folder holds now. If this device had
+    // items the remote lacks, the local content differs from it, the status
+    // reads `LocalChanges` and the merged result gets pushed.
+    ctx.db
+        .set_setting(SYNC_FINGERPRINT_KEY, &fingerprint(&remote, ctx.vault_seed))
+        .map_err(internal)?;
     tracing::info!(dir = %dir.display(), "sync bundle pulled");
     Ok((summary, status(ctx, app_version)))
 }
@@ -516,7 +604,12 @@ pub(crate) fn pull(
 pub(crate) fn auto(ctx: &BackupCtx<'_>, app_version: &str) -> Result<SyncStatus, AppError> {
     let st = status(ctx, app_version);
     match st.state {
-        SyncState::LocalChanges => push(ctx, app_version),
+        // Not with secrets missing from the bundle (they'd vanish from the
+        // folder), and only over the bundle status() looked at.
+        SyncState::LocalChanges if !st.incomplete => {
+            let seen = st.remote.as_ref().map(|m| m.written_at.clone());
+            push_checked(ctx, app_version, Some(seen))
+        }
         _ => Ok(st),
     }
 }
@@ -530,9 +623,28 @@ pub(crate) fn configure(
     passphrase: Option<&str>,
     app_version: &str,
 ) -> Result<SyncStatus, AppError> {
-    std::fs::create_dir_all(dir).map_err(|e| internal(format!("{}: {e}", dir.display())))?;
+    // A relative path would resolve against whatever the working directory
+    // is at each launch (Finder vs terminal) — a different folder each time.
+    if !dir.is_absolute() {
+        return Err(internal(format!(
+            "choose a full folder path (not {})",
+            dir.display()
+        )));
+    }
     if let Some(pw) = passphrase {
         backup::validate_passphrase(pw)?;
+        // The folder already holds a bundle: the passphrase must open it, or
+        // this device's next push would re-seal the shared bundle under a
+        // mistyped passphrase and lock every other device out.
+        let bundle = dir.join(SYNC_BUNDLE_FILE);
+        if bundle.is_file() {
+            backup::read_bundle(&bundle, pw).map_err(|_| {
+                internal("this passphrase doesn't open the sync bundle already in that folder")
+            })?;
+        }
+    }
+    std::fs::create_dir_all(dir).map_err(|e| internal(format!("{}: {e}", dir.display())))?;
+    if let Some(pw) = passphrase {
         store_passphrase(ctx, pw)?;
     }
     let dir_str = dir.to_string_lossy().into_owned();
@@ -541,7 +653,12 @@ pub(crate) fn configure(
         .set_setting(SYNC_DIR_KEY, &dir_str)
         .map_err(internal)?;
     if changed_dir {
-        for k in [SYNC_LAST_PUSH_KEY, SYNC_LAST_PULL_KEY, SYNC_FINGERPRINT_KEY] {
+        for k in [
+            SYNC_LAST_PUSH_KEY,
+            SYNC_LAST_PULL_KEY,
+            SYNC_FINGERPRINT_KEY,
+            SYNC_SEEN_REMOTE_KEY,
+        ] {
             ctx.db.delete_setting(k).ok();
         }
     }
@@ -554,6 +671,7 @@ pub(crate) fn disable(ctx: &BackupCtx<'_>) {
         SYNC_LAST_PUSH_KEY,
         SYNC_LAST_PULL_KEY,
         SYNC_FINGERPRINT_KEY,
+        SYNC_SEEN_REMOTE_KEY,
     ] {
         ctx.db.delete_setting(k).ok();
     }
@@ -583,9 +701,7 @@ pub fn spawn(app: AppHandle) {
 fn run_once(app: &AppHandle, last_signature: &mut Option<String>) {
     let state = app.state::<AppState>();
     let version = app.package_info().version.to_string();
-    let store = KeyringStore {
-        portable: state.data_dir.is_portable(),
-    };
+    let store = KeyringStore;
     let ctx = BackupCtx::from_state(&state, &store);
     let st = {
         let _g = SYNC_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -626,9 +742,7 @@ fn with_ctx<T>(
     f: impl FnOnce(&BackupCtx<'_>, &str) -> Result<T, AppError>,
 ) -> Result<T, AppError> {
     let version = app.package_info().version.to_string();
-    let store = KeyringStore {
-        portable: state.data_dir.is_portable(),
-    };
+    let store = KeyringStore;
     let ctx = BackupCtx::from_state(state, &store);
     let _g = SYNC_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     f(&ctx, &version)
@@ -825,8 +939,8 @@ mod tests {
         let meta = read_meta(&shared).unwrap().unwrap();
         assert_eq!(meta.device_id, "dev-a");
         assert_eq!(st.remote.as_ref().unwrap().written_at, meta.written_at);
-        // The passphrase survives a keyring that forgets it (DB fallback).
-        a.store.delete(SYNC_KEYRING_KEY);
+        // The keyring holds the passphrase, so the database keeps no copy.
+        assert!(a.db.get_setting(SYNC_PASSPHRASE_KEY).unwrap().is_none());
         assert_eq!(status(&a.ctx(), "1").state, SyncState::InSync);
 
         // B joins: the folder already holds A's bundle → remote changes.
@@ -895,22 +1009,22 @@ mod tests {
             d.db.set_setting("ui.theme", "fjord").unwrap();
         }
         let mut w = Vec::new();
-        let fa = fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap());
-        let fb = fingerprint(&backup::build_bundle(&b.ctx(), "1", &mut w).unwrap());
+        let fa = fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap(), "k");
+        let fb = fingerprint(&backup::build_bundle(&b.ctx(), "1", &mut w).unwrap(), "k");
         assert_eq!(fa, fb);
         // Device identity and timestamps don't count…
-        let fa2 = fingerprint(&backup::build_bundle(&a.ctx(), "2", &mut w).unwrap());
+        let fa2 = fingerprint(&backup::build_bundle(&a.ctx(), "2", &mut w).unwrap(), "k");
         assert_eq!(fa, fa2);
         // …but a setting, a session or a host key does.
         a.db.set_setting("ui.theme", "oxide").unwrap();
         assert_ne!(
             fa,
-            fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap())
+            fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap(), "k")
         );
         b.add_ssh("three");
         assert_ne!(
             fb,
-            fingerprint(&backup::build_bundle(&b.ctx(), "1", &mut w).unwrap())
+            fingerprint(&backup::build_bundle(&b.ctx(), "1", &mut w).unwrap(), "k")
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -929,7 +1043,7 @@ mod tests {
             name: name.map(Into::into),
         };
         let mut w = Vec::new();
-        let mut fp = || fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap());
+        let mut fp = || fingerprint(&backup::build_bundle(&a.ctx(), "1", &mut w).unwrap(), "k");
         a.db.set_session_forwards(id, &[fw(None)]).unwrap();
         let unnamed = fp();
         a.db.set_session_forwards(id, &[fw(Some("FortiGate GUI"))])
@@ -938,6 +1052,44 @@ mod tests {
         assert_ne!(unnamed, named, "a rename must count as a change to sync");
         a.db.set_session_forwards(id, &[fw(Some("RDP"))]).unwrap();
         assert_ne!(named, fp());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A device that joins with sessions of its own publishes them after the
+    /// pull (before, it reported InSync and never pushed), and a bundle
+    /// stamped by a clock running fast doesn't hide a later one.
+    #[test]
+    fn joining_device_publishes_its_own_items_and_clocks_dont_matter() {
+        let root = root("join");
+        let shared = root.join("shared");
+        let a = Device::new(&root, "a");
+        let b = Device::new(&root, "b");
+        a.add_ssh("from-a");
+        b.add_ssh("own");
+        configure(&a.ctx(), &shared, Some("shared passphrase"), "1").unwrap();
+        auto(&a.ctx(), "1").unwrap();
+
+        configure(&b.ctx(), &shared, Some("shared passphrase"), "1").unwrap();
+        let (_, st) = pull(&b.ctx(), "1").unwrap();
+        assert_eq!(st.state, SyncState::LocalChanges, "{st:?}");
+        let st = auto(&b.ctx(), "1").unwrap();
+        assert_eq!(st.state, SyncState::InSync, "{st:?}");
+        // A now sees B's push as news and gets B's session from it.
+        assert_eq!(status(&a.ctx(), "1").state, SyncState::RemoteChanges);
+        pull(&a.ctx(), "1").unwrap();
+        let names: Vec<_> =
+            a.db.list_sessions()
+                .unwrap()
+                .into_iter()
+                .map(|s| s.name)
+                .collect();
+        assert!(names.contains(&"own".to_string()), "{names:?}");
+
+        // A bundle written by a clock an hour behind is still news to A.
+        let mut meta = read_meta(&shared).unwrap().unwrap();
+        meta.written_at = "2000-01-01T00:00:00+00:00".into();
+        write_meta(&shared, &meta).unwrap();
+        assert_eq!(status(&a.ctx(), "1").state, SyncState::RemoteChanges);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -950,9 +1102,21 @@ mod tests {
         a.add_ssh("x");
         configure(&a.ctx(), &shared, Some("passphrase-a"), "1").unwrap();
         auto(&a.ctx(), "1").unwrap();
-        configure(&b.ctx(), &shared, Some("passphrase-b"), "1").unwrap();
+        // Joining a folder with a passphrase that doesn't open its bundle is
+        // refused (a push would re-seal the shared bundle under it).
+        let err = configure(&b.ctx(), &shared, Some("passphrase-b"), "1")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("doesn't open"), "{err}");
+        // A relative folder is refused too.
+        assert!(configure(&b.ctx(), Path::new("rel/dir"), None, "1").is_err());
+        // A stored passphrase that no longer matches: pull says so.
+        configure(&b.ctx(), &shared, Some("passphrase-a"), "1").unwrap();
+        store_passphrase(&b.ctx(), "passphrase-b").unwrap();
         let err = pull(&b.ctx(), "1").unwrap_err().to_string();
         assert!(err.contains("wrong passphrase"), "{err}");
+        // Corrupted (non-ASCII) hex is rejected, not a panic.
+        assert!(hex_decode("zé").is_none());
         std::fs::remove_dir_all(&shared).unwrap();
         let st = status(&a.ctx(), "1");
         assert_eq!(st.state, SyncState::Error);

@@ -66,8 +66,10 @@ russh-sftp = "2.1"
 home       = "0.5"
 
 # Bloque 3 — persistence + vault
-rusqlite = { version = "0.32", features = ["bundled"] }
-keyring  = "3"
+rusqlite = { version = "0.41", features = ["bundled"] }
+# OS backends must be named explicitly: without them keyring 3 falls back to
+# an in-memory mock store that keeps nothing.
+keyring  = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 # Bloque 4 — serial transport
 serialport  = "4"
