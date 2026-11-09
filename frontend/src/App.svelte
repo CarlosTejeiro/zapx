@@ -1955,6 +1955,7 @@
                 cols={tab.layout.cols}
                 {theme}
                 {focusedPaneId}
+                active={tab.id === activeTabId}
                 onFocus={(id) => (focusedPaneId = id)}
                 onClosePane={(id) => handleClosePane(id)}
                 onStatusChange={(id, s) => handleStatusChange(tab.id, id, s)}

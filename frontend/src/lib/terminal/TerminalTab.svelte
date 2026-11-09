@@ -306,8 +306,13 @@
     if (!term || !searchQuery) return 0
     const buf = term.buffer.active
     let text = ''
+    // Rows that are soft-wrapped continuations join their line without a
+    // break, as xterm's own search does — otherwise a match crossing the wrap
+    // is found and highlighted but not counted.
     for (let i = 0; i < buf.length; i++) {
-      text += (buf.getLine(i)?.translateToString(true) ?? '') + '\n'
+      const line = buf.getLine(i)
+      if (i > 0 && !line?.isWrapped) text += '\n'
+      text += line?.translateToString(!buf.getLine(i + 1)?.isWrapped) ?? ''
     }
     try {
       const flags = searchCaseSensitive ? 'g' : 'gi'
@@ -318,7 +323,8 @@
         const esc = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         source = searchWholeWord ? `\\b${esc}\\b` : esc
       }
-      return (text.match(new RegExp(source, flags)) ?? []).length
+      // Empty matches (a regex like `x*`) are not results: xterm skips them.
+      return (text.match(new RegExp(source, flags)) ?? []).filter((m) => m !== '').length
     } catch {
       return 0 // malformed regex while typing
     }
@@ -382,6 +388,11 @@
   interface TerminalDataPayload {
     session_id: string
     data: number[]
+  }
+
+  interface DisconnectPayload {
+    session_id: string
+    ended?: boolean
   }
 
   function fmtError(e: unknown): string {
@@ -660,6 +671,38 @@
     refocusTerminal()
   }
 
+  // The session ended by itself. `ended`: the remote side finished it
+  // (`exit`, logout, the device closed it) — show it as ended, no automatic
+  // reconnect. Otherwise the link was lost (read error, keepalives
+  // unanswered): mark it and auto-reconnect if enabled. The banner offers a
+  // manual reconnect either way.
+  function handleDisconnect(ended: boolean) {
+    const gone = sessionId
+    if (!gone) return
+    if (paneId != null) unregisterSession(paneId)
+    unregisterFocus(gone)
+    sessionId = null
+    // Free what the backend still holds for it (stats/MSS tasks, tunnels).
+    void invoke('close_session', { sessionId: gone }).catch(console.error)
+    disconnected = true
+    sessionEnded = ended
+    if (sessionEnded) {
+      onSessionClose?.()
+      return
+    }
+    onSessionError?.()
+    scheduleReconnect()
+  }
+
+  /** After a successful (re)open: handle an end that arrived while the
+   *  session was still opening. */
+  function afterOpen() {
+    sessionReady = true
+    const p = pendingDisconnect
+    pendingDisconnect = null
+    if (p) handleDisconnect(p.ended === true)
+  }
+
   function clearSelfHealTimer() {
     if (selfHealTimer != null) {
       clearTimeout(selfHealTimer)
@@ -685,6 +728,7 @@
       onSessionOpen?.()
       showToast({ kind: 'success', title: 'Reconnected' })
       term.focus()
+      afterOpen()
     } catch (e) {
       reconnecting = false
       if (destroyed) return
@@ -701,6 +745,16 @@
   let earlyOutput: TerminalDataPayload[] = []
   let earlyBytes = 0
   let keepingEarly = false
+  // Same for `session-disconnected`: a session that ends within moments of
+  // opening (a `nologin` account, a device refusing more sessions) must not
+  // look connected forever because its end arrived before its id was known.
+  let earlyDisconnects: DisconnectPayload[] = []
+  /** This session's end, seen while opening; handled once it is set up. */
+  let pendingDisconnect: DisconnectPayload | null = null
+  /** The open session is fully set up (`onSessionOpen` called): an end can be
+   *  handled right away. Until then it waits in `pendingDisconnect`, so the
+   *  host never sees "open" after "closed". */
+  let sessionReady = false
   /** Set by onDestroy: an open still in flight then closes what it opened. */
   let destroyed = false
   const EARLY_OUTPUT_MAX = 1 << 20
@@ -721,6 +775,9 @@
   async function openKeepingEarlyOutput(): Promise<string | null> {
     earlyOutput = []
     earlyBytes = 0
+    earlyDisconnects = []
+    pendingDisconnect = null
+    sessionReady = false
     keepingEarly = true
     try {
       const id = await doOpen()
@@ -730,11 +787,13 @@
       }
       sessionId = id
       flushEarlyOutput()
+      pendingDisconnect = earlyDisconnects.find((d) => d.session_id === id) ?? null
       return id
     } finally {
       keepingEarly = false
       earlyOutput = []
       earlyBytes = 0
+      earlyDisconnects = []
     }
   }
 
@@ -1015,6 +1074,19 @@
       })
       track(offData)
       if (destroyed) return
+      track(
+        await listen<DisconnectPayload>('session-disconnected', (event) => {
+          if (sessionId === null) {
+            // Possibly ours, still opening — decided once the id is known.
+            if (keepingEarly && earlyDisconnects.length < 64) earlyDisconnects.push(event.payload)
+            return
+          }
+          if (event.payload.session_id !== sessionId) return
+          if (sessionReady) handleDisconnect(event.payload.ended === true)
+          else pendingDisconnect = event.payload
+        }),
+      )
+      if (destroyed) return
 
       // Verify the SSH host key (known_hosts) before connecting — of the host
       // dialed directly: the first jump host when there is one (the target
@@ -1148,31 +1220,6 @@
       }),
     )
 
-    // The session ended by itself. `ended`: the remote side finished it
-    // (`exit`, logout, the device closed it) — show it as ended, no automatic
-    // reconnect. Otherwise the link was lost (read error, keepalives
-    // unanswered): mark it and auto-reconnect if enabled. The banner offers a
-    // manual reconnect either way.
-    track(
-      await listen<{ session_id: string; ended?: boolean }>('session-disconnected', (event) => {
-        if (event.payload.session_id !== sessionId) return
-        const gone = sessionId
-        if (paneId != null) unregisterSession(paneId)
-        unregisterFocus(gone)
-        sessionId = null
-        // Free what the backend still holds for it (stats/MSS tasks, tunnels).
-        void invoke('close_session', { sessionId: gone }).catch(console.error)
-        disconnected = true
-        sessionEnded = event.payload.ended === true
-        if (sessionEnded) {
-          onSessionClose?.()
-          return
-        }
-        onSessionError?.()
-        scheduleReconnect()
-      }),
-    )
-
     // Forward keyboard input to the PTY (and to every other registered
     // session when MultiExec broadcast is on).
     term.onData((data: string) => {
@@ -1209,6 +1256,9 @@
       })
     })
     resizeObserver.observe(container)
+
+    // Everything is wired: now act on an end that arrived while opening.
+    afterOpen()
   })
 
   // Teardown. Registered synchronously at component init — NOT inside the async

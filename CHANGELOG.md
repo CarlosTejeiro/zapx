@@ -5,6 +5,25 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.5] - 2026-11-09
+
+### Fixed
+- **MultiExec with two group grids open sent your typing to the wrong
+  devices.** Every tab stays open in the background, and the grids fought
+  over which one scoped the broadcast. With grids A and B open, typing in A
+  with Multi on could go to B's devices and not to A's other panes.
+  Broadcast now follows the grid you're looking at. Tabs that aren't grids
+  keep broadcasting to every open session, as before.
+- **A session that ended right after connecting could look connected
+  forever.** Examples are an account with a `nologin` shell, or a device
+  that refuses more sessions and closes. The end could arrive before the
+  tab was listening for it. Such a session now shows **Session ended**.
+- **Terminal search** counted a match that crossed a wrapped line as no
+  match, so "N/M" was off. A regex that can match empty text (`x*`) no
+  longer inflates the count.
+- Closing the SFTP browser or the hints settings very quickly could leave
+  an event listener behind.
+
 ## [0.29.4] - 2026-11-09
 
 ### Fixed
