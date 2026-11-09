@@ -491,7 +491,15 @@ fn build_ssh_auth(
                 .db
                 .get_credential_keyring_key(credential_id)
                 .ok()
-                .and_then(|key| core_vault::Vault::retrieve(&key).ok())
+                .and_then(|key| {
+                    crate::secrets::resolve(
+                        &state.db,
+                        &state.vault_seed,
+                        &key,
+                        crate::secrets::Fallback::Credential(credential_id),
+                        state.data_dir.is_portable(),
+                    )
+                })
                 .ok_or_else(|| {
                     AppError::Internal(format!(
                         "vault credential {credential_id} unavailable (keyring locked or entry deleted)"
@@ -849,30 +857,6 @@ fn reader_loop(
 // Saved session CRUD (persisted in SQLite via core-persistence)
 // ---------------------------------------------------------------------------
 
-/// Store `secret` in the OS keyring under `key`.
-///
-/// On **portable** installs the keyring is not the source of truth (see
-/// `data_dir` docs) — the AES-256-GCM `session_secrets` fallback is — so a
-/// keyring failure there is logged and tolerated rather than aborting session
-/// creation. On non-portable installs the keyring is primary, so a failure is
-/// fatal.
-pub(crate) fn store_secret_in_keyring(
-    key: &str,
-    secret: &str,
-    portable: bool,
-) -> Result<(), AppError> {
-    match core_vault::Vault::store(key, secret) {
-        Ok(()) => Ok(()),
-        Err(e) if portable => {
-            tracing::warn!(
-                "keyring store failed in portable mode ({e}); using encrypted DB fallback"
-            );
-            Ok(())
-        }
-        Err(e) => Err(AppError::Internal(e.to_string())),
-    }
-}
-
 /// Save a new SSH session. Secrets (password, key passphrase) go to the OS
 /// keyring; the key file path is not a secret and is stored in `options_json`.
 #[tauri::command]
@@ -904,6 +888,9 @@ pub async fn create_saved_session(
     // data_dir docs); the AES-256-GCM `session_secrets` fallback is the store.
     let portable = state.data_dir.is_portable();
 
+    // Whether the OS keyring took the secret (else the encrypted database copy
+    // below holds it).
+    let mut in_keyring = true;
     // (auth_method, credential_id, options_json, password_to_cache) derived per type.
     let (auth_method, credential_id, options_json, password_to_cache): (
         &str,
@@ -913,7 +900,7 @@ pub async fn create_saved_session(
     ) = match auth {
         AuthMethodArg::Password { password } => {
             let keyring_key = format!("ssh:{}", Uuid::new_v4());
-            store_secret_in_keyring(&keyring_key, &password, portable)?;
+            in_keyring = crate::secrets::keyring_put(&keyring_key, &password);
             let cred_id = state
                 .db
                 .create_credential(&name, "ssh_password", Some(&username), &keyring_key)
@@ -928,7 +915,7 @@ pub async fn create_saved_session(
             let (cred_id, pp_to_persist) = match passphrase {
                 Some(pp) if !pp.is_empty() => {
                     let keyring_key = format!("ssh:{}", Uuid::new_v4());
-                    store_secret_in_keyring(&keyring_key, &pp, portable)?;
+                    in_keyring = crate::secrets::keyring_put(&keyring_key, &pp);
                     let id = state
                         .db
                         .create_credential(&name, "ssh_key", Some(&username), &keyring_key)
@@ -968,33 +955,21 @@ pub async fn create_saved_session(
         )
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    // Seed only the in-process memory cache so the first reopen works without
-    // a keyring round-trip. We deliberately do NOT write the encrypted
-    // `session_secrets` row here: the password is already in the OS keyring,
-    // and persisting a second on-disk copy would weaken every session to the
-    // strength of the local-fallback cipher — even on signed builds where the
-    // keyring works fine. The on-disk fallback is populated only by
-    // `cache_session_password`, i.e. once the keyring has actually proven
-    // unusable and the user re-entered the password.
+    // Seed the in-process memory cache so the first reopen needs no keyring
+    // round-trip, and keep the encrypted database copy only where the policy
+    // in `crate::secrets` wants it (keyring unavailable, or a portable
+    // install) — never a second at-rest copy when the keyring holds it.
     if let Some(pw) = password_to_cache {
         state.password_cache.lock().unwrap().insert(id, pw.clone());
-        // Portable installs: also persist the AES-256-GCM on-disk fallback so
-        // the secret is recoverable after the process exits WITHOUT the OS
-        // keyring (which portable mode doesn't rely on). Vault credentials
-        // already carry this fallback; session passwords/passphrases did not,
-        // which made direct-password sessions fail to authenticate on the
-        // Windows portable build. Non-portable installs keep the secret in the
-        // keyring only, to avoid a second at-rest copy on signed builds.
-        if portable {
-            match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
-                Ok(blob) => {
-                    if let Err(e) = state.db.set_session_secret(id, &blob) {
-                        tracing::warn!(id, "persist portable session_secret failed: {e}");
-                    }
-                }
-                Err(e) => tracing::warn!(id, "encrypt portable session_secret failed: {e}"),
-            }
-        }
+        crate::secrets::settle_fallback(
+            &state.db,
+            &state.vault_seed,
+            crate::secrets::Fallback::Session(id),
+            &pw,
+            in_keyring,
+            portable,
+        )
+        .map_err(AppError::Internal)?;
     }
 
     Ok(id)
@@ -1093,11 +1068,12 @@ pub async fn set_session_credential(
     // same rules as create_saved_session. `key_path` is not a secret and keeps
     // travelling through options_json via update_saved_session, so it is not
     // handled here.
+    let mut in_keyring = true;
     let (auth_method, new_credential_id, password_to_cache): (&str, Option<i64>, Option<String>) =
         match auth {
             AuthMethodArg::Password { password } => {
                 let keyring_key = format!("ssh:{}", Uuid::new_v4());
-                store_secret_in_keyring(&keyring_key, &password, portable)?;
+                in_keyring = crate::secrets::keyring_put(&keyring_key, &password);
                 let cred_id = state
                     .db
                     .create_credential(&session.name, "ssh_password", username, &keyring_key)
@@ -1111,7 +1087,7 @@ pub async fn set_session_credential(
                 let cred_id = match passphrase {
                     Some(pp) if !pp.is_empty() => {
                         let keyring_key = format!("ssh:{}", Uuid::new_v4());
-                        store_secret_in_keyring(&keyring_key, &pp, portable)?;
+                        in_keyring = crate::secrets::keyring_put(&keyring_key, &pp);
                         Some(
                             state
                                 .db
@@ -1160,16 +1136,15 @@ pub async fn set_session_credential(
     state.password_cache.lock().unwrap().remove(&id);
     if let Some(pw) = password_to_cache {
         state.password_cache.lock().unwrap().insert(id, pw.clone());
-        if portable {
-            match core_vault::encrypt_with_seed(&state.vault_seed, &pw) {
-                Ok(blob) => {
-                    if let Err(e) = state.db.set_session_secret(id, &blob) {
-                        tracing::warn!(id, "persist portable session_secret failed: {e}");
-                    }
-                }
-                Err(e) => tracing::warn!(id, "encrypt portable session_secret failed: {e}"),
-            }
-        }
+        crate::secrets::settle_fallback(
+            &state.db,
+            &state.vault_seed,
+            crate::secrets::Fallback::Session(id),
+            &pw,
+            in_keyring,
+            portable,
+        )
+        .map_err(AppError::Internal)?;
     } else {
         // No session-owned secret any more (vault entry, agent, key, or KI):
         // drop a stale portable fallback blob so it can't shadow the new auth.
@@ -1252,11 +1227,28 @@ pub async fn clone_saved_session(state: State<'_, AppState>, id: i64) -> Result<
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     // Give the copy its own credential when the secret is readable; otherwise
-    // it starts credential-less and prompts on first connect (keyring
-    // unavailable, or key/agent auth with no stored secret).
-    let credential_id = src
+    // it starts credential-less and prompts on first connect (key/agent auth
+    // with no stored secret). A shared vault entry stays shared.
+    let mut cloned: Option<(String, bool)> = None; // (secret, in keyring)
+    let credential_id = match src
         .credential_id
-        .and_then(|cid| clone_credential(&state.db, cid));
+        .and_then(|cid| state.db.get_credential(cid).ok())
+    {
+        Some(c) if c.reusable => Some(c.id),
+        Some(c) => crate::secrets::keyring_get(&c.keyring_key)
+            .or_else(|| typed_password(&state.db, &state.password_cache, &state.vault_seed, src.id))
+            .and_then(|secret| {
+                let new_key = format!("ssh:{}", Uuid::new_v4());
+                let in_keyring = crate::secrets::keyring_put(&new_key, &secret);
+                let id = state
+                    .db
+                    .create_credential(&c.name, &c.kind, c.username.as_deref(), &new_key)
+                    .ok()?;
+                cloned = Some((secret, in_keyring));
+                Some(id)
+            }),
+        None => None,
+    };
 
     let new_id = state
         .db
@@ -1286,20 +1278,22 @@ pub async fn clone_saved_session(state: State<'_, AppState>, id: i64) -> Result<
             let _ = state.db.set_session_forwards(new_id, &forwards);
         }
     }
+    // The copied secret: an encrypted database copy too when the keyring
+    // couldn't take it (or on a portable install).
+    if let Some((secret, in_keyring)) = cloned {
+        if let Err(e) = crate::secrets::settle_fallback(
+            &state.db,
+            &state.vault_seed,
+            crate::secrets::Fallback::Session(new_id),
+            &secret,
+            in_keyring,
+            state.data_dir.is_portable(),
+        ) {
+            tracing::warn!(new_id, "{e}");
+        }
+    }
 
     Ok(new_id)
-}
-
-/// Best-effort credential duplication: copy the secret into a fresh keyring
-/// entry and record a new credential row. Returns `None` if the secret can't
-/// be read, so the clone simply connects credential-less.
-fn clone_credential(db: &core_persistence::Database, src_cred_id: i64) -> Option<i64> {
-    let cred = db.get_credential(src_cred_id).ok()?;
-    let secret = core_vault::Vault::retrieve(&cred.keyring_key).ok()?;
-    let new_key = format!("ssh:{}", Uuid::new_v4());
-    core_vault::Vault::store(&new_key, &secret).ok()?;
-    db.create_credential(&cred.name, &cred.kind, cred.username.as_deref(), &new_key)
-        .ok()
 }
 
 /// The password typed for `session_id` in a pane's reconnect form: from the
@@ -1349,25 +1343,57 @@ fn resolve_ssh_auth_for_session(
     // credential (a typed *password* must never be tried as a passphrase), and
     // agent / keyboard-interactive sessions need no lookup at all.
     let lookup_secret = |without_credential: bool| -> Option<String> {
-        let from_keyring = session.credential_id.and_then(|cred_id| {
-            state
-                .db
-                .get_credential_keyring_key(cred_id)
-                .ok()
-                .and_then(|key| core_vault::Vault::retrieve(&key).ok())
-        });
-        if from_keyring.is_some() {
-            return from_keyring;
+        use crate::secrets::{self, Fallback};
+        let portable = state.data_dir.is_portable();
+        let cred = session
+            .credential_id
+            .and_then(|id| state.db.get_credential(id).ok());
+        if let Some(s) = cred
+            .as_ref()
+            .and_then(|c| secrets::keyring_get(&c.keyring_key))
+        {
+            return Some(s);
         }
-        if session.credential_id.is_none() && !without_credential {
+        if cred.is_none() && !without_credential {
             return None;
         }
-        typed_password(
+        // Typed in a pane, or the session's own encrypted copy. With a private
+        // credential and a working keyring, that copy moves into the keyring.
+        if let Some(pw) = typed_password(
             &state.db,
             &state.password_cache,
             &state.vault_seed,
             session.id,
-        )
+        ) {
+            if let Some(c) = cred.as_ref().filter(|c| !c.reusable && !portable) {
+                if secrets::read_fallback(
+                    &state.db,
+                    &state.vault_seed,
+                    Fallback::Session(session.id),
+                )
+                .is_some()
+                {
+                    secrets::migrate_to_keyring(
+                        &state.db,
+                        &c.keyring_key,
+                        Fallback::Session(session.id),
+                        &pw,
+                    );
+                }
+            }
+            return Some(pw);
+        }
+        // A vault entry's own encrypted copy (moved into the keyring when it
+        // works). Before, a vault-backed session never looked here.
+        cred.as_ref().filter(|c| c.reusable).and_then(|c| {
+            secrets::resolve(
+                &state.db,
+                &state.vault_seed,
+                &c.keyring_key,
+                Fallback::Credential(c.id),
+                portable,
+            )
+        })
     };
 
     Ok(match session.auth_method.as_deref() {
@@ -1417,16 +1443,37 @@ pub async fn cache_session_password(
         .unwrap()
         .insert(saved_session_id, password.clone());
 
-    // Best-effort encrypted persistence — surface failures as a warning,
-    // not a hard error, so a missing aes-gcm dep on some platform doesn't
-    // break the reconnect flow.
-    match core_vault::encrypt_with_seed(&state.vault_seed, &password) {
-        Ok(blob) => {
-            if let Err(e) = state.db.set_session_secret(saved_session_id, &blob) {
-                tracing::warn!(saved_session_id, "persist session_secret failed: {e}");
+    // Keep it for later restarts. A session with its own (private)
+    // credential stores it like any saved password — OS keyring first, the
+    // encrypted database copy only when needed; one without a credential
+    // (e.g. a MobaXterm import) has no keyring entry, so it keeps the
+    // encrypted copy. Best effort: a failure is a warning, not an error,
+    // so the reconnect still goes ahead with the in-memory copy.
+    use crate::secrets::{self, Fallback};
+    let target = Fallback::Session(saved_session_id);
+    let private_cred = state
+        .db
+        .get_session(saved_session_id)
+        .ok()
+        .and_then(|s| s.credential_id)
+        .and_then(|id| state.db.get_credential(id).ok())
+        .filter(|c| !c.reusable);
+    match private_cred {
+        Some(c) => {
+            if let Err(e) = secrets::persist(
+                &state.db,
+                &state.vault_seed,
+                &c.keyring_key,
+                target,
+                &password,
+                state.data_dir.is_portable(),
+            ) {
+                tracing::warn!(saved_session_id, "{e}");
             }
         }
-        Err(e) => tracing::warn!(saved_session_id, "encrypt session_secret failed: {e}"),
+        None => {
+            secrets::write_fallback(&state.db, &state.vault_seed, target, &password);
+        }
     }
     Ok(())
 }
@@ -1478,6 +1525,19 @@ pub async fn forget_session_password(
         .lock()
         .unwrap()
         .remove(&saved_session_id);
+    // A typed password for a session with its own credential may have gone to
+    // the OS keyring (see `cache_session_password`): drop that too, or the
+    // wrong value would keep winning. A shared vault entry is left alone.
+    if let Some(c) = state
+        .db
+        .get_session(saved_session_id)
+        .ok()
+        .and_then(|s| s.credential_id)
+        .and_then(|id| state.db.get_credential(id).ok())
+        .filter(|c| !c.reusable)
+    {
+        core_vault::Vault::delete(&c.keyring_key).ok();
+    }
     state
         .db
         .delete_session_secret(saved_session_id)

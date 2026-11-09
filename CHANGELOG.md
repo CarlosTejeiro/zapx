@@ -5,6 +5,63 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.3] - 2026-11-09
+
+### Security
+- **Saved passwords now really go to the system keychain.** Until this
+  version ZAPX was built without any keychain backend, so nothing ever
+  reached the macOS Keychain, Windows Credential Manager or the Linux
+  Secret Service; every saved password lived only in the database,
+  encrypted with the local `vault.key`. ZAPX now uses the real keychain on
+  each system. The encrypted database copy is kept only when the keychain is
+  unavailable (e.g. no Secret Service on Linux) or on a portable install.
+  Existing passwords keep working and move to the keychain the first time
+  they are used; macOS may ask once for Keychain access.
+- A damaged or unreadable `vault.key` is now reported as an error instead of
+  being silently replaced by a new key, which made every saved password
+  unreadable. On Linux/macOS the file's permissions are tightened to
+  owner-only.
+- Encrypted backup files can no longer ask for absurd amounts of memory or
+  CPU when they are opened, and a backup made by a newer ZAPX says so
+  instead of reporting a wrong passphrase.
+
+### Fixed
+- **Sync:**
+  - A device that joined an existing sync folder with items of its own
+    never published them.
+  - Clock differences between devices could make sync skip or repeat
+    changes.
+  - Sync no longer pushes automatically while some passwords are missing
+    on this device, which could overwrite the good copy on the other
+    devices.
+  - It also no longer overwrites a remote change made between the status
+    check and the push.
+  - Configuring sync now rejects relative folders, and rejects a passphrase
+    that doesn't open the bundle already in the folder.
+- **Backup restore:** a vault entry this device already has keeps its local
+  password instead of being overwritten by an older one from the backup.
+  Restore and sync can no longer run at the same time. Per-device settings
+  (Python path, sidebar width) are no longer restored onto another machine.
+  Backup and sync files are written safely, so a crash mid-write can't leave
+  a truncated file.
+- **Cloning a session** with a private credential copies the password, so
+  the copy doesn't lose or share it. "Forget password" now also removes it
+  from the keychain.
+- **Changing the data folder** re-encrypts vault passwords and the sync
+  passphrase for the new folder; before, they became unreadable.
+- **Importing highlight rules** keeps disabled rules disabled.
+- **Database upgrades** run each step in a transaction, so an interrupted
+  upgrade can't leave a half-migrated database. Opening a database from a
+  newer ZAPX version is refused instead of risking damage. Duplicate vault
+  entry names no longer block the upgrade.
+- Sending a vault password to a closed session now reports an error instead
+  of silently doing nothing.
+
+### Notes
+- The sync fingerprint format changed, so the first sync after updating
+  pushes once from each device. This is expected.
+- Linux builds now need `libdbus-1` (the Arch package depends on `dbus`).
+
 ## [0.29.2] - 2026-11-09
 
 ### Changed

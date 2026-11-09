@@ -7,6 +7,7 @@ mod importers;
 mod login_script;
 mod menu;
 mod scripting;
+mod secrets;
 mod state;
 mod triggers;
 

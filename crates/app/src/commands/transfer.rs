@@ -349,16 +349,21 @@ pub fn apply_import(db: &Database, file: &ExportFile) -> Result<ImportSummary, A
         {
             continue;
         }
-        db.create_highlight_rule(
-            &r.name,
-            &r.pattern,
-            r.is_regex,
-            r.fg_color.as_deref(),
-            r.bg_color.as_deref(),
-            r.bold,
-            r.underline,
-        )
-        .map_err(internal)?;
+        let id = db
+            .create_highlight_rule(
+                &r.name,
+                &r.pattern,
+                r.is_regex,
+                r.fg_color.as_deref(),
+                r.bg_color.as_deref(),
+                r.bold,
+                r.underline,
+            )
+            .map_err(internal)?;
+        // New rules start enabled; keep one that was switched off as it was.
+        if !r.enabled {
+            db.toggle_highlight_rule(id, false).map_err(internal)?;
+        }
         summary.rules_added += 1;
     }
 
@@ -582,8 +587,10 @@ mod tests {
             .unwrap();
         src.set_snippet_folder(mac, Some("Net")).unwrap();
         src.set_snippet_shortcut(mac, Some("Ctrl+Alt+L")).unwrap();
-        src.create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
+        let rule_id = src
+            .create_highlight_rule("err", "ERROR", false, Some("#f00"), None, true, false)
             .unwrap();
+        src.toggle_highlight_rule(rule_id, false).unwrap(); // disabled travels as disabled
 
         let export = build_export(&src, "test").unwrap();
         assert!(export.sessions.iter().all(|s| s.credential_id.is_none()));
@@ -595,6 +602,15 @@ mod tests {
         assert_eq!(s1.groups_added, 1);
         assert_eq!(s1.snippets_added, 2);
         assert_eq!(s1.rules_added, 1);
+        assert!(
+            !dst.list_highlight_rules()
+                .unwrap()
+                .iter()
+                .find(|r| r.pattern == "ERROR")
+                .unwrap()
+                .enabled,
+            "a disabled rule must stay disabled"
+        );
         assert!(s1.warnings.is_empty(), "warnings: {:?}", s1.warnings);
 
         // The macro round-trips as a macro: steps + folder preserved, so it

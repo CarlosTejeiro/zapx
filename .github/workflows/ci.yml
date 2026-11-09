@@ -91,7 +91,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             libxdo-dev \
-            libudev-dev
+            libudev-dev \
+            libdbus-1-dev
 
       - name: Format check
         run: cargo fmt --all --check
@@ -152,7 +153,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             libxdo-dev \
-            libudev-dev
+            libudev-dev \
+            libdbus-1-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

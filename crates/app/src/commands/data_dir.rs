@@ -115,6 +115,41 @@ pub async fn set_data_dir(
             }
         }
 
+        // Vault entries' encrypted copies and the sync passphrase are sealed
+        // with the same key: re-encrypt them too, or they'd be unreadable in
+        // the new folder.
+        for cred in state.db.list_vault_entries().unwrap_or_default() {
+            let Ok(Some(blob)) = state.db.get_credential_secret(cred.id) else {
+                continue;
+            };
+            match core_vault::decrypt_with_seed(&state.vault_seed, &blob) {
+                Ok(secret) => {
+                    if let Ok(new_blob) = core_vault::encrypt_with_seed(&new_seed, &secret) {
+                        let _ = migrated_db.set_credential_secret(cred.id, &new_blob);
+                        reencrypted += 1;
+                    }
+                }
+                Err(_) => {
+                    let _ = migrated_db.delete_credential_secret(cred.id);
+                }
+            }
+        }
+        if let Some(pass) = state
+            .db
+            .get_setting(super::sync::SYNC_PASSPHRASE_KEY)
+            .ok()
+            .flatten()
+            .and_then(|hex| super::sync::hex_decode(&hex))
+            .and_then(|blob| core_vault::decrypt_with_seed(&state.vault_seed, &blob).ok())
+        {
+            if let Ok(new_blob) = core_vault::encrypt_with_seed(&new_seed, &pass) {
+                let _ = migrated_db.set_setting(
+                    super::sync::SYNC_PASSPHRASE_KEY,
+                    &super::sync::hex_encode(&new_blob),
+                );
+            }
+        }
+
         // 3. Logs + catalogs travel too (best-effort; sizes can be large).
         let logs = copy_dir_recursive(
             &state.data_dir.dir.join("session_logs"),
