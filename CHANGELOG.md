@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other tab, even hidden ones. Grid tabs already worked this way. The
   snippets dialog's warning says so.
 
+### Fixed
+- **Splitting a pane reconnected its session**, and so did closing the
+  other pane of a split. The terminal was rebuilt, so the session
+  reconnected and the scrollback was lost. Panes now stay as they are when
+  the layout changes; only the pane you close is closed.
+
 ## [0.29.5] - 2026-11-09
 
 ### Fixed
