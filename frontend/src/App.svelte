@@ -220,21 +220,30 @@
 
   let nextId = 1
 
-  const SESSION_COLORS = [
-    '#22d3ee',
-    '#f472b6',
-    '#a78bfa',
-    '#f59e0b',
-    '#ef4444',
-    '#10b981',
-    '#f97316',
-    '#84cc16',
-    '#c89b6b',
-    '#5eb3b2',
+  /// Tab / pane colours: vivid hues that read on light and dark themes.
+  const TAB_PALETTE = [
+    '#22d3ee', // cyan
+    '#f472b6', // pink
+    '#a78bfa', // violet
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#10b981', // emerald
+    '#f97316', // orange
+    '#84cc16', // lime
+    '#3b82f6', // blue
+    '#d946ef', // fuchsia
+    '#14b8a6', // teal
+    '#eab308', // yellow
   ]
 
-  function pickColor(id: number): string {
-    return SESSION_COLORS[id % SESSION_COLORS.length] as string
+  /// A random colour for a new tab or pane, preferring one no open tab
+  /// already shows so neighbouring tabs stay easy to tell apart. (The
+  /// right-click menu on a tab still sets a colour by hand.)
+  function pickColor(alsoAvoid: string[] = []): string {
+    const used = new Set([...tabs.map((t) => t.color), ...alsoAvoid])
+    const free = TAB_PALETTE.filter((c) => !used.has(c))
+    const pool = free.length > 0 ? free : TAB_PALETTE
+    return pool[Math.floor(Math.random() * pool.length)] as string
   }
 
   function mkPane(
@@ -242,7 +251,7 @@
     opts?: Partial<Omit<PaneData, 'id' | 'label' | 'color'>>,
   ): PaneData {
     const id = nextId++
-    return { id, label, color: pickColor(id), ...opts }
+    return { id, label, color: pickColor(), ...opts }
   }
 
   function mkTab(pane: PaneData): AppTab {
@@ -264,14 +273,15 @@
       layout: { kind: 'grid', panes, cols, groupId },
       statuses,
       label,
-      color: panes[0]?.color ?? pickColor(nextId),
+      color: panes[0]?.color ?? pickColor(),
     }
   }
 
+  // Declared first: pickColor() looks at the open tabs.
+  let tabs = $state<AppTab[]>([])
   const firstPane = mkPane('shell')
   const firstTab = mkTab(firstPane)
-
-  let tabs = $state<AppTab[]>([firstTab])
+  tabs = [firstTab]
   let activeTabId = $state(firstTab.id)
   let focusedPaneId = $state(firstPane.id)
   let sessions = $state<SavedSession[]>([])
@@ -697,7 +707,7 @@
       if (target?.empty) {
         target.savedSession = s
         target.label = s.name
-        target.color = pickColor(s.id)
+        target.color = pickColor()
         target.ssh = undefined
         target.telnet = undefined
         target.empty = false
@@ -706,12 +716,7 @@
         return target.id
       }
     }
-    const pane = mkPane(s.name, {
-      savedSession: s,
-      color: pickColor(s.id),
-      skipOnConnectMacro,
-    } as Partial<PaneData>)
-    pane.color = pickColor(s.id)
+    const pane = mkPane(s.name, { savedSession: s, skipOnConnectMacro } as Partial<PaneData>)
     const tab = mkTab(pane)
     tabs = [...tabs, tab]
     activeTabId = tab.id
@@ -858,9 +863,13 @@
       showToast({ kind: 'warning', title: group.name, detail: 'This group has no sessions.' })
       return
     }
-    const panes = members.map((s) =>
-      mkPane(s.name, { savedSession: s, color: pickColor(s.id) } as Partial<PaneData>),
-    )
+    // Distinct colours inside the grid too.
+    const taken: string[] = []
+    const panes = members.map((s) => {
+      const color = pickColor(taken)
+      taken.push(color)
+      return mkPane(s.name, { savedSession: s, color } as Partial<PaneData>)
+    })
     const tab = mkGridTab(panes, group.name, group.id)
     tabs = [...tabs, tab]
     activeTabId = tab.id

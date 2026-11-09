@@ -51,11 +51,11 @@ async fn sftp_for(state: &AppState, session_id: &str) -> Result<Arc<SftpClient>,
     if let Some(client) = &*guard {
         return Ok(Arc::clone(client));
     }
-    // First-use: open the SFTP subsystem. Lock the Mutex briefly — only the
+    // First-use: open the SFTP subsystem. Read-lock the handle briefly — only the
     // `channel_open_session` + `request_subsystem` calls happen under the
     // lock; the returned channel runs independently after that.
     let client = {
-        let guard = handle.lock().await;
+        let guard = handle.read().await;
         Arc::new(
             SftpClient::open(&guard)
                 .await

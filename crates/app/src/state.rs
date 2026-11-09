@@ -64,6 +64,10 @@ pub struct ActiveSession {
     pub rx_total: Arc<AtomicU64>,
     /// Handle for the periodic stats task — aborted on session close.
     pub stats_task: Option<tokio::task::JoinHandle<()>>,
+    /// Handle for the live MSS polling task (direct SSH sessions) — aborted
+    /// on session close. It holds a duplicate of the socket, so leaving it
+    /// running would keep the closed connection's socket open.
+    pub mss_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// A running session log: the logger plus the DB row id for later finalisation.

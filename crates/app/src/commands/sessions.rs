@@ -326,6 +326,12 @@ pub async fn open_local_session(
     // Bridge: tokio UnboundedReceiver → sync PTY writer / resize channel.
     // Small PTY writes (keystrokes) are fast enough to do synchronously here.
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
+    // Closing the tab drops `cmd_tx`: then end the shell, which also unblocks
+    // the reader thread below. `closed_by_app` tells that thread not to report
+    // it as the shell exiting on its own.
+    let mut killer = pty.killer();
+    let closed_by_app = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let closed_flag = Arc::clone(&closed_by_app);
     tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
@@ -339,13 +345,15 @@ pub async fn open_local_session(
                 }
             }
         }
+        closed_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = killer.kill();
     });
 
     // Reader loop runs on a blocking thread (PTY reads are synchronous).
     let sid = session_id.clone();
     let app_handle = app.clone();
     tokio::task::spawn_blocking(move || {
-        reader_loop(reader, pty, resize_rx, sid, app_handle);
+        reader_loop(reader, pty, resize_rx, sid, app_handle, closed_by_app);
     });
 
     // Local PTY doesn't route through make_on_data, so we don't track
@@ -366,6 +374,7 @@ pub async fn open_local_session(
             sftp: None,
             rx_total,
             stats_task,
+            mss_task: None,
         },
     );
 
@@ -627,12 +636,8 @@ pub async fn open_ssh_session(
         session_id.clone(),
         Arc::clone(&rx_total),
     ));
-    // Live MSS polling for the same session. Dropped automatically when the
-    // session is closed (the task observes the watcher's empty streak and
-    // exits within a few INTERVAL ticks).
-    if let Some(w) = mss_watcher {
-        std::mem::drop(spawn_mss_emitter(app.clone(), session_id.clone(), w));
-    }
+    // Live MSS polling for the same session; aborted when the session closes.
+    let mss_task = mss_watcher.map(|w| spawn_mss_emitter(app.clone(), session_id.clone(), w));
 
     state.sessions.lock().unwrap().insert(
         session_id.clone(),
@@ -647,6 +652,7 @@ pub async fn open_ssh_session(
             sftp: Some(core_transport::empty_sftp_slot()),
             rx_total,
             stats_task,
+            mss_task,
         },
     );
 
@@ -780,6 +786,9 @@ pub async fn close_session(state: State<'_, AppState>, session_id: String) -> Re
         if let Some(task) = active.stats_task {
             task.abort();
         }
+        if let Some(task) = active.mss_task {
+            task.abort();
+        }
         tracing::debug!(session_id, "session closed");
     }
     Ok(())
@@ -795,6 +804,7 @@ fn reader_loop(
     resize_rx: mpsc::Receiver<(u16, u16)>,
     session_id: String,
     app: AppHandle,
+    closed_by_app: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let mut buf = vec![0u8; 4096];
 
@@ -829,6 +839,10 @@ fn reader_loop(
 
     pty.kill();
     tracing::debug!(session_id, "reader loop exited");
+    // The shell exited by itself (`exit`, Ctrl-D): tell the tab.
+    if !closed_by_app.load(std::sync::atomic::Ordering::SeqCst) {
+        emit_disconnected(&app, session_id, core_transport::CloseReason::Ended);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,6 +1484,38 @@ pub async fn forget_session_password(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// The host and port an open of `saved_session_id` dials directly: the first
+/// jump host of its chain, or the session itself without one. The tab checks
+/// this host's key (preflight) before connecting; hosts further in reach only
+/// through the tunnel.
+#[tauri::command]
+pub async fn ssh_direct_endpoint(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+) -> Result<(String, u16), AppError> {
+    let session = state
+        .db
+        .get_session(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let first = match session.via_session_id {
+        Some(via) => {
+            let chain = collect_chain_ids(via, &state)?;
+            let id = *chain
+                .first()
+                .ok_or_else(|| AppError::Internal("empty jump host chain".into()))?;
+            state
+                .db
+                .get_session(id)
+                .map_err(|e| AppError::Internal(e.to_string()))?
+        }
+        None => session,
+    };
+    let host = first
+        .host
+        .ok_or_else(|| AppError::Internal(format!("«{}» has no host set", first.name)))?;
+    Ok((host, first.port.unwrap_or(22)))
+}
+
 /// Walk the `via_session_id` chain starting at `start_id` and return the list
 /// of saved-session ids from outermost (no `via`) to innermost (just before
 /// the target). Detects cycles.
@@ -1721,11 +1767,9 @@ pub async fn open_saved_session(
             );
             let stats_task =
                 spawn_stats_emitter(app.clone(), session_id.clone(), Arc::clone(&rx_total));
-            if let Some(w) = mss_watcher {
-                // Detach the task — it polls until the watcher reports empty
-                // for several ticks in a row, which is the post-close state.
-                std::mem::drop(spawn_mss_emitter(app.clone(), session_id.clone(), w));
-            }
+            // Live MSS polling; aborted when the session closes.
+            let mss_task =
+                mss_watcher.map(|w| spawn_mss_emitter(app.clone(), session_id.clone(), w));
 
             // Clone the shared handles before they move into ActiveSession so
             // saved forwards can be auto-started against the same connection.
@@ -1745,6 +1789,7 @@ pub async fn open_saved_session(
                     sftp: Some(core_transport::empty_sftp_slot()),
                     rx_total,
                     stats_task: Some(stats_task),
+                    mss_task,
                 },
             );
 
@@ -1823,6 +1868,7 @@ pub async fn open_saved_session(
                         );
                     },
                 ),
+                make_on_close(app.clone(), session_id.clone()),
             );
 
             link_login_runner(login_link, &cmd_tx);
@@ -1849,6 +1895,7 @@ pub async fn open_saved_session(
                     sftp: None,
                     rx_total,
                     stats_task: Some(stats_task),
+                    mss_task: None,
                 },
             );
 
@@ -1901,25 +1948,28 @@ pub async fn open_saved_session(
             // already has a user-chosen one.
             let on_detected =
                 make_detection_callback(app.clone(), session_id.clone(), Some(saved_session_id));
-            let cmd_tx = transport.start_io_loop(make_on_data(
-                session_id.clone(),
-                lg,
-                hl,
-                login_slot_for_closure,
-                trigger_slot_for_closure,
-                Arc::clone(&rx_total),
-                Some(Arc::clone(&detector)),
-                Some(on_detected),
-                move |data| {
-                    let _ = app_handle.emit(
-                        "terminal-data",
-                        TerminalDataPayload {
-                            session_id: sid.clone(),
-                            data,
-                        },
-                    );
-                },
-            ));
+            let cmd_tx = transport.start_io_loop(
+                make_on_data(
+                    session_id.clone(),
+                    lg,
+                    hl,
+                    login_slot_for_closure,
+                    trigger_slot_for_closure,
+                    Arc::clone(&rx_total),
+                    Some(Arc::clone(&detector)),
+                    Some(on_detected),
+                    move |data| {
+                        let _ = app_handle.emit(
+                            "terminal-data",
+                            TerminalDataPayload {
+                                session_id: sid.clone(),
+                                data,
+                            },
+                        );
+                    },
+                ),
+                make_on_close(app.clone(), session_id.clone()),
+            );
 
             link_login_runner(login_link, &cmd_tx);
             maybe_install_trigger_runner(
@@ -1945,6 +1995,7 @@ pub async fn open_saved_session(
                     sftp: None,
                     rx_total,
                     stats_task: Some(stats_task),
+                    mss_task: None,
                 },
             );
 
@@ -2009,6 +2060,7 @@ pub async fn open_telnet_session(
                 );
             },
         ),
+        make_on_close(app.clone(), session_id.clone()),
     );
     let stats_task = Some(spawn_stats_emitter(
         app.clone(),
@@ -2029,6 +2081,7 @@ pub async fn open_telnet_session(
             sftp: None,
             rx_total,
             stats_task,
+            mss_task: None,
         },
     );
 
@@ -2061,25 +2114,28 @@ pub async fn open_serial_session(
     let detector = new_detector();
     // Ephemeral session (no saved id) — emit only, don't persist.
     let on_detected = make_detection_callback(app.clone(), session_id.clone(), None);
-    let cmd_tx = transport.start_io_loop(make_on_data(
-        session_id.clone(),
-        lg,
-        hl,
-        empty_login_slot(),
-        empty_trigger_slot(),
-        Arc::clone(&rx_total),
-        Some(Arc::clone(&detector)),
-        Some(on_detected),
-        move |data| {
-            let _ = app_handle.emit(
-                "terminal-data",
-                TerminalDataPayload {
-                    session_id: sid.clone(),
-                    data,
-                },
-            );
-        },
-    ));
+    let cmd_tx = transport.start_io_loop(
+        make_on_data(
+            session_id.clone(),
+            lg,
+            hl,
+            empty_login_slot(),
+            empty_trigger_slot(),
+            Arc::clone(&rx_total),
+            Some(Arc::clone(&detector)),
+            Some(on_detected),
+            move |data| {
+                let _ = app_handle.emit(
+                    "terminal-data",
+                    TerminalDataPayload {
+                        session_id: sid.clone(),
+                        data,
+                    },
+                );
+            },
+        ),
+        make_on_close(app.clone(), session_id.clone()),
+    );
     let stats_task = Some(spawn_stats_emitter(
         app.clone(),
         session_id.clone(),
@@ -2100,6 +2156,7 @@ pub async fn open_serial_session(
             sftp: None,
             rx_total,
             stats_task,
+            mss_task: None,
         },
     );
 
@@ -2162,16 +2219,29 @@ struct TerminalDataPayload {
 #[derive(serde::Serialize, Clone)]
 struct DisconnectPayload {
     session_id: String,
+    /// The remote end finished the session cleanly (`exit`, logout, the
+    /// device closed it): show it as ended, don't auto-reconnect. False for a
+    /// lost link, which is worth reconnecting.
+    ended: bool,
 }
 
-/// Build the `on_close` callback for an SSH session: when the remote side drops
-/// the link (server closed the channel, or keepalives went unanswered), emit
-/// `session-disconnected` so the frontend can show a reconnect affordance and
-/// optionally auto-reconnect. Not fired when the user closes the tab.
-fn make_on_close(app: AppHandle, session_id: String) -> impl FnOnce() + Send + 'static {
-    move || {
-        let _ = app.emit("session-disconnected", DisconnectPayload { session_id });
-    }
+/// Build the `on_close` callback for a session: when it ends by itself (the
+/// remote side closed it, or the link failed), emit `session-disconnected` so
+/// the frontend can show it and, for a lost link, auto-reconnect. Never fired
+/// when the user closes the tab.
+fn make_on_close(
+    app: AppHandle,
+    session_id: String,
+) -> impl FnOnce(core_transport::CloseReason) + Send + 'static {
+    move |reason| emit_disconnected(&app, session_id, reason)
+}
+
+fn emit_disconnected(app: &AppHandle, session_id: String, reason: core_transport::CloseReason) {
+    let ended = reason == core_transport::CloseReason::Ended;
+    let _ = app.emit(
+        "session-disconnected",
+        DisconnectPayload { session_id, ended },
+    );
 }
 
 #[cfg(test)]

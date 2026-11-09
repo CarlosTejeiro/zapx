@@ -15,6 +15,7 @@
 
   import {
     openSavedSession,
+    sshDirectEndpoint,
     openSshSession,
     openTelnetSession,
     sshPreflightHostKey,
@@ -229,6 +230,8 @@
   let errorMsg = $state<string | null>(null)
   // Reconnect state: the remote dropped the link (vs. the user closing the tab).
   let disconnected = $state(false)
+  /// The disconnect was the remote side finishing the session, not a lost link.
+  let sessionEnded = $state(false)
   let reconnecting = $state(false)
   let reconnectAttempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -674,6 +677,7 @@
       const id = await openKeepingEarlyOutput()
       if (id === null) return
       disconnected = false
+      sessionEnded = false
       reconnecting = false
       reconnectAttempt = 0
       if (paneId != null) registerSession(paneId, id)
@@ -1012,9 +1016,14 @@
       track(offData)
       if (destroyed) return
 
-      // Verify the SSH host key (known_hosts) before connecting.
+      // Verify the SSH host key (known_hosts) before connecting — of the host
+      // dialed directly: the first jump host when there is one (the target
+      // behind it can't be reached to check, and is learned on first use).
       if (savedSession?.protocol === 'ssh' && savedSession.host) {
-        if (!(await confirmHostKey(savedSession.host, savedSession.port ?? 22))) {
+        const [host, port] = await sshDirectEndpoint(savedSession.id).catch(
+          () => [savedSession.host as string, savedSession.port ?? 22] as [string, number],
+        )
+        if (!(await confirmHostKey(host, port))) {
           if (!errorMsg) errorMsg = 'Host key not trusted'
           onSessionError?.()
           term.dispose()
@@ -1139,16 +1148,26 @@
       }),
     )
 
-    // Remote dropped the link (server closed, or keepalives went unanswered).
-    // Mark the pane disconnected and kick off auto-reconnect if enabled; the
-    // banner offers a manual retry either way.
+    // The session ended by itself. `ended`: the remote side finished it
+    // (`exit`, logout, the device closed it) — show it as ended, no automatic
+    // reconnect. Otherwise the link was lost (read error, keepalives
+    // unanswered): mark it and auto-reconnect if enabled. The banner offers a
+    // manual reconnect either way.
     track(
-      await listen<{ session_id: string }>('session-disconnected', (event) => {
+      await listen<{ session_id: string; ended?: boolean }>('session-disconnected', (event) => {
         if (event.payload.session_id !== sessionId) return
+        const gone = sessionId
         if (paneId != null) unregisterSession(paneId)
-        if (sessionId) unregisterFocus(sessionId)
+        unregisterFocus(gone)
         sessionId = null
+        // Free what the backend still holds for it (stats/MSS tasks, tunnels).
+        void invoke('close_session', { sessionId: gone }).catch(console.error)
         disconnected = true
+        sessionEnded = event.payload.ended === true
+        if (sessionEnded) {
+          onSessionClose?.()
+          return
+        }
         onSessionError?.()
         scheduleReconnect()
       }),
@@ -1453,7 +1472,7 @@
     <div class="disconnected-bar">
       <span class="disconnected-icon"><Icon name="alert" size={14} /></span>
       <span class="disconnected-text">
-        {#if reconnecting}Reconnecting…{:else}Connection lost{/if}
+        {#if reconnecting}Reconnecting…{:else if sessionEnded}Session ended{:else}Connection lost{/if}
       </span>
       <button class="reconnect-btn" onclick={() => reconnect()} disabled={reconnecting}>
         Reconnect

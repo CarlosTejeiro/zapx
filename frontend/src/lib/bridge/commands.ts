@@ -951,6 +951,12 @@ export async function cacheSessionPassword(
 }
 
 // Drop a typed password that turned out to be wrong (memory + encrypted copy).
+/** Host and port an open of this saved session dials directly (its first
+ *  jump host, or itself): the one whose host key is checked before connecting. */
+export async function sshDirectEndpoint(savedSessionId: number): Promise<[string, number]> {
+  return invoke('ssh_direct_endpoint', { savedSessionId })
+}
+
 /** Where an open of this saved session gets its password from now. */
 export async function sessionPasswordSource(
   savedSessionId: number,

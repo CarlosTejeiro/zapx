@@ -70,9 +70,11 @@ impl MssWatcher {
     pub fn new(stream: &TcpStream) -> Option<Self> {
         use std::os::fd::AsRawFd;
         let orig = stream.as_raw_fd();
-        // SAFETY: dup is always safe for an open fd; the returned fd is
-        // owned by us and freed by Drop.
-        let dup = unsafe { libc::dup(orig) };
+        // SAFETY: F_DUPFD_CLOEXEC on an open fd is always safe; the returned
+        // fd is owned by us and freed by Drop. Close-on-exec (like every fd
+        // Rust's std creates) keeps child processes — a script, xdg-open —
+        // from inheriting the live SSH socket.
+        let dup = unsafe { libc::fcntl(orig, libc::F_DUPFD_CLOEXEC, 0) };
         if dup < 0 {
             return None;
         }
