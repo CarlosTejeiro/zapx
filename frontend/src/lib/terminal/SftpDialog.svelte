@@ -87,11 +87,17 @@
   onMount(async () => {
     // Subscribe to streaming-transfer progress events. The Rust side rate-
     // limits to ~10 Hz so updating state on every payload is cheap.
-    unlistenProgress = await listen<SftpProgressEvent>('sftp-progress', (e) => {
+    const off = await listen<SftpProgressEvent>('sftp-progress', (e) => {
       if (!transfer || e.payload.transfer_id !== transfer.id) return
       transfer.done = e.payload.done
       transfer.total = e.payload.total
     })
+    // Closed while `listen` was pending: onDestroy already ran.
+    if (destroyed) {
+      off()
+      return
+    }
+    unlistenProgress = off
     try {
       path = await sftpCanonicalize(sessionId, '.')
     } catch (e) {
@@ -100,7 +106,9 @@
     await refresh()
   })
 
+  let destroyed = false
   onDestroy(() => {
+    destroyed = true
     unlistenProgress?.()
   })
 

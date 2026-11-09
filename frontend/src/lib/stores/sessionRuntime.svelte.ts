@@ -29,6 +29,25 @@ export const broadcastGroup = $state({
   activeSessionIds: null as Set<string> | null,
 })
 
+// Which grid holds the scope above. Plain (non-reactive) on purpose: an effect
+// teardown reads $state as it was BEFORE the change that re-runs it, so a grid
+// checking `broadcastGroup.activeSessionIds` there would see its own old scope
+// and clear the one another grid had just claimed.
+let scopeOwner: object | null = null
+
+/** Scope broadcast fan-out to `ids` on behalf of `owner` (the active grid). */
+export function claimBroadcastScope(owner: object, ids: Set<string>): void {
+  scopeOwner = owner
+  broadcastGroup.activeSessionIds = ids
+}
+
+/** Drop the scope — only if `owner` still holds it. */
+export function releaseBroadcastScope(owner: object): void {
+  if (scopeOwner !== owner) return
+  scopeOwner = null
+  broadcastGroup.activeSessionIds = null
+}
+
 export function registerSession(paneId: number, sessionId: string): void {
   paneToSession.set(paneId, sessionId)
 }

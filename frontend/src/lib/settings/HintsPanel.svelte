@@ -82,6 +82,7 @@
     await refresh()
     // Surface auto-reloads emitted by the backend file watcher so the user
     // sees that their edit took effect without pressing the button.
+    if (destroyed) return
     unlistenReload = await listen<number>('hint-catalogs-reloaded', (e) => {
       flashCatalog(
         'ok',
@@ -93,9 +94,16 @@
     unlistenError = await listen<string>('hint-catalogs-error', (e) => {
       flashCatalog('err', `Reload failed: ${e.payload}`)
     })
+    // Closed while a `listen` was pending: onDestroy already ran.
+    if (destroyed) {
+      unlistenReload?.()
+      unlistenError?.()
+    }
   })
 
+  let destroyed = false
   onDestroy(() => {
+    destroyed = true
     unlistenReload?.()
     unlistenError?.()
   })

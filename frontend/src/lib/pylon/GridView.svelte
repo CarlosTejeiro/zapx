@@ -6,7 +6,11 @@
   import { CommandRunner, type RunnerHost } from '$lib/orchestrator/commandRunner.svelte'
   import { getSessionPlatform } from '$lib/bridge/commands'
   import type { PylonTheme } from '$lib/themes/index'
-  import { paneToSession, broadcastGroup } from '$lib/stores/sessionRuntime.svelte'
+  import {
+    paneToSession,
+    claimBroadcastScope,
+    releaseBroadcastScope,
+  } from '$lib/stores/sessionRuntime.svelte'
 
   type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
 
@@ -15,6 +19,9 @@
     cols: number
     theme: PylonTheme
     focusedPaneId: number
+    /** This grid's tab is the visible one. Every tab stays mounted, so only
+     *  the active grid may scope the broadcast. */
+    active: boolean
     onFocus: (paneId: number) => void
     onClosePane: (paneId: number) => void
     onStatusChange: (paneId: number, status: PaneStatus) => void
@@ -26,6 +33,7 @@
     cols,
     theme,
     focusedPaneId,
+    active,
     onFocus,
     onClosePane,
     onStatusChange,
@@ -38,14 +46,15 @@
     panes.map((p) => paneToSession.get(p.id)).filter((id): id is string => typeof id === 'string'),
   )
 
-  // While this grid is mounted, scope all broadcast fan-out (master bar,
-  // per-pane typing, snippets) to THIS group's live sessions instead of every
-  // open pane. Cleared on unmount so other tabs go back to all-panes mode.
+  // While this grid's tab is the active one, scope all broadcast fan-out
+  // (per-pane typing, snippets) to THIS group's live sessions instead of every
+  // open pane. Hidden tabs stay mounted, so a background grid must not hold
+  // the scope: typing in one grid used to reach the devices of another.
+  const scopeOwner = {}
   $effect(() => {
-    broadcastGroup.activeSessionIds = new Set(liveSessionIds)
-    return () => {
-      broadcastGroup.activeSessionIds = null
-    }
+    if (!active) return
+    claimBroadcastScope(scopeOwner, new Set(liveSessionIds))
+    return () => releaseBroadcastScope(scopeOwner)
   })
 
   // ── Run & compare (command runner) ──────────────────────────────────────
