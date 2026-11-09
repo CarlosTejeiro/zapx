@@ -5,6 +5,56 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.2] - 2026-11-09
+
+### Fixed
+- **Typing `exit` in an SSH tab reconnected you** two seconds later. A
+  session the remote side ends cleanly (`exit`, logout, the device closing
+  it) now shows **Session ended** and stays closed; only a lost link
+  reconnects by itself. The last output before the end (e.g. `logout`) is no
+  longer cut off.
+- **Local terminal:** `exit` didn't close the session (the tab kept waiting
+  forever), and closing a local tab left its shell running in the
+  background.
+- **Serial:** closing a serial tab didn't release the port, so opening it
+  again failed with "busy" / "access denied" until ZAPX was restarted.
+- **Telnet and serial disconnects went unnoticed:** when a device closed the
+  connection, rebooted or a USB adapter was unplugged, the tab still looked
+  connected. It now shows the session as ended or lost.
+- **Long pastes over SSH could freeze the session** for good on devices that
+  echo every line.
+- **Port forwards:** a slow target (a SOCKS connection to a dead address)
+  held up every other tunnel and SFTP on the same session; closing a
+  forward, or its tab, now also ends the connections open through it; a
+  momentary error accepting a connection no longer stops the forward for
+  good; adding a remote forward on a port already forwarded no longer breaks
+  the existing one; a remote forward to a local service that is down now
+  refuses the connection instead of accepting and dropping it.
+- **known_hosts:** restoring a backup or migrating the old Windows file could
+  wipe your trusted host keys when the file couldn't be read (for example
+  one non-UTF-8 byte), or add an outdated key that then made the host report
+  "HOST KEY CHANGED". Existing entries are now never rewritten, and an older
+  key for a host already trusted is not added.
+- **Jump hosts:** the first jump host's key was trusted silently on first
+  use; it is now checked and confirmed like any directly reached host.
+- **SSH login:** a correct password now also works on servers that only
+  accept it through keyboard-interactive (common with PAM); an empty
+  keyboard-interactive step no longer shows a blank dialog; a missing key
+  file is reported as such instead of "wrong passphrase"; `~` and `~\` in key
+  paths are expanded on every platform; known_hosts problems no longer read
+  "failed to load private key".
+- **Connections no longer hang:** an SSH host that accepts the connection but
+  never answers, and Telnet connects, now time out with a clear message.
+  Telnet errors keep their cause (refused, unreachable, unknown name).
+- **Telnet details:** window sizes of 255 columns/rows and 0xFF bytes in what
+  you send are escaped as the protocol requires; a stray negotiation
+  sequence in binary output no longer swallows everything after it.
+- **SFTP:** a download that fails part-way no longer leaves a truncated file
+  under the target name.
+- Closing an SSH session leaked a background task and a copy of its socket,
+  and ZAPX's child processes (scripts, opened links) could inherit open SSH
+  connections.
+
 ## [0.29.1] - 2026-11-08
 
 ### Fixed
