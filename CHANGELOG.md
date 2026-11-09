@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.6] - 2026-11-09
+
+### Changed
+- **MultiExec reaches only the active tab.** On a regular tab (one pane or
+  split), what you type with Multi on now goes only to that tab's sessions,
+  like its master bar. Before, it also reached every session in every
+  other tab, even hidden ones. Grid tabs already worked this way. The
+  snippets dialog's warning says so.
+
 ## [0.29.5] - 2026-11-09
 
 ### Fixed
