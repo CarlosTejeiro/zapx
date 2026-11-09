@@ -745,6 +745,8 @@ export interface ImportSummary {
   groups_added: number
   snippets_added: number
   rules_added: number
+  /** Existing items updated from a sync pull (0 for imports and restores). */
+  items_updated: number
   warnings: string[]
 }
 

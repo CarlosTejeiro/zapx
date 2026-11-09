@@ -436,6 +436,18 @@ pub(crate) fn apply_bundle(
     ctx: &BackupCtx<'_>,
     bundle: &Bundle,
 ) -> Result<RestoreSummary, AppError> {
+    apply_bundle_with(ctx, bundle, false)
+}
+
+/// [`apply_bundle`]; with `update_existing` the bundle also wins on items
+/// both sides have (fields, vault passwords, session passwords). Only for a
+/// sync pull onto a device with no changes since the last sync — there every
+/// difference is an edit made on another device.
+pub(crate) fn apply_bundle_with(
+    ctx: &BackupCtx<'_>,
+    bundle: &Bundle,
+    update_existing: bool,
+) -> Result<RestoreSummary, AppError> {
     if bundle.zapx_bundle > BUNDLE_VERSION {
         return Err(AppError::Internal(format!(
             "the backup was made by a newer ZAPX (bundle v{}, this build reads v{BUNDLE_VERSION})",
@@ -444,24 +456,29 @@ pub(crate) fn apply_bundle(
     }
     let db = ctx.db;
     let mut summary = RestoreSummary {
-        environment: transfer::apply_import(db, &bundle.environment)?,
+        environment: transfer::apply_import_with(db, &bundle.environment, update_existing)?,
         ..Default::default()
     };
 
     // 1. Vault entries by name — before sessions so links resolve. An entry
     // this device already has keeps its own password (the bundle's may be
     // older — a sync pull must not undo a rotation made here); only a
-    // missing secret is filled in.
+    // missing secret is filled in. In update mode the bundle's is newer.
     let existing = db.list_vault_entries().map_err(internal)?;
     for entry in &bundle.vault_entries {
         if let Some(ex) = existing.iter().find(|e| e.name == entry.name) {
+            if update_existing && ex.username != entry.username {
+                db.update_credential_meta(ex.id, &ex.name, entry.username.as_deref())
+                    .map_err(internal)?;
+                summary.vault_updated += 1;
+            }
             match ctx.credential_secret(ex) {
                 Some(local) if local == entry.secret => {}
-                Some(_) => summary.warnings.push(format!(
+                Some(_) if !update_existing => summary.warnings.push(format!(
                     "vault entry «{}»: kept this device's password (the backup has a different one)",
                     entry.name
                 )),
-                None => {
+                _ => {
                     let in_keyring = ctx.secrets.put(&ex.keyring_key, &entry.secret).is_ok();
                     match ctx.settle_secret(
                         crate::secrets::Fallback::Credential(ex.id),
@@ -513,8 +530,13 @@ pub(crate) fn apply_bundle(
             continue;
         };
         let session = db.get_session(new_id).map_err(internal)?;
-        if session.credential_id.is_some() {
-            continue; // keep whatever this device already has
+        if let Some(cred_id) = session.credential_id {
+            // Keep whatever this device already has — unless the bundle is
+            // known to be newer, then follow its change.
+            if update_existing {
+                update_session_credential(ctx, &session, cred_id, sc, &mut summary)?;
+            }
+            continue;
         }
         if let Some(name) = &sc.vault_name {
             match db.get_credential_by_name(name).map_err(internal)? {
@@ -589,6 +611,59 @@ pub(crate) fn apply_bundle(
     }
 
     Ok(summary)
+}
+
+/// Update mode: bring an existing session credential in line with the
+/// bundle — re-link to another vault entry, or take a rotated private
+/// password. Other shapes (private ↔ vault) are left as they are.
+fn update_session_credential(
+    ctx: &BackupCtx<'_>,
+    session: &SavedSession,
+    cred_id: i64,
+    sc: &BundleSessionCredential,
+    summary: &mut RestoreSummary,
+) -> Result<(), AppError> {
+    let db = ctx.db;
+    let Ok(cred) = db.get_credential(cred_id) else {
+        return Ok(());
+    };
+    match (&sc.vault_name, sc.secret.as_deref(), cred.reusable) {
+        (Some(name), _, true) if *name != cred.name => {
+            match db.get_credential_by_name(name).map_err(internal)? {
+                Some(target) => {
+                    let method = session.auth_method.as_deref().unwrap_or("password");
+                    db.set_session_auth(session.id, Some(target.id), method)
+                        .map_err(internal)?;
+                    summary.credentials_linked += 1;
+                }
+                None => summary.warnings.push(format!(
+                    "session «{}»: vault entry «{name}» not available — kept the current one",
+                    session.name
+                )),
+            }
+        }
+        (None, Some(secret), false) => {
+            if ctx.session_secret(session, &cred).as_deref() == Some(secret) {
+                return Ok(());
+            }
+            let in_keyring = ctx.secrets.put(&cred.keyring_key, secret).is_ok();
+            if let Some(cache) = ctx.password_cache {
+                cache.lock().unwrap().insert(session.id, secret.to_owned());
+            }
+            match ctx.settle_secret(
+                crate::secrets::Fallback::Session(session.id),
+                secret,
+                in_keyring,
+            ) {
+                Ok(()) => summary.credentials_linked += 1,
+                Err(e) => summary
+                    .warnings
+                    .push(format!("session «{}»: {e}", session.name)),
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 // ── file I/O ────────────────────────────────────────────────────────────────
