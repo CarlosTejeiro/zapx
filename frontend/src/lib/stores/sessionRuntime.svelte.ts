@@ -18,13 +18,13 @@ export const sessionRuntime = $state({
 })
 
 // MultiExec broadcast: when enabled, input typed in one terminal is also
-// dispatched to all OTHER registered sessions.
+// dispatched to the other sessions in scope (see `broadcastGroup` below).
 export const broadcast = $state({ enabled: false })
 
-// Scoped broadcast target set, orthogonal to `broadcast.enabled`. When a grid
-// tab is open it sets `activeSessionIds` to its own live session UUIDs so that
-// fan-out (master bar, per-pane typing, snippets) targets ONLY that group
-// instead of every open pane. `null` = legacy "all panes" behaviour.
+// Scoped broadcast target set, orthogonal to `broadcast.enabled`. The active
+// tab (a grid, or App for a regular tab) sets `activeSessionIds` to its own
+// live session UUIDs so that fan-out (per-pane typing, snippets) targets ONLY
+// that tab, never sessions in hidden tabs. `null` (no tab) = every pane.
 export const broadcastGroup = $state({
   activeSessionIds: null as Set<string> | null,
 })

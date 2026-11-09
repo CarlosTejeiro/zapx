@@ -87,6 +87,8 @@
     getFocusedSessionId,
     broadcastTargets,
     focusSession,
+    claimBroadcastScope,
+    releaseBroadcastScope,
   } from '$lib/stores/sessionRuntime.svelte'
   import {
     visibleSnippets,
@@ -620,6 +622,17 @@
           .filter((id): id is string => typeof id === 'string')
       : [],
   )
+
+  // MultiExec on a regular (single/split) tab reaches only that tab's
+  // sessions, like its master bar — never sessions in hidden tabs. A grid tab
+  // claims its own scope (GridView); the owner token keeps the two from
+  // clearing each other whatever order their effects run in.
+  const tabScopeOwner = {}
+  $effect(() => {
+    if (!activeTab || activeTab.layout.kind === 'grid') return
+    claimBroadcastScope(tabScopeOwner, new Set(activeTabSessionIds))
+    return () => releaseBroadcastScope(tabScopeOwner)
+  })
 
   // ── Run & compare on a regular (split) tab ──────────────────────────────────
   // Mirrors GridView's runner so "Compare" works outside broadcast-group grids:

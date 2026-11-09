@@ -3,7 +3,8 @@
 // Each `AppTab` owns one [`PaneTreeNode`] root. A leaf wraps a [`PaneData`]
 // (the connection / metadata for a single terminal). A `split` node holds two
 // children plus a direction and a 0..1 ratio for the divider position. The
-// renderer ([`SplitTree.svelte`]) walks the tree recursively.
+// renderer ([`SplitTree.svelte`]) draws the flat [`layoutTree`] of it, so a
+// reshaped tree never remounts (and reconnects) a terminal.
 
 import type { PaneData } from '$lib/pylon/Pane.svelte'
 
@@ -105,4 +106,48 @@ export function setRatio(node: PaneTreeNode, path: number[], ratio: number): Pan
   }
   const b = setRatio(node.b, rest, ratio)
   return b === node.b ? node : { ...node, b }
+}
+
+/** A rectangle in fractions (0..1) of the tab's pane area. */
+export interface Rect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Where each leaf goes, and where each split's divider sits. */
+export interface TreeLayout {
+  panes: { pane: PaneData; rect: Rect }[]
+  dividers: { path: number[]; direction: SplitDirection; ratio: number; rect: Rect }[]
+}
+
+const clampRatio = (r: number) => Math.max(0.1, Math.min(0.9, r))
+
+/**
+ * Flatten the tree into positioned leaves (`rect` of each pane) and dividers
+ * (`rect` of the split they divide, plus its ratio). Rendering panes from this
+ * flat list — keyed by pane id — keeps each terminal mounted when the tree is
+ * reshaped: splitting a pane or closing its sibling used to move it to another
+ * place in a recursive component tree, which tore it down and reconnected it.
+ */
+export function layoutTree(node: PaneTreeNode): TreeLayout {
+  const out: TreeLayout = { panes: [], dividers: [] }
+  const walk = (n: PaneTreeNode, rect: Rect, path: number[]) => {
+    if (n.kind === 'leaf') {
+      out.panes.push({ pane: n.pane, rect })
+      return
+    }
+    const ratio = clampRatio(n.ratio)
+    out.dividers.push({ path, direction: n.direction, ratio, rect })
+    if (n.direction === 'h') {
+      walk(n.a, { ...rect, w: rect.w * ratio }, [...path, 0])
+      walk(n.b, { ...rect, x: rect.x + rect.w * ratio, w: rect.w * (1 - ratio) }, [...path, 1])
+    } else {
+      walk(n.a, { ...rect, h: rect.h * ratio }, [...path, 0])
+      walk(n.b, { ...rect, y: rect.y + rect.h * ratio, h: rect.h * (1 - ratio) }, [...path, 1])
+    }
+  }
+  walk(node, { x: 0, y: 0, w: 1, h: 1 }, [])
+  return out
 }

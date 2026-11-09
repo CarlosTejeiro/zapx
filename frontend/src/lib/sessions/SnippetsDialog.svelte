@@ -148,8 +148,8 @@
     }
   }
 
-  /// Send the snippet to the focused session (and to every other session if
-  /// MultiExec broadcast is on).
+  /// Send the snippet to the focused session (and to the other sessions of
+  /// the active tab if MultiExec broadcast is on).
   async function send(s: Snippet) {
     const focused = getFocusedSessionId()
     if (!focused) {
@@ -205,7 +205,7 @@
     {#if broadcast.enabled}
       <p class="hint broadcast">
         <Icon name="alert" size={12} /> MultiExec broadcast is ON — sending will dispatch to
-        <strong>all</strong> open sessions.
+        <strong>every session in the active tab</strong>.
       </p>
     {:else}
       <p class="hint">Click ▶ to send the snippet to the focused terminal.</p>
