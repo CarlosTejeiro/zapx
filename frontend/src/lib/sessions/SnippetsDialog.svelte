@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ask } from '@tauri-apps/plugin-dialog'
+  import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import { resolveSnippet } from '$lib/snippets/variables.svelte'
@@ -137,7 +139,7 @@
   }
 
   async function remove(s: Snippet) {
-    if (!confirm(`Delete snippet "${s.name}"?`)) return
+    if (!(await ask(`Delete snippet "${s.name}"?`, { title: 'Snippets', kind: 'warning' }))) return
     try {
       await deleteSnippet(s.id)
       status = { kind: 'ok', text: 'Deleted.' }
@@ -180,7 +182,7 @@
   }
 
   function fmt(e: unknown): string {
-    return e instanceof Error ? e.message : String(e)
+    return errorText(e)
   }
 
   function onKeydown(e: KeyboardEvent) {

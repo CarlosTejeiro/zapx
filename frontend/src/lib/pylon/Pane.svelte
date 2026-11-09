@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import TerminalTab from '$lib/terminal/TerminalTab.svelte'
   import type { PylonTheme } from '$lib/themes/index'
   import type { SavedSession, ColorPalette, AuthMethod } from '$lib/bridge/types'
@@ -116,7 +117,7 @@
       showToast({
         kind: 'error',
         title: 'Logging failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     } finally {
       logBusy = false

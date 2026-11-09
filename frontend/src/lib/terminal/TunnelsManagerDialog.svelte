@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   /// Global tunnels manager: every active port-forward across all sessions,
   /// with a stop button each. Add new forwards from a pane's Tunnels button.
   import { onMount } from 'svelte'
@@ -24,7 +25,7 @@
     try {
       forwards = await listAllForwards()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Tunnels', detail: String(e) })
+      showToast({ kind: 'error', title: 'Tunnels', detail: errorText(e) })
     } finally {
       loading = false
     }
@@ -54,7 +55,7 @@
       await removeForward(f.session_id, f.info.id)
       await refresh()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Tunnels', detail: String(e) })
+      showToast({ kind: 'error', title: 'Tunnels', detail: errorText(e) })
     }
   }
 

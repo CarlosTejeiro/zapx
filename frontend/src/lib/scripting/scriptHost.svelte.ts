@@ -30,6 +30,7 @@ import {
   readOnlyAllows,
   stripAnsi,
 } from './output'
+import { errorText } from '$lib/bridge/errors'
 
 /** Output must stay quiet this long (after the echo) to count as finished
  *  when no prompt is recognised. */
@@ -378,7 +379,7 @@ async function handle(
     error =
       e instanceof ApiError
         ? { kind: e.kind, message: e.message, output: e.output }
-        : { kind: 'error', message: e instanceof Error ? e.message : String(e) }
+        : { kind: 'error', message: errorText(e) }
   }
   inFlight.delete(reqId)
   cancelled.delete(reqId)

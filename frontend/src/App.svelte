@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import { getTheme, applyTheme } from '$lib/themes/store.svelte'
   import { themes, themeLabels } from '$lib/themes/index'
@@ -378,7 +379,7 @@
       showToast({
         kind: 'error',
         title: 'Save macro failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -402,7 +403,7 @@
       showToast({
         kind: 'error',
         title: 'Import failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -419,7 +420,7 @@
       showToast({
         kind: 'error',
         title: 'Delete macro failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -438,7 +439,7 @@
       showToast({
         kind: 'error',
         title: 'Duplicate failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -452,7 +453,7 @@
       showToast({
         kind: 'error',
         title: 'Move macro failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -466,7 +467,7 @@
       showToast({
         kind: 'error',
         title: 'Reorder macros failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -485,7 +486,7 @@
       showToast({
         kind: 'error',
         title: 'Export failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -509,7 +510,7 @@
       showToast({
         kind: 'error',
         title: 'Import failed',
-        detail: e instanceof Error ? e.message : String(e),
+        detail: errorText(e),
       })
     }
   }
@@ -1120,7 +1121,7 @@
         detail: `Current version ${appVersion}. Opening the releases page…`,
       })
     } catch (e) {
-      showToast({ kind: 'error', title: 'Releases', detail: String(e) })
+      showToast({ kind: 'error', title: 'Releases', detail: errorText(e) })
     }
   }
 
@@ -1151,7 +1152,7 @@
         detail: `${s.sessions} sessions, ${s.folders} folders, ${s.groups} groups, ${s.snippets} snippets, ${s.rules} rules → ${s.path}`,
       })
     } catch (e) {
-      showToast({ kind: 'error', title: 'Export failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'Export failed', detail: errorText(e) })
     }
   }
 
@@ -1188,7 +1189,7 @@
     try {
       await reportImport(await importSessions(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'Import failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'Import failed', detail: errorText(e) })
     }
   }
 
@@ -1212,7 +1213,7 @@
     try {
       await reportImport(await importSshConfig(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'SSH config import failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'SSH config import failed', detail: errorText(e) })
     }
   }
 
@@ -1238,7 +1239,7 @@
     try {
       await reportImport(await importPutty(path))
     } catch (e) {
-      showToast({ kind: 'error', title: 'PuTTY import failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'PuTTY import failed', detail: errorText(e) })
     }
   }
 
@@ -1254,7 +1255,7 @@
     try {
       await reportImport(await importMobaXterm(picked))
     } catch (e) {
-      showToast({ kind: 'error', title: 'MobaXterm import failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'MobaXterm import failed', detail: errorText(e) })
     }
   }
 
@@ -1269,7 +1270,7 @@
     try {
       await reportImport(await importSecureCrt(picked))
     } catch (e) {
-      showToast({ kind: 'error', title: 'SecureCRT import failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'SecureCRT import failed', detail: errorText(e) })
     }
   }
 
@@ -1505,7 +1506,7 @@
           showToast({
             kind: 'error',
             title: 'Logs',
-            detail: e instanceof Error ? e.message : String(e),
+            detail: errorText(e),
           })
         }
       },
@@ -1828,7 +1829,7 @@
           showToast({
             kind: 'error',
             title: 'Duplicate failed',
-            detail: e instanceof Error ? e.message : String(e),
+            detail: errorText(e),
           })
         }
       }}

@@ -82,11 +82,39 @@ impl SftpClient {
     pub async fn open(
         handle: &russh::client::Handle<crate::ssh::SshClientHandler>,
     ) -> Result<Self, Error> {
-        let channel = handle.channel_open_session().await.map_err(Error::Ssh)?;
+        let mut channel = handle.channel_open_session().await.map_err(Error::Ssh)?;
         channel
             .request_subsystem(true, "sftp")
             .await
             .map_err(Error::Ssh)?;
+        // Wait for the server's answer. A host without SFTP (many network
+        // devices, or `Subsystem sftp` missing in sshd_config) refuses here;
+        // without waiting, that only surfaced as the SFTP handshake timing
+        // out 10 s later, with an error that didn't say why.
+        let answer = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match channel.wait().await {
+                    Some(russh::ChannelMsg::Success) => return Ok(()),
+                    Some(russh::ChannelMsg::Failure) => return Err(
+                        "the server refused the SFTP subsystem (SFTP is not enabled on this host)",
+                    ),
+                    Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close) | None => {
+                        return Err("the server closed the SFTP channel")
+                    }
+                    Some(_) => {}
+                }
+            }
+        })
+        .await;
+        match answer {
+            Ok(Ok(())) => {}
+            Ok(Err(why)) => return Err(Error::Sftp(why.into())),
+            Err(_) => {
+                return Err(Error::Sftp(
+                    "the server did not answer the SFTP request".into(),
+                ))
+            }
+        }
         let stream = channel.into_stream();
         let session = SftpSession::new(stream).await.map_err(map_err)?;
         Ok(Self { session })
@@ -191,8 +219,12 @@ impl SftpClient {
     /// [`STREAM_CHUNK`]-sized buffers and writing them to `local_path`.
     /// `progress` is called after every chunk with `(bytes_done, total)`.
     /// `cancel` is checked after every chunk; setting it makes the function
-    /// return [`Error::Cancelled`]. On cancel or any error the partial local
-    /// file is removed.
+    /// return [`Error::Cancelled`].
+    ///
+    /// The bytes go to a temporary file next to `local_path`, renamed over it
+    /// only once complete: a cancelled or failed download leaves an existing
+    /// file at `local_path` untouched (it used to be truncated at the start
+    /// and then deleted), and never leaves a partial file under that name.
     pub async fn download_streaming(
         &self,
         remote_path: &str,
@@ -212,9 +244,8 @@ impl SftpClient {
             .open(remote_path.to_string())
             .await
             .map_err(map_err)?;
-        let mut local = tokio::fs::File::create(local_path)
-            .await
-            .map_err(Error::Io)?;
+        let part = partial_path(local_path);
+        let mut local = tokio::fs::File::create(&part).await.map_err(Error::Io)?;
 
         let mut done: u64 = 0;
         let mut buf = vec![0u8; STREAM_CHUNK];
@@ -232,15 +263,19 @@ impl SftpClient {
                 done += n as u64;
                 progress(done, total);
             }
-            local.flush().await.map_err(Error::Io)
+            local.flush().await.map_err(Error::Io)?;
+            local.sync_all().await.map_err(Error::Io)?;
+            drop(local);
+            // Replaces an existing file (on Windows too).
+            tokio::fs::rename(&part, local_path)
+                .await
+                .map_err(Error::Io)
         }
         .await;
         if let Err(e) = copied {
-            // Cancelled, or the read/write/link failed part-way: don't leave a
-            // truncated file under the target name, where it could pass for a
-            // complete download.
-            drop(local);
-            let _ = tokio::fs::remove_file(local_path).await;
+            // Cancelled, or the read/write/link/rename failed part-way: drop
+            // the partial copy; the target was never touched.
+            let _ = tokio::fs::remove_file(&part).await;
             return Err(e);
         }
         Ok(done)
@@ -292,6 +327,18 @@ impl SftpClient {
         remote.shutdown().await.map_err(Error::Io)?;
         Ok(done)
     }
+}
+
+/// Hidden temporary name next to `target` for a download in progress
+/// (`.name.zapx-part-<pid>-<n>`), so the rename stays on one filesystem.
+fn partial_path(target: &Path) -> std::path::PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "download".into());
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    target.with_file_name(format!(".{name}.zapx-part-{}-{n}", std::process::id()))
 }
 
 /// Convenient handle stored on `ActiveSession` for lazy SFTP init.

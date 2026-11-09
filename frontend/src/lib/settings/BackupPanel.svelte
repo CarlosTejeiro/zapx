@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { ask, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
   import {
@@ -36,7 +37,7 @@
     try {
       sync = await backupSyncStatus()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+      showToast({ kind: 'error', title: 'Sync', detail: errorText(e) })
     }
   }
 
@@ -80,7 +81,7 @@
         sync = await handleSyncStatus(st)
       }
     } catch (e) {
-      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+      showToast({ kind: 'error', title: 'Sync', detail: errorText(e) })
     } finally {
       syncBusy = false
     }
@@ -96,7 +97,7 @@
         showToast({ kind: 'success', title: 'Sync', detail: 'Everything is up to date.' })
       }
     } catch (e) {
-      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+      showToast({ kind: 'error', title: 'Sync', detail: errorText(e) })
     } finally {
       syncBusy = false
     }
@@ -113,7 +114,7 @@
     try {
       sync = await backupSyncDisable()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Sync', detail: String(e) })
+      showToast({ kind: 'error', title: 'Sync', detail: errorText(e) })
     } finally {
       syncBusy = false
     }
@@ -194,7 +195,7 @@
       })
       warn('Backup', s.warnings)
     } catch (e) {
-      showToast({ kind: 'error', title: 'Backup failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'Backup failed', detail: errorText(e) })
     }
   }
 
@@ -203,7 +204,7 @@
     try {
       info = await backupInspect(path, passphrase)
     } catch (e) {
-      showToast({ kind: 'error', title: 'Cannot open backup', detail: String(e) })
+      showToast({ kind: 'error', title: 'Cannot open backup', detail: errorText(e) })
       return
     }
     const when = info.created_at ? new Date(info.created_at).toLocaleString() : 'unknown date'
@@ -237,7 +238,7 @@
       )
       if (yes) await restartApp()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Restore failed', detail: String(e) })
+      showToast({ kind: 'error', title: 'Restore failed', detail: errorText(e) })
     }
   }
 </script>

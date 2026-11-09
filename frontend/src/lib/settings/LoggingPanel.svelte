@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import { getSetting, setSetting, openLogsDir } from '$lib/bridge/commands'
   import { showToast } from '$lib/ui/toast-store.svelte'
@@ -21,7 +22,7 @@
     try {
       await setSetting('logging.format', next)
     } catch (e) {
-      showToast({ kind: 'error', title: 'Setting', detail: String(e) })
+      showToast({ kind: 'error', title: 'Setting', detail: errorText(e) })
     }
   }
 
@@ -29,7 +30,7 @@
     try {
       logsPath = await openLogsDir()
     } catch (e) {
-      showToast({ kind: 'error', title: 'Logs', detail: String(e) })
+      showToast({ kind: 'error', title: 'Logs', detail: errorText(e) })
     }
   }
 </script>
