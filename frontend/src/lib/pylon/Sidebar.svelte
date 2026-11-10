@@ -3,6 +3,7 @@
   import type { SavedSession, Folder, Snippet } from '$lib/bridge/types'
   import Icon from '$lib/icons/Icon.svelte'
   import SessionAvatar from '$lib/pylon/SessionAvatar.svelte'
+  import { rootFolders } from './folderTree'
 
   interface Props {
     theme: PylonTheme
@@ -22,6 +23,8 @@
     onCreateFolder?: () => void
     onRenameFolder?: (folder: Folder) => void
     onDeleteFolder?: (folder: Folder) => void
+    /** Create a folder inside `parent`. */
+    onCreateSubfolder?: (parent: Folder) => void
     /** Reparent a session via drag-and-drop. `folderId = null` drops at root. */
     onMove?: (sessionId: number, folderId: number | null) => void
     /** Reorder a session inside its parent. `targetIndex` is the 0-based slot
@@ -67,6 +70,7 @@
     onCreateFolder,
     onRenameFolder,
     onDeleteFolder,
+    onCreateSubfolder,
     onMove,
     onReorder,
     onAddSession,
@@ -149,6 +153,8 @@
   function onDragOver(e: DragEvent, targetFolderId: number | null) {
     if (draggingSessionId == null) return
     e.preventDefault()
+    // Folders nest: the innermost one under the cursor is the target.
+    e.stopPropagation()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
     dragOver = targetFolderId
   }
@@ -203,6 +209,7 @@
   function onDrop(e: DragEvent, targetFolderId: number | null) {
     if (draggingSessionId == null) return
     e.preventDefault()
+    e.stopPropagation()
     const id = draggingSessionId
     const current = sessions.find((s) => s.id === id)?.folder_id ?? null
     // Dropped on the section background (not on a specific row) → append.
@@ -392,6 +399,25 @@
 
   function sessionsInFolder(id: number): SavedSession[] {
     return sessions.filter((s) => s.folder_id === id && matchesQuery(s))
+  }
+
+  // ── Folder tree ──────────────────────────────────────────────────────────
+  // Folders nest through `parent_id` (importers create e.g. DC › Spines).
+  // Roots are folders without a parent; a folder whose parent is missing, or
+  // that sits in a parent loop, is shown at the root rather than lost.
+  const roots = $derived(rootFolders(folders))
+
+  function childFolders(id: number): Folder[] {
+    return folders.filter((f) => f.parent_id === id && f.id !== id)
+  }
+
+  /** Matching sessions in a folder and all its subfolders. */
+  function subtreeCount(id: number, seen: Set<number> = new Set()): number {
+    if (seen.has(id)) return 0
+    seen.add(id)
+    let n = sessionsInFolder(id).length
+    for (const c of childFolders(id)) n += subtreeCount(c.id, seen)
+    return n
   }
 
   function toggleSection(key: string) {
@@ -588,10 +614,12 @@
       {/if}
     </div>
 
-    <!-- Folders -->
-    {#each folders as folder (folder.id)}
+    <!-- Folders: a tree through parent_id, drawn by the recursive snippet. -->
+    {#snippet folderNode(folder: Folder, depth: number)}
       {@const folderSessions = sessionsInFolder(folder.id)}
-      {#if !query || folderSessions.length > 0}
+      {@const subfolders = childFolders(folder.id)}
+      {@const total = subtreeCount(folder.id)}
+      {#if !query || total > 0}
         <div
           class="sb-section"
           class:dragover={dragOver === folder.id && draggingSessionId != null}
@@ -613,12 +641,26 @@
             role="button"
             tabindex="0"
             style:color={theme.textDim}
+            style:padding-left="{14 + depth * 14}px"
             onclick={() => toggleFolder(folder.id)}
           >
             <Icon name="chevron" size={11} open={!!query || expandedFolders.has(folder.id)} />
             <Icon name="folder" size={13} />
             <span class="sb-folder-name">{folder.name.toUpperCase()}</span>
-            <span class="sb-count" style:color={theme.textDim}>{folderSessions.length}</span>
+            <span class="sb-count" style:color={theme.textDim}>{total}</span>
+            {#if onCreateSubfolder}
+              <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
+              <span
+                class="sb-edit"
+                role="button"
+                title="New subfolder"
+                style:color={theme.textDim}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onCreateSubfolder?.(folder)
+                }}><Icon name="plus" size={12} /></span
+              >
+            {/if}
             {#if onRenameFolder}
               <!-- svelte-ignore a11y_interactive_supports_focus a11y_click_events_have_key_events -->
               <span
@@ -749,7 +791,12 @@
                   {/if}
                 </div>
               {/each}
-              {#if folderSessions.length === 0}
+              {#each subfolders as child (child.id)}
+                {#if depth < 16}
+                  {@render folderNode(child, depth + 1)}
+                {/if}
+              {/each}
+              {#if folderSessions.length === 0 && subfolders.length === 0}
                 <span class="sb-empty" style:color={theme.textDim}>empty — drop a session here</span
                 >
               {/if}
@@ -757,6 +804,9 @@
           {/if}
         </div>
       {/if}
+    {/snippet}
+    {#each roots as folder (folder.id)}
+      {@render folderNode(folder, 0)}
     {/each}
 
     {#if sessions.length === 0 && !search}

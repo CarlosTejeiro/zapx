@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-11-10
+
+### Added
+- **Folders in a tree.** The sidebar shows subfolders inside their folder
+  (e.g. DC › Spines), indented, instead of every folder at the top level.
+  Importers already created nested folders, but they appeared flat and lost
+  their parent.
+  - A folder's count includes the sessions in its subfolders.
+  - While searching, the path down to each match opens.
+  - A **+** on a folder creates a subfolder.
+  - Dropping a session on a subfolder puts it there.
+  - Deleting a folder that has subfolders now says they are deleted too,
+    and that all their sessions move to the root.
+
 ## [0.29.12] - 2026-11-10
 
 ### Fixed
