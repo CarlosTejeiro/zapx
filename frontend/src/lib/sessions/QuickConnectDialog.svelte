@@ -39,6 +39,12 @@
       error = 'Host is required'
       return
     }
+    // An emptied number field binds as null; anything out of range would only
+    // fail later as an obscure deserialisation error from the backend.
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      error = 'Port must be a number from 1 to 65535'
+      return
+    }
     if (protocol === 'ssh') {
       if (!user.trim()) {
         error = 'Username is required'

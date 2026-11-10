@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.11] - 2026-11-10
+
+### Fixed
+- **Run & compare could freeze ZAPX on long outputs.** Comparing two
+  groups of output, such as two full FortiGate configs of about 20 000
+  lines, needed gigabytes of memory. The diff now skips the lines both have
+  in common at the start and end and only compares the part in between, so
+  two large configs that differ in a few lines compare instantly. A huge
+  difference is shown as a whole block instead of hanging.
+- **Quick Connect and the session dialog accepted an empty or invalid port**,
+  which only failed later with a technical error. They now ask for a port
+  from 1 to 65535.
+
 ## [0.29.10] - 2026-11-10
 
 ### Fixed
