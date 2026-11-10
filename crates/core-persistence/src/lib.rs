@@ -1903,6 +1903,17 @@ impl Database {
         Ok(())
     }
 
+    /// Forget a session's platform: hints fall back to the global default and
+    /// the next detection may set it again.
+    pub fn clear_session_platform(&self, session_id: i64) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM session_platforms WHERE session_id = ?1",
+            rusqlite::params![session_id],
+        )?;
+        Ok(())
+    }
+
     pub fn get_session_platform(&self, session_id: i64) -> Result<Option<String>, Error> {
         let conn = self.conn.lock().unwrap();
         let result = conn.query_row(
@@ -1944,6 +1955,33 @@ mod tests {
         let path = std::env::temp_dir().join(format!("zapx_groups_test_{nanos}.db"));
         let db = Database::open(&path).expect("open db");
         (db, path)
+    }
+
+    #[test]
+    fn a_session_platform_can_be_cleared() {
+        let (db, path) = temp_db();
+        let sid = db
+            .create_session(
+                None,
+                "fw",
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                None,
+                None,
+                "{}",
+            )
+            .unwrap();
+        db.set_session_platform(sid, "fortigate").unwrap();
+        assert_eq!(
+            db.get_session_platform(sid).unwrap().as_deref(),
+            Some("fortigate")
+        );
+        db.clear_session_platform(sid).unwrap();
+        assert_eq!(db.get_session_platform(sid).unwrap(), None);
+        db.clear_session_platform(sid).unwrap(); // nothing stored: still fine
+        drop(db);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

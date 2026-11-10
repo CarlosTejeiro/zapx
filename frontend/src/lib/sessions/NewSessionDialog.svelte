@@ -16,6 +16,7 @@
     getLoginScript,
     listPlatforms,
     setSessionPlatform,
+    clearSessionPlatform,
     getSessionPlatform,
     getSessionForwards,
     setSessionForwards,
@@ -37,6 +38,7 @@
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
   import { listSnippets } from '$lib/bridge/commands'
+  import { escapeControls, unescapeControls } from './stepEscapes'
   import type { Snippet } from '$lib/bridge/types'
 
   type Protocol = 'ssh' | 'telnet' | 'serial'
@@ -141,14 +143,24 @@
       }
       // Preload the login script.
       try {
-        loginSteps = await getLoginScript(existing.id)
+        // Show stored control characters as the escapes Save turns back into
+        // them (`\r`, `\n`, `\t`, `\\`). A one-line input drops CR/LF from
+        // its value, so editing a step used to lose its Enter or newlines, and
+        // a bare-Enter step showed up empty.
+        loginSteps = (await getLoginScript(existing.id)).map((st) => ({
+          ...st,
+          send: escapeControls(st.send),
+        }))
         if (loginSteps.length > 0) showLoginScript = true
       } catch {
         loginSteps = []
       }
       // Preload output triggers.
       try {
-        triggers = await getSessionTriggers(existing.id)
+        triggers = (await getSessionTriggers(existing.id)).map((t) => ({
+          ...t,
+          text: escapeControls(t.text),
+        }))
         if (triggers.length > 0) showTriggers = true
       } catch {
         triggers = []
@@ -441,36 +453,7 @@
       // newlines without a multi-line input. Implemented as a small parser
       // (a chained string.replace would have to dodge the order-of-operations
       // trap for the backslash-escape itself).
-      const unescape = (s: string): string => {
-        let out = ''
-        for (let i = 0; i < s.length; i += 1) {
-          if (s[i] === '\\' && i + 1 < s.length) {
-            const next = s[i + 1]
-            if (next === 'n') {
-              out += '\n'
-              i += 1
-              continue
-            }
-            if (next === 'r') {
-              out += '\r'
-              i += 1
-              continue
-            }
-            if (next === 't') {
-              out += '\t'
-              i += 1
-              continue
-            }
-            if (next === '\\') {
-              out += '\\'
-              i += 1
-              continue
-            }
-          }
-          out += s[i]
-        }
-        return out
-      }
+      const unescape = unescapeControls
       const cleanSteps = loginSteps
         .filter((s) => (s.kind === 'wait' ? s.timeout_ms > 0 : s.expect.trim() || s.send))
         .map((s) => ({ ...s, send: unescape(s.send) }))
@@ -507,10 +490,13 @@
           await setSessionForwards(id, cleanForwards)
         }
       }
-      // Persist the command-hint platform for this session (skip "generic"
-      // and null since both fall back to the global default).
-      if (platform && platform !== 'generic') {
+      // Persist the command-hint platform for this session. "Use global
+      // default" clears a stored one — including one auto-detection wrote,
+      // which otherwise could never be undone from here.
+      if (platform) {
         await setSessionPlatform(id, platform).catch(console.error)
+      } else if (existing) {
+        await clearSessionPlatform(id).catch(console.error)
       }
       onCreated(id)
     } catch (e) {
