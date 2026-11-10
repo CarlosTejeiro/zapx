@@ -5,6 +5,8 @@
 
   import { onMount } from 'svelte'
   import { getSetting, setSetting } from '$lib/bridge/commands'
+  import { errorText } from '$lib/bridge/errors'
+  import { showToast } from '$lib/ui/toast-store.svelte'
   import {
     connectionSettings,
     applyKeepalive,
@@ -40,16 +42,21 @@
   let saving = $state(false)
 
   onMount(async () => {
-    const raw = (await getSetting('ssh.agent_priority')) ?? 'auto'
+    const raw = (await getSetting('ssh.agent_priority').catch(() => null)) ?? 'auto'
     if (OPTIONS.some((o) => o.value === raw)) current = raw as Priority
   })
 
-  async function onChange(value: Priority) {
+  async function onChange(select: HTMLSelectElement) {
+    const value = select.value as Priority
     if (value === current) return
     saving = true
     try {
       await setSetting('ssh.agent_priority', value)
       current = value
+    } catch (e) {
+      showToast({ kind: 'error', title: 'SSH agent priority', detail: errorText(e) })
+      // Show the stored value again, not the one that failed to save.
+      select.value = current
     } finally {
       saving = false
     }
@@ -103,9 +110,11 @@
       use <code>$SSH_AUTH_SOCK</code>.
     </p>
 
+    <!-- Not `bind:value`: the binding updated `current` before `onchange` ran,
+         so onChange saw "no change" and the choice was never saved. -->
     <select
-      bind:value={current}
-      onchange={(e) => onChange((e.currentTarget as HTMLSelectElement).value as Priority)}
+      value={current}
+      onchange={(e) => onChange(e.currentTarget as HTMLSelectElement)}
       disabled={saving}
     >
       {#each OPTIONS as opt (opt.value)}

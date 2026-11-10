@@ -211,8 +211,9 @@
     const proceed = await ask(
       `Backup from "${info.device_name}" (ZAPX ${info.app_version}, ${when}):\n\n` +
         `${describe(info)}.\n\n` +
-        'Sessions that already exist here are kept as they are. Vault entries with the same ' +
-        'name are updated from the backup. Settings from the backup replace the current ones.\n\n' +
+        'Sessions that already exist here are kept as they are. Vault entries this device ' +
+        'already has keep their password (only a missing one is filled in). Settings from the ' +
+        'backup replace the current ones.\n\n' +
         'Restore now?',
       { title: 'Restore backup', kind: 'warning' },
     )
@@ -263,8 +264,8 @@
     </div>
     <p class="hint">
       Restoring merges: sessions that already exist here are left untouched (including their
-      passwords), vault entries with the same name are updated, settings are replaced, host keys are
-      added. Nothing is deleted.
+      passwords), vault entries this device already has keep their password, settings are replaced,
+      host keys are added. Nothing is deleted.
     </p>
   </section>
 

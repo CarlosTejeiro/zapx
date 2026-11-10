@@ -316,6 +316,10 @@
       error = 'Host is required.'
       return
     }
+    if (protocol !== 'serial' && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+      error = 'Port must be a number from 1 to 65535.'
+      return
+    }
     if (protocol === 'ssh' && !username.trim()) {
       error = 'Username is required.'
       return

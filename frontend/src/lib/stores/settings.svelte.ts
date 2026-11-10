@@ -60,10 +60,15 @@ export async function loadSettings(): Promise<void> {
   ]
   try {
     const values = await Promise.all(keys.map((k) => getSetting(k)))
+    // Settings also arrive from backups and other devices (sync): keep the
+    // default for anything xterm couldn't use (NaN, an unknown cursor style).
     if (values[0]) terminalSettings.fontFamily = values[0]
-    if (values[1]) terminalSettings.fontSize = parseInt(values[1], 10)
-    if (values[2]) terminalSettings.lineHeight = parseFloat(values[2])
-    if (values[3]) terminalSettings.cursorStyle = values[3] as 'block' | 'underline' | 'bar'
+    const size = values[1] ? parseInt(values[1], 10) : NaN
+    if (Number.isFinite(size) && size >= 6 && size <= 72) terminalSettings.fontSize = size
+    const lh = values[2] ? parseFloat(values[2]) : NaN
+    if (Number.isFinite(lh) && lh >= 0.8 && lh <= 3) terminalSettings.lineHeight = lh
+    if (values[3] === 'block' || values[3] === 'underline' || values[3] === 'bar')
+      terminalSettings.cursorStyle = values[3]
     if (values[4] !== null && values[4] !== undefined)
       terminalSettings.cursorBlink = values[4] === 'true'
     if (values[5]) terminalSettings.activeColorScheme = values[5]

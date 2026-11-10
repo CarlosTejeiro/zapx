@@ -5,6 +5,34 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.11] - 2026-11-10
+
+### Fixed
+- **Run & compare could freeze ZAPX on long outputs.** Comparing two
+  groups of output, such as two full FortiGate configs of about 20 000
+  lines, needed gigabytes of memory. The diff now skips the lines both have
+  in common at the start and end and only compares the part in between, so
+  two large configs that differ in a few lines compare instantly. A huge
+  difference is shown as a whole block instead of hanging.
+- **Quick Connect and the session dialog accepted an empty or invalid port**,
+  which only failed later with a technical error. They now ask for a port
+  from 1 to 65535.
+
+## [0.29.10] - 2026-11-10
+
+### Fixed
+- **The SSH agent priority setting (Windows) was never saved.** Choosing
+  "Pageant first" or another option showed the choice, but it was lost on
+  restart, so ZAPX always used "Auto". It is now saved, and an error is
+  reported if saving fails.
+- **The restore confirmation described the wrong vault behaviour.** It
+  said vault entries are updated from the backup, but since 0.29.3 an entry
+  this device already has keeps its own password. The confirmation and the
+  Backup help now say so.
+- Terminal font size, line height and cursor style read from settings are
+  checked, so a bad value (e.g. from a backup or another device) keeps the
+  default instead of breaking the terminal.
+
 ## [0.29.9] - 2026-11-10
 
 ### Fixed
