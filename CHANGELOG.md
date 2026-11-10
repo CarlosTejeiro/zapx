@@ -5,6 +5,21 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.10] - 2026-11-10
+
+### Fixed
+- **The SSH agent priority setting (Windows) was never saved.** Choosing
+  "Pageant first" or another option showed the choice, but it was lost on
+  restart, so ZAPX always used "Auto". It is now saved, and an error is
+  reported if saving fails.
+- **The restore confirmation described the wrong vault behaviour.** It
+  said vault entries are updated from the backup, but since 0.29.3 an entry
+  this device already has keeps its own password. The confirmation and the
+  Backup help now say so.
+- Terminal font size, line height and cursor style read from settings are
+  checked, so a bad value (e.g. from a backup or another device) keeps the
+  default instead of breaking the terminal.
+
 ## [0.29.9] - 2026-11-10
 
 ### Fixed
