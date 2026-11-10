@@ -1834,7 +1834,13 @@
         }
       }}
       onDelete={async (s) => {
-        const ok = await ask(`Delete "${s.name}"? This can't be undone.`, {
+        // Sessions that jump through this one would silently start
+        // connecting directly (the link is cleared): say so first.
+        const via = sessions.filter((x) => x.via_session_id === s.id).map((x) => x.name)
+        const viaNote = via.length
+          ? `\n\n${via.length === 1 ? '1 session uses' : `${via.length} sessions use`} it as jump host (${via.join(', ')}) and will connect directly.`
+          : ''
+        const ok = await ask(`Delete "${s.name}"? This can't be undone.${viaNote}`, {
           title: 'Delete session',
           kind: 'warning',
         })
@@ -1843,7 +1849,7 @@
           await deleteSavedSession(s.id)
           await load()
         } catch (e) {
-          console.error('delete session failed:', e)
+          showToast({ kind: 'error', title: 'Delete failed', detail: errorText(e) })
         }
       }}
       onCreateFolder={() => {
@@ -1857,7 +1863,7 @@
               await createFolder(name, null)
               await load()
             } catch (e) {
-              console.error('create folder failed:', e)
+              showToast({ kind: 'error', title: 'Create folder failed', detail: errorText(e) })
             }
           },
         })
@@ -1874,7 +1880,7 @@
               await renameFolder(folder.id, name)
               await load()
             } catch (e) {
-              console.error('rename folder failed:', e)
+              showToast({ kind: 'error', title: 'Rename failed', detail: errorText(e) })
             }
           },
         })
@@ -1889,7 +1895,7 @@
           await deleteFolder(folder.id)
           await load()
         } catch (e) {
-          console.error('delete folder failed:', e)
+          showToast({ kind: 'error', title: 'Delete folder failed', detail: errorText(e) })
         }
       }}
       onMove={async (sessionId, folderId) => {
@@ -1897,7 +1903,7 @@
           await moveSavedSession(sessionId, folderId)
           await load()
         } catch (e) {
-          console.error('move session failed:', e)
+          showToast({ kind: 'error', title: 'Move failed', detail: errorText(e) })
         }
       }}
       onReorder={async (sessionId, folderId, targetIndex) => {
@@ -1905,7 +1911,7 @@
           await reorderSavedSession(sessionId, folderId, targetIndex)
           await load()
         } catch (e) {
-          console.error('reorder session failed:', e)
+          showToast({ kind: 'error', title: 'Reorder failed', detail: errorText(e) })
         }
       }}
       onAddSession={() => (showNewSession = true)}

@@ -696,6 +696,11 @@ export async function setSessionPlatform(savedSessionId: number, platform: strin
   return invoke<void>('set_session_platform', { savedSessionId, platform })
 }
 
+/** Forget the session's platform (detected or chosen): back to the default. */
+export async function clearSessionPlatform(savedSessionId: number): Promise<void> {
+  return invoke<void>('clear_session_platform', { savedSessionId })
+}
+
 export async function getSessionPlatform(savedSessionId: number): Promise<string | null> {
   return invoke<string | null>('get_session_platform', { savedSessionId })
 }

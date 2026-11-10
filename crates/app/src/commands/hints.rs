@@ -118,6 +118,19 @@ pub async fn set_session_platform(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Drop the session's platform (detected or chosen), so it follows the global
+/// default again — the only way to undo a wrong auto-detection.
+#[tauri::command]
+pub async fn clear_session_platform(
+    state: State<'_, AppState>,
+    saved_session_id: i64,
+) -> Result<(), AppError> {
+    state
+        .db
+        .clear_session_platform(saved_session_id)
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 #[tauri::command]
 pub async fn get_session_platform(
     state: State<'_, AppState>,

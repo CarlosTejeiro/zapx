@@ -5,6 +5,26 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.8] - 2026-11-10
+
+### Fixed
+- **Editing a session could break its login script.** Steps that send a bare
+  Enter (`\r`) or extra newlines (`\n`) were shown empty or without them,
+  and changing such a step saved it without its Enter. They now show as
+  `\r`, `\n` and `\t`, exactly as the dialog's help describes, and save
+  back unchanged. The same applies to the text of output triggers.
+- **A session's platform couldn't be reset.** Choosing "Use global default"
+  in the session dialog did nothing. A platform that auto-detection got
+  wrong stayed forever. It is now cleared, and detection can set it again
+  on the next connect.
+- **Sidebar actions failed silently.** Deleting a session, creating,
+  renaming or deleting a folder, or moving a session showed nothing when
+  it failed. You now get an error message.
+
+### Changed
+- Deleting a session that other sessions use as their jump host now names
+  them in the confirmation, since they will start connecting directly.
+
 ## [0.29.7] - 2026-11-09
 
 ### Fixed

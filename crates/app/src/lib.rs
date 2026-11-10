@@ -343,6 +343,7 @@ pub fn run() {
             commands::hints::search_command_history,
             commands::hints::record_command,
             commands::hints::set_session_platform,
+            commands::hints::clear_session_platform,
             commands::hints::get_session_platform,
             commands::hints::list_platforms,
             commands::hints::clear_command_history,
