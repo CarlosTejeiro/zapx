@@ -1885,8 +1885,39 @@
           },
         })
       }}
+      onCreateSubfolder={(parent) => {
+        openPrompt({
+          title: `New folder in "${parent.name}"`,
+          placeholder: 'My folder',
+          submitLabel: 'Create',
+          onSubmit: async (name) => {
+            prompt = null
+            try {
+              await createFolder(name, parent.id)
+              await load()
+            } catch (e) {
+              showToast({ kind: 'error', title: 'Create folder failed', detail: errorText(e) })
+            }
+          },
+        })
+      }}
       onDeleteFolder={async (folder) => {
-        const ok = await ask(`Delete folder "${folder.name}"? Its sessions move to the root.`, {
+        // Deleting a folder also deletes its subfolders (ON DELETE CASCADE);
+        // the sessions of all of them move to the root.
+        const sub = new Set<number>()
+        const walk = (id: number) => {
+          for (const f of folders)
+            if (f.parent_id === id && !sub.has(f.id)) {
+              sub.add(f.id)
+              walk(f.id)
+            }
+        }
+        walk(folder.id)
+        sub.delete(folder.id)
+        const subNote = sub.size
+          ? ` Its ${sub.size === 1 ? 'subfolder is' : `${sub.size} subfolders are`} deleted too; all their sessions move to the root.`
+          : ' Its sessions move to the root.'
+        const ok = await ask(`Delete folder "${folder.name}"?${subNote}`, {
           title: 'Delete folder',
           kind: 'warning',
         })
