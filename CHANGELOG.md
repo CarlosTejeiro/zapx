@@ -5,6 +5,22 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.2] - 2026-11-10
+
+### Changed
+- **Cascadia Code is the terminal font, at 14 px.** The font now ships with
+  the app, so it looks the same on machines that don't have it installed.
+  Before, the default named Cascadia Code but fell back to another font
+  wherever it was missing. A font chosen in Settings is kept.
+- **The button bar uses the terminal's font**, at 12 px to fit the buttons,
+  and follows it when it changes in Settings.
+
+### Fixed
+- **Changing the terminal font or size didn't resize the session**: the
+  terminal kept its old number of columns and rows. It now refits, and
+  waits for a font that hasn't loaded yet instead of measuring with its
+  fallback.
+
 ## [0.30.1] - 2026-11-10
 
 ### Fixed

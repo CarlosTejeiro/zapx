@@ -7,11 +7,12 @@
     applyFontFamily,
     applyCursorStyle,
     applyCursorBlink,
+    DEFAULT_FONT_FAMILY,
   } from '$lib/stores/settings.svelte'
 
   const FONT_FAMILIES = [
+    DEFAULT_FONT_FAMILY,
     'JetBrains Mono Variable, JetBrains Mono, monospace',
-    'Cascadia Code, JetBrains Mono, monospace',
     'JetBrains Mono, monospace',
     'Fira Code, monospace',
     'Consolas, monospace',
@@ -137,7 +138,7 @@
     font-size: 0.75rem;
     padding: 0.15rem 0.4rem;
     flex: 1;
-    max-width: 160px;
+    max-width: 210px;
   }
 
   .cursor-row {
