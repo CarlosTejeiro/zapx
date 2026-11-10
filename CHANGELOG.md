@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.9] - 2026-11-10
+
+### Fixed
+- **Importing a MobaXterm macro could leave the password in plain text.**
+  When saving the detected password to the vault failed (most often
+  because a vault entry with that name already existed), the macro was
+  imported anyway, with the password written in its steps and no warning.
+  The import now stops and says why, so you can pick another name.
+- **A vaulted password containing `\`** was stored with every backslash
+  doubled, so the macro typed the wrong password. The vault now gets
+  exactly what the macro would have typed. The masked preview shows the
+  real length too.
+
 ## [0.29.8] - 2026-11-10
 
 ### Fixed

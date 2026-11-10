@@ -16,6 +16,7 @@
   import { parseMobaMacros } from '$lib/snippets/mobaMacro'
   import { createVaultEntry } from '$lib/bridge/commands'
   import { decodeEscapes } from '$lib/orchestrator/macroRunner'
+  import { errorText } from '$lib/bridge/errors'
 
   interface Props {
     theme: PylonTheme
@@ -85,6 +86,7 @@
   const detected = $derived(candidates.find((c) => c.likely) ?? null)
 
   let saveToVault = $state(true)
+  let importError = $state('')
   let vaultName = $state('')
   let vaultUser = $state('')
   // The user's chosen candidate `key`, or '' for "none". Re-seeded when the
@@ -129,7 +131,7 @@
   function candidateLabel(c: Candidate): string {
     const macroName = parsed[c.macroIndex]!.name || `macro ${c.macroIndex + 1}`
     const flag = c.likely ? '🔒 ' : ''
-    return `${flag}${macroName} · step ${c.stepIndex + 1}: ${mask(c.plaintext)}`
+    return `${flag}${macroName} · step ${c.stepIndex + 1}: ${mask(decodeEscapes(c.plaintext))}`
   }
 
   async function doImport() {
@@ -140,10 +142,14 @@
       steps: m.steps.map((s) => ({ ...s })),
     }))
 
+    importError = ''
     if (saveToVault && chosen) {
       try {
         const entryName = vaultName.trim() || 'Imported credential'
-        await createVaultEntry(entryName, vaultUser.trim() || null, chosen.plaintext)
+        // The step text is escaped for the macro runner (`\\` for a
+        // backslash, `\x7f` for BACK…); the vault types its secret byte for
+        // byte, so store what the macro would actually have typed.
+        await createVaultEntry(entryName, vaultUser.trim() || null, decodeEscapes(chosen.plaintext))
         // Replace the chosen step's send with a name+field vault reference (so
         // the plaintext never lands in steps_json). Preserve a trailing Enter
         // if the original had one.
@@ -151,9 +157,12 @@
         const enter = /\\r$/.test(orig.send) ? '\\r' : ''
         macros[chosen.macroIndex]!.steps[chosen.stepIndex]!.send =
           `{{vault:${entryName}.Password}}${enter}`
-      } catch {
-        // If vaulting fails, fall through and import the macro as-is rather
-        // than blocking the whole import.
+      } catch (e) {
+        // Don't import anyway: the macro would keep the password in plain
+        // text, which is what the user asked to avoid. Say why (a name
+        // already in the vault, typically) so they can fix it and retry.
+        importError = `Couldn't save the password to the vault: ${errorText(e)}`
+        return
       }
     }
 
@@ -272,6 +281,10 @@
       </div>
     {/if}
 
+    {#if importError}
+      <p class="import-error" style:color={theme.err}>{importError}</p>
+    {/if}
+
     <div class="footer">
       <span class="count" style:color={theme.textMuted}>
         {parsed.length}
@@ -383,6 +396,10 @@
     font-size: 12px;
     font-family: inherit;
     outline: none;
+  }
+  .import-error {
+    margin: 0;
+    font-size: 12px;
   }
   .footer {
     display: flex;
