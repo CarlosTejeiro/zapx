@@ -5,6 +5,17 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.12] - 2026-11-10
+
+### Fixed
+- **Sidebar search hid what it found inside folders.** A collapsed folder
+  with matches showed only a count; you had to expand it to see the
+  sessions. While searching, folders with matches now open.
+
+### Changed
+- Sidebar search also matches a session's host and username, so typing an
+  IP or part of a hostname finds it.
+
 ## [0.29.11] - 2026-11-10
 
 ### Fixed
