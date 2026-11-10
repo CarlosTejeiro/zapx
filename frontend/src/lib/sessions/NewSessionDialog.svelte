@@ -844,7 +844,8 @@
     <details class="login-script" bind:open={showTriggers}>
       <summary>Triggers ({triggers.length})</summary>
       <p class="hint">
-        When a <strong>pattern</strong> matches a line of output, fire an action:
+        When a <strong>pattern</strong> matches a line of output — or a prompt still waiting for
+        input, like <code>(y/n)</code> or <code>--More--</code> — fire an action:
         <strong>notify</strong> (toast), <strong>send</strong> (type the text + Enter back), or
         <strong>bell</strong>. Use <code>\n</code> for a newline in send.
       </p>
