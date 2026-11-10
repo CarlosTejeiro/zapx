@@ -5,6 +5,22 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.1] - 2026-11-10
+
+### Fixed
+- **Triggers didn't fire on prompts.** A trigger only looked at complete
+  lines, so one meant to answer a prompt waiting for input (`(y/n)`,
+  `--More--`, `Press 'a' to accept`) never fired: the prompt doesn't end its
+  line. Triggers now also match the pending line, once per prompt. A pager
+  that redraws its prompt on the same line is answered every time.
+- **Session logs started in the same second with the same name** (two tabs
+  of one session) wrote into the same file, mixing both. Each log now gets
+  its own file. After rotation (every 50 MB), all parts keep the first
+  part's name, and the size recorded for the log counts every part, not
+  only the last one.
+- **A port forward opened while its session was closing stayed open** with
+  no session behind it. It is now dropped.
+
 ## [0.30.0] - 2026-11-10
 
 ### Added

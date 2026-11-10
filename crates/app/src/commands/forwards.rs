@@ -46,6 +46,34 @@ fn session_handle_and_registry(
     Ok((handle, registry))
 }
 
+/// Keep a freshly opened forward under its session — unless the session was
+/// closed while the forward was being opened (binding the port is async).
+/// `close_session` removes the session before its forwards, so checking under
+/// the sessions lock is enough: either the forward lands first and is dropped
+/// with the rest, or the session is already gone and the controller is
+/// dropped here, which stops the listener (it used to stay bound forever).
+fn store_forward(
+    state: &AppState,
+    session_id: &str,
+    controller: core_transport::ForwardController,
+) -> Result<ForwardInfo, AppError> {
+    let sessions = state.sessions.lock().unwrap();
+    if !sessions.contains_key(session_id) {
+        return Err(AppError::Internal(
+            "the session was closed while the forward was opening".into(),
+        ));
+    }
+    let info = controller.info.clone();
+    state
+        .forwards
+        .lock()
+        .unwrap()
+        .entry(session_id.to_owned())
+        .or_default()
+        .push(controller);
+    Ok(info)
+}
+
 /// A tunnel name as typed: trimmed, `None` when blank.
 fn clean_name(name: Option<String>) -> Option<String> {
     name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty())
@@ -71,15 +99,7 @@ pub async fn add_local_forward(
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
     controller.info.name = clean_name(name);
-    let info = controller.info.clone();
-    state
-        .forwards
-        .lock()
-        .unwrap()
-        .entry(session_id)
-        .or_default()
-        .push(controller);
-    Ok(info)
+    store_forward(&state, &session_id, controller)
 }
 
 /// Bind a local TCP port as a SOCKS5 server; each accepted client's CONNECT
@@ -97,15 +117,7 @@ pub async fn add_dynamic_forward(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     controller.info.name = clean_name(name);
-    let info = controller.info.clone();
-    state
-        .forwards
-        .lock()
-        .unwrap()
-        .entry(session_id)
-        .or_default()
-        .push(controller);
-    Ok(info)
+    store_forward(&state, &session_id, controller)
 }
 
 /// Ask the SSH server to listen on `(bind_addr, bind_port)` and tunnel every
@@ -135,15 +147,7 @@ pub async fn add_remote_forward(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
     controller.info.name = clean_name(name);
-    let info = controller.info.clone();
-    state
-        .forwards
-        .lock()
-        .unwrap()
-        .entry(session_id)
-        .or_default()
-        .push(controller);
-    Ok(info)
+    store_forward(&state, &session_id, controller)
 }
 
 /// Return the metadata for every active forward attached to `session_id`.
@@ -290,13 +294,10 @@ pub async fn autostart_saved_forwards(
         match opened {
             Ok(mut controller) => {
                 controller.info.name = clean_name(f.name.clone());
-                state
-                    .forwards
-                    .lock()
-                    .unwrap()
-                    .entry(live_session_id.to_owned())
-                    .or_default()
-                    .push(controller);
+                if let Err(e) = store_forward(state, live_session_id, controller) {
+                    tracing::warn!("auto-start forward dropped: {e}");
+                    return;
+                }
             }
             Err(e) => tracing::warn!(
                 "auto-start {} forward {}:{} failed: {e}",

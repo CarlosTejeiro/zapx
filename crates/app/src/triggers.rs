@@ -6,7 +6,10 @@
 //! A [`TriggerRunner`] is fed the raw output from inside `make_on_data` (the
 //! per-session I/O task), exactly like the login runner. Matching is **per
 //! line**: raw bytes are accumulated and split on `\n`, each completed line is
-//! ANSI-stripped and tested against every enabled trigger. A small per-trigger
+//! ANSI-stripped and tested against every enabled trigger. The pending,
+//! not-yet-terminated line is tested too after every chunk — a prompt such as
+//! `Continue? (y/n)` waits for its answer without ever ending its line — and a
+//! trigger that fired on it doesn't fire again when that line completes. A small per-trigger
 //! cooldown stops a "send" action from melting a device in a tight loop (the
 //! sent text could itself match the trigger).
 
@@ -92,6 +95,13 @@ struct Inner {
     /// Raw, not-yet-newline-terminated tail of the output.
     line: Vec<u8>,
     last_fired: Vec<Option<Instant>>,
+    /// Triggers that already fired on the pending (unterminated) line.
+    fired_on_pending: Vec<bool>,
+    /// Where the pending line's current segment starts: just after its last
+    /// bare `\r`. A carriage return sends the cursor back to column 0, so the
+    /// text after it is a new line as far as the screen goes (a pager redraws
+    /// `--More--` that way, never sending `\n`).
+    pending_from: usize,
 }
 
 impl TriggerRunner {
@@ -115,6 +125,8 @@ impl TriggerRunner {
             inner: Mutex::new(Inner {
                 line: Vec::with_capacity(256),
                 last_fired: vec![None; n],
+                fired_on_pending: vec![false; n],
+                pending_from: 0,
             }),
         }
     }
@@ -130,24 +142,49 @@ impl TriggerRunner {
             let raw: Vec<u8> = inner.line.drain(..=pos).collect();
             let stripped = strip_ansi(&raw);
             let line = stripped.trim_end_matches(['\r', '\n']);
-            self.eval_line(line, &mut inner);
+            self.eval_line(line, &mut inner, false);
+            // The line that was pending is complete now; the next one is new.
+            inner.fired_on_pending.iter_mut().for_each(|f| *f = false);
+            inner.pending_from = 0;
         }
         if inner.line.len() > MAX_LINE {
             let drop = inner.line.len() - MAX_LINE;
             inner.line.drain(0..drop);
+            inner.pending_from = inner.pending_from.saturating_sub(drop);
+        }
+        // A bare `\r` (not the one ending the data so far, which may be the
+        // first half of `\r\n`) starts a new segment of the pending line.
+        let body = inner.line.strip_suffix(b"\r").unwrap_or(&inner.line);
+        if let Some(cr) = body.iter().rposition(|&b| b == b'\r') {
+            if cr + 1 > inner.pending_from {
+                inner.pending_from = cr + 1;
+                inner.fired_on_pending.iter_mut().for_each(|f| *f = false);
+            }
+        }
+        if inner.line.len() > inner.pending_from {
+            let stripped = strip_ansi(&inner.line[inner.pending_from..]);
+            let pending = stripped.trim_end_matches('\r').to_owned();
+            self.eval_line(&pending, &mut inner, true);
         }
     }
 
-    fn eval_line(&self, line: &str, inner: &mut Inner) {
+    /// Fire every enabled trigger matching `line`. `pending`: the line isn't
+    /// terminated yet; a trigger fires at most once per such line (it already
+    /// did if it is marked in `fired_on_pending`, which also covers the moment
+    /// the line completes).
+    fn eval_line(&self, line: &str, inner: &mut Inner, pending: bool) {
         let now = Instant::now();
         for (i, trig) in self.triggers.iter().enumerate() {
-            if !trig.enabled || !self.matchers[i].is_match(line) {
+            if !trig.enabled || inner.fired_on_pending[i] || !self.matchers[i].is_match(line) {
                 continue;
             }
             if let Some(last) = inner.last_fired[i] {
                 if now.duration_since(last) < COOLDOWN {
                     continue;
                 }
+            }
+            if pending {
+                inner.fired_on_pending[i] = true;
             }
             inner.last_fired[i] = Some(now);
             self.fire(trig, line);
@@ -244,6 +281,56 @@ mod tests {
         let (r, fired) = runner(vec![t]);
         r.feed(b"ERROR here\r\n");
         assert_eq!(fired.lock().unwrap().len(), 0);
+    }
+
+    /// A prompt waits for an answer without ending its line: a `send`
+    /// trigger on it must fire on the pending text, once, and not again when
+    /// the line is finally completed.
+    #[test]
+    fn send_trigger_answers_a_prompt_without_newline() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let r = TriggerRunner::new(
+            "s".into(),
+            vec![trig("(y/n)", false, "send", "y")],
+            tx,
+            Box::new(|_| {}),
+        );
+        r.feed(b"Do you want to continue? ");
+        assert!(rx.try_recv().is_err(), "not matched yet");
+        r.feed(b"(y/n) ");
+        match rx.try_recv() {
+            Ok(SessionCmd::Data(d)) => assert_eq!(d, b"y\r"),
+            other => panic!("expected the answer, got {other:?}"),
+        }
+        // The device echoes the answer and ends the line: no second send.
+        r.feed(b"y\r\n");
+        assert!(rx.try_recv().is_err(), "fired twice for one prompt");
+        // The next prompt fires again.
+        std::thread::sleep(COOLDOWN);
+        r.feed(b"Overwrite? (y/n) ");
+        assert!(rx.try_recv().is_ok());
+    }
+
+    /// A pager erases its prompt with `\r` and keeps printing on the same
+    /// line: every `--More--` is answered, not only the first.
+    #[test]
+    fn pager_prompt_redrawn_after_cr_fires_again() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let r = TriggerRunner::new(
+            "s".into(),
+            vec![trig("--More--", false, "send", " ")],
+            tx,
+            Box::new(|_| {}),
+        );
+        r.feed(b"line 1\r\n--More-- ");
+        assert!(rx.try_recv().is_ok(), "first page");
+        std::thread::sleep(COOLDOWN);
+        r.feed(b"\r        \rline 2\r\nline 3\r\n--More-- ");
+        assert!(rx.try_recv().is_ok(), "second page");
+        std::thread::sleep(COOLDOWN);
+        r.feed(b"\r        \r--More-- ");
+        assert!(rx.try_recv().is_ok(), "redrawn on the same line");
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]

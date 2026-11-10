@@ -54,8 +54,12 @@ pub struct SessionLogger {
     writer: BufWriter<File>,
     path: PathBuf,
     log_dir: PathBuf,
-    base_name: String,
+    /// `<name>_<timestamp>[-n]`: shared by every part of this log.
+    stem: String,
     part: u32,
+    /// Bytes in the current part (drives rotation).
+    part_bytes: u64,
+    /// Bytes in all parts together (what the log row records).
     bytes_written: u64,
     started_at: DateTime<Utc>,
     format: LogFormat,
@@ -80,13 +84,14 @@ impl SessionLogger {
     ) -> Result<Self, Error> {
         std::fs::create_dir_all(log_dir)?;
         let safe_name = sanitize(base_name);
-        let (file, path) = open_part(log_dir, &safe_name, 0)?;
+        let (file, path, stem) = open_first(log_dir, &safe_name)?;
         Ok(Self {
             writer: BufWriter::with_capacity(BUF_CAP, file),
             path,
             log_dir: log_dir.to_owned(),
-            base_name: safe_name,
+            stem,
             part: 0,
+            part_bytes: 0,
             bytes_written: 0,
             started_at: Utc::now(),
             format,
@@ -108,16 +113,17 @@ impl SessionLogger {
             return Ok(());
         }
         self.writer.write_all(payload)?;
+        self.part_bytes += payload.len() as u64;
         self.bytes_written += payload.len() as u64;
 
-        if self.bytes_written >= MAX_FILE_BYTES {
+        if self.part_bytes >= MAX_FILE_BYTES {
             self.writer.flush()?;
             let next = self.part + 1;
-            let (new_file, new_path) = open_part(&self.log_dir, &self.base_name, next)?;
+            let (new_file, new_path) = open_part(&self.log_dir, &self.stem, next)?;
             self.writer = BufWriter::with_capacity(BUF_CAP, new_file);
             self.path = new_path;
             self.part = next;
-            self.bytes_written = 0;
+            self.part_bytes = 0;
         }
         Ok(())
     }
@@ -126,6 +132,7 @@ impl SessionLogger {
         &self.path
     }
 
+    /// Bytes written so far, across every part.
     pub fn bytes_written(&self) -> u64 {
         self.bytes_written
     }
@@ -134,21 +141,39 @@ impl SessionLogger {
         self.started_at
     }
 
-    /// Flush and consume the logger. Returns `(path, total_bytes, started_at)`.
+    /// Flush and consume the logger. Returns `(path of the last part, total
+    /// bytes across all parts, started_at)`.
     pub fn close(mut self) -> Result<(PathBuf, u64, DateTime<Utc>), Error> {
         self.writer.flush()?;
         Ok((self.path, self.bytes_written, self.started_at))
     }
 }
 
-fn open_part(dir: &Path, base: &str, part: u32) -> Result<(File, PathBuf), Error> {
+/// Create the first part, `<base>_<timestamp>.log`, as a NEW file: two logs
+/// started with the same name in the same second (two tabs of one session)
+/// used to append into one file, interleaving both. A taken name gets
+/// `-2`, `-3`… Returns the file, its path and the stem the parts share.
+fn open_first(dir: &Path, base: &str) -> Result<(File, PathBuf, String), Error> {
     let ts = Local::now().format("%Y%m%d_%H%M%S");
-    let name = if part == 0 {
-        format!("{base}_{ts}.log")
-    } else {
-        format!("{base}_{ts}.{part}.log")
-    };
-    let path = dir.join(name);
+    for n in 1..1000u32 {
+        let stem = if n == 1 {
+            format!("{base}_{ts}")
+        } else {
+            format!("{base}_{ts}-{n}")
+        };
+        let path = dir.join(format!("{stem}.log"));
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return Ok((file, path, stem)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free log file name").into())
+}
+
+/// Rotation part `part` (≥ 1) of a log: `<stem>.<part>.log`, next to the first.
+fn open_part(dir: &Path, stem: &str, part: u32) -> Result<(File, PathBuf), Error> {
+    let path = dir.join(format!("{stem}.{part}.log"));
     let file = OpenOptions::new().create(true).append(true).open(&path)?;
     Ok((file, path))
 }
@@ -267,6 +292,25 @@ mod tests {
         assert!(path.exists());
         assert_eq!(bytes, 12);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Two logs with the same name started in the same second get their own
+    /// files (they used to append into one).
+    #[test]
+    fn same_name_same_second_gets_separate_files() {
+        let dir = std::env::temp_dir().join(format!("zapx-log-dup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut a = SessionLogger::open(&dir, "fw").unwrap();
+        let mut b = SessionLogger::open(&dir, "fw").unwrap();
+        assert_ne!(a.path(), b.path());
+        a.write(b"from a\n").unwrap();
+        b.write(b"from b\n").unwrap();
+        let (pa, na, _) = a.close().unwrap();
+        let (pb, _, _) = b.close().unwrap();
+        assert_eq!(std::fs::read_to_string(&pa).unwrap(), "from a\n");
+        assert_eq!(std::fs::read_to_string(&pb).unwrap(), "from b\n");
+        assert_eq!(na, 7);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
