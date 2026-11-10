@@ -377,11 +377,13 @@
 
   const query = $derived(search.toLowerCase())
 
-  /// Match a session by name, tags or notes so a search like "prod" surfaces
-  /// every tagged host even when the word isn't in the name.
+  /// Match a session by name, host, user, tags or notes, so a search like
+  /// "prod" surfaces every tagged host and "10.0.0." finds hosts by address.
   function matchesQuery(s: SavedSession): boolean {
     if (!query) return true
     if (s.name.toLowerCase().includes(query)) return true
+    if (s.host?.toLowerCase().includes(query)) return true
+    if (s.username?.toLowerCase().includes(query)) return true
     const { tags, notes } = sessionMeta(s)
     return tags.some((t) => t.toLowerCase().includes(query)) || notes.toLowerCase().includes(query)
   }
@@ -613,7 +615,7 @@
             style:color={theme.textDim}
             onclick={() => toggleFolder(folder.id)}
           >
-            <Icon name="chevron" size={11} open={expandedFolders.has(folder.id)} />
+            <Icon name="chevron" size={11} open={!!query || expandedFolders.has(folder.id)} />
             <Icon name="folder" size={13} />
             <span class="sb-folder-name">{folder.name.toUpperCase()}</span>
             <span class="sb-count" style:color={theme.textDim}>{folderSessions.length}</span>
@@ -645,7 +647,9 @@
             {/if}
           </div>
 
-          {#if expandedFolders.has(folder.id)}
+          <!-- While searching, a folder with matches shows them: collapsed, it
+               used to show only a count and hide the sessions found. -->
+          {#if query || expandedFolders.has(folder.id)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="sb-droparea"
