@@ -879,7 +879,9 @@
   // A saved session opts out via `options_json.auto_reconnect = false`;
   // otherwise it follows the global default.
   function autoReconnectEnabled(): boolean {
-    if (!savedSession) return false
+    // Serial consoles never reconnect on their own: a dropped console is
+    // usually a cable pulled on purpose. Reconnect stays a button.
+    if (!savedSession || savedSession.protocol === 'serial') return false
     try {
       const o = JSON.parse(savedSession.options_json || '{}') as { auto_reconnect?: unknown }
       if (o.auto_reconnect === false) return false

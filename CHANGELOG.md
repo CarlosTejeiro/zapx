@@ -5,6 +5,16 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.4] - 2026-11-11
+
+### Changed
+- **Serial sessions never reconnect on their own.** When a serial console
+  dropped (adapter unplugged), the app retried the port for about a minute
+  and reopened it if the cable came back. A console is usually unplugged
+  on purpose, so it now stays disconnected; the Reconnect button still
+  works. The auto-reconnect option is hidden for serial sessions, and SSH
+  and Telnet are unchanged.
+
 ## [0.30.3] - 2026-11-11
 
 ### Changed
