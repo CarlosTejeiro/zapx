@@ -12,7 +12,7 @@
     releaseBroadcastScope,
   } from '$lib/stores/sessionRuntime.svelte'
 
-  type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
+  type PaneStatus = 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
 
   interface Props {
     panes: PaneData[]

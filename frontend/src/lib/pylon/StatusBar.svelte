@@ -2,7 +2,7 @@
   import type { PylonTheme } from '$lib/themes/index'
   import type { TcpMss } from '$lib/bridge/types'
 
-  type ConnStatus = 'connecting' | 'connected' | 'error' | 'closed'
+  type ConnStatus = 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
 
   interface Props {
     theme: PylonTheme
@@ -54,15 +54,17 @@
       ? 'CONNECTED'
       : status === 'error'
         ? 'FAILED'
-        : status === 'closed'
-          ? 'DISCONNECTED'
-          : 'CONNECTING…',
+        : status === 'lost'
+          ? 'CONNECTION LOST'
+          : status === 'closed'
+            ? 'DISCONNECTED'
+            : 'CONNECTING…',
   )
 
   const statusColor = $derived(
     status === 'connected'
       ? theme.ok
-      : status === 'error'
+      : status === 'error' || status === 'lost'
         ? theme.err
         : status === 'closed'
           ? theme.textDim

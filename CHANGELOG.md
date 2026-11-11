@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] - 2026-11-11
+
+### Changed
+- **A dropped connection reads "CONNECTION LOST", not "FAILED".** The
+  status bar said FAILED both when a session couldn't connect and when a
+  connected one lost its link (a console cable unplugged, a connection
+  reset). A lost link now shows as CONNECTION LOST, like the banner in the
+  terminal. FAILED is kept for a connection that didn't open.
+
 ## [0.30.2] - 2026-11-10
 
 ### Changed

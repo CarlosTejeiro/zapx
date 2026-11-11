@@ -8,7 +8,7 @@
     id: number
     label: string
     color: string
-    status: 'connecting' | 'connected' | 'error' | 'closed'
+    status: 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
   }
 
   interface Props {
@@ -45,7 +45,7 @@
 
   function statusColor(status: TabEntry['status']): string {
     if (status === 'connected') return theme.ok
-    if (status === 'error') return theme.err
+    if (status === 'error' || status === 'lost') return theme.err
     if (status === 'closed') return theme.textDim
     return theme.warn
   }
