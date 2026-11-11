@@ -494,9 +494,20 @@
   // xterm's cell measurement is valid before the first fit. On some WebKitGTK
   // builds, fitting before the terminal font is ready yields a bogus (1×1 /
   // 0-cell) measurement. Guarded for environments without `document.fonts`.
+  /** Load the terminal's (bundled) webfont before xterm measures cells. */
+  function loadTerminalFont(): Promise<unknown> {
+    if (typeof document === 'undefined' || !document.fonts?.load) return Promise.resolve()
+    return document.fonts
+      .load(`${terminalSettings.fontSize}px ${terminalSettings.fontFamily}`)
+      .catch(() => undefined)
+  }
+
   async function waitForLayout(): Promise<void> {
     try {
       if (typeof document !== 'undefined' && document.fonts?.ready) {
+        // `ready` only covers fonts already loading, and xterm draws on a
+        // canvas, which doesn't start a webfont's download: ask for it.
+        await loadTerminalFont()
         await document.fonts.ready
       }
     } catch {
@@ -1310,7 +1321,15 @@
     if (!term) return
     term.options.theme = effectivePalette
     term.options.fontSize = terminalSettings.fontSize
-    term.options.fontFamily = terminalSettings.fontFamily
+    const family = terminalSettings.fontFamily
+    // A font not yet downloaded would be measured as its fallback: switch
+    // once it has loaded, then refit — the cell size changed, so did the
+    // column/row count the PTY should have.
+    void loadTerminalFont().then(async () => {
+      if (!term || terminalSettings.fontFamily !== family) return
+      term.options.fontFamily = family
+      if (await safeFit()) await correctPtySize()
+    })
     term.options.cursorStyle = terminalSettings.cursorStyle
     term.options.cursorBlink = terminalSettings.cursorBlink
   })

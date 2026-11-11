@@ -39,6 +39,7 @@
   import { showToast } from '$lib/ui/toast-store.svelte'
   import { resolveSnippet } from '$lib/snippets/variables.svelte'
   import Icon from '$lib/icons/Icon.svelte'
+  import { terminalSettings } from '$lib/stores/settings.svelte'
   import ButtonEditor from './ButtonEditor.svelte'
   import type { Snippet, RecentCommand, LoginStep } from '$lib/bridge/types'
   import type { PylonTheme } from '$lib/themes/index'
@@ -232,7 +233,7 @@
       title="Hide button bar">▾</button
     >
 
-    <div class="snippets" onwheel={onBarWheel}>
+    <div class="snippets" style:font-family={terminalSettings.fontFamily} onwheel={onBarWheel}>
       {#each visibleSnippets as s, i (s.id)}
         <!-- Each button: click fires it; a hover pencil or a right-click opens
              the editor (edit / delete); drag to reorder. The optional color
@@ -470,7 +471,8 @@
     align-items: center;
     gap: 5px;
     padding: 3px 9px;
-    font-size: 11.5px;
+    /* Family: the terminal's font, set on .snippets. */
+    font-size: 12px;
     border: 1px solid;
     border-radius: 4px;
     cursor: pointer;
@@ -505,7 +507,6 @@
   }
 
   .key-pill {
-    font-family: monospace;
     font-size: 9.5px;
     font-weight: 700;
     background: var(--pill-bg);

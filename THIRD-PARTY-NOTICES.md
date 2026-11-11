@@ -50,6 +50,7 @@ Bundled into the web UI (see `frontend/pnpm-lock.yaml` for exact versions):
 
 - **Geist** — SIL Open Font License 1.1
 - **JetBrains Mono** — SIL Open Font License 1.1
+- **Cascadia Code** — SIL Open Font License 1.1
 
 The SIL OFL permits embedding the fonts in software (of any license); it
 only restricts selling the fonts on their own.

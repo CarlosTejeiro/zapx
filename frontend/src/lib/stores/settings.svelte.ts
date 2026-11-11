@@ -4,8 +4,14 @@ import { setTheme } from '$lib/themes/store.svelte'
 
 // ── reactive global terminal settings ──────────────────────────────────────
 
+/** Default terminal font: the bundled Cascadia Code (see main.ts). */
+export const DEFAULT_FONT_FAMILY =
+  'Cascadia Code Variable, Cascadia Code, JetBrains Mono, monospace'
+/** The Cascadia entry before the font was bundled; saved settings may hold it. */
+const LEGACY_CASCADIA = 'Cascadia Code, JetBrains Mono, monospace'
+
 export const terminalSettings = $state({
-  fontFamily: 'JetBrains Mono Variable, JetBrains Mono, monospace',
+  fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: 14,
   lineHeight: 1.2,
   cursorStyle: 'block' as 'block' | 'underline' | 'bar',
@@ -62,7 +68,8 @@ export async function loadSettings(): Promise<void> {
     const values = await Promise.all(keys.map((k) => getSetting(k)))
     // Settings also arrive from backups and other devices (sync): keep the
     // default for anything xterm couldn't use (NaN, an unknown cursor style).
-    if (values[0]) terminalSettings.fontFamily = values[0]
+    if (values[0])
+      terminalSettings.fontFamily = values[0] === LEGACY_CASCADIA ? DEFAULT_FONT_FAMILY : values[0]
     const size = values[1] ? parseInt(values[1], 10) : NaN
     if (Number.isFinite(size) && size >= 6 && size <= 72) terminalSettings.fontSize = size
     const lh = values[2] ? parseFloat(values[2]) : NaN
