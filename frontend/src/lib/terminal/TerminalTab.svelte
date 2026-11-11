@@ -170,6 +170,8 @@
     onGlobalShortcut?: (key: string, e: KeyboardEvent) => void
     onSessionOpen?: () => void
     onSessionError?: () => void
+    /** A connected session's link dropped (read error, keepalives unanswered). */
+    onSessionLost?: () => void
     onSessionClose?: () => void
     onNeedPassword?: () => void
     /** The server rejected the credentials. Return true if handled (the host
@@ -187,6 +189,7 @@
     onGlobalShortcut,
     onSessionOpen,
     onSessionError,
+    onSessionLost,
     onSessionClose,
     onNeedPassword,
     onAuthFailed,
@@ -702,7 +705,7 @@
       onSessionClose?.()
       return
     }
-    onSessionError?.()
+    onSessionLost?.()
     scheduleReconnect()
   }
 

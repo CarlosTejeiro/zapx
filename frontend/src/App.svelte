@@ -134,7 +134,7 @@
 
   // ── types ───────────────────────────────────────────────────────────────────
 
-  type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
+  type PaneStatus = 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
 
   /**
    * A tab is either a split-pane tree (the default, recursive binary splits)
@@ -600,7 +600,9 @@
       for (const p of tabPanes(t)) {
         const sid = p.savedSession?.id
         if (sid == null) continue
-        const st = t.statuses.get(p.id)
+        const raw = t.statuses.get(p.id)
+        // A lost link shows as an error dot, like a failed connect.
+        const st = raw === 'lost' ? 'error' : raw
         if (st !== 'connecting' && st !== 'connected' && st !== 'error') continue
         const cur = m.get(sid)
         if (!cur || rank[st] > rank[cur]) m.set(sid, st)

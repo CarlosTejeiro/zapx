@@ -3,7 +3,7 @@
   import { layoutTree, type PaneTreeNode, type Rect, type SplitDirection } from './paneTree'
   import type { PylonTheme } from '$lib/themes/index'
 
-  type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
+  type PaneStatus = 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
 
   interface Props {
     node: PaneTreeNode

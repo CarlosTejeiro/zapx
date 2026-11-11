@@ -63,7 +63,7 @@ export interface ScriptHostApi {
   /** Open the saved session called `name` in a new tab; returns its pane id. */
   openSaved(name: string): number
   /** Connection status of a pane opened with `openSaved`. */
-  paneStatus(paneId: number): 'connecting' | 'connected' | 'error' | 'closed'
+  paneStatus(paneId: number): 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
   /** Close the tab holding `sessionId`. */
   closeSession(sessionId: string): void
   /** Ask the user a yes/no question. */
@@ -571,7 +571,7 @@ async function openSaved(
     // before the tab reports connected.
     if (sid) attach(sid)
     const st = api.paneStatus(paneId)
-    if (st === 'error' || st === 'closed') {
+    if (st === 'error' || st === 'lost' || st === 'closed') {
       throw new ApiError('error', `could not connect to "${sessionName}"`)
     }
     if (sid && st === 'connected') break

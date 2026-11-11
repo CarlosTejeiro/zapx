@@ -47,7 +47,7 @@
     skipOnConnectMacro?: boolean
   }
 
-  type PaneStatus = 'connecting' | 'connected' | 'error' | 'closed'
+  type PaneStatus = 'connecting' | 'connected' | 'error' | 'lost' | 'closed'
 
   interface Props {
     theme: PylonTheme
@@ -128,7 +128,7 @@
   // stops the writer in close_session; reset our local flag so the next
   // open doesn't think it's still recording.
   $effect(() => {
-    if (status === 'closed' || status === 'error') {
+    if (status === 'closed' || status === 'error' || status === 'lost') {
       isLogging = false
       logPath = null
     }
@@ -308,7 +308,7 @@
   $effect(() => {
     if (status !== 'connected') {
       // Allow a re-run after a reconnect.
-      if (status === 'closed' || status === 'error') onConnectRan = false
+      if (status === 'closed' || status === 'error' || status === 'lost') onConnectRan = false
       return
     }
     if (onConnectRan || onConnectMacroId === null || !runtimeSid) return
@@ -555,6 +555,7 @@
           onAuthFailed={handleAuthFailed}
           onSessionOpen={() => handleStatus('connected')}
           onSessionError={() => handleStatus('error')}
+          onSessionLost={() => handleStatus('lost')}
           onSessionClose={() => handleStatus('closed')}
         />
       {/key}
