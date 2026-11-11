@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Serial sessions never reconnect on their own.** When a serial console
-  dropped (adapter unplugged), the app retried the port for about a minute
+  dropped (adapter unplugged), the app retried the port six times over about 40 seconds
   and reopened it if the cable came back. A console is usually unplugged
   on purpose, so it now stays disconnected; the Reconnect button still
   works. The auto-reconnect option is hidden for serial sessions, and SSH
