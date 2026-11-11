@@ -730,15 +730,17 @@
       >
     </label>
 
-    <label class="checkbox-row">
-      <input type="checkbox" bind:checked={autoReconnect} />
-      <span>
-        Auto-reconnect if the connection drops
-        <span class="ai-hint"
-          >Manual reconnect always works. Quick-connect sessions never auto-reconnect.</span
-        >
-      </span>
-    </label>
+    {#if protocol !== 'serial'}
+      <label class="checkbox-row">
+        <input type="checkbox" bind:checked={autoReconnect} />
+        <span>
+          Auto-reconnect if the connection drops
+          <span class="ai-hint"
+            >Manual reconnect always works. Quick-connect and serial sessions never auto-reconnect.</span
+          >
+        </span>
+      </label>
+    {/if}
 
     {#if platforms.length > 0}
       <label>

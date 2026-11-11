@@ -98,7 +98,7 @@
         checked={connectionSettings.autoReconnect}
         onchange={(e) => void applyAutoReconnect((e.currentTarget as HTMLInputElement).checked)}
       />
-      <span>Auto-reconnect when a session drops</span>
+      <span>Auto-reconnect when a session drops (not serial sessions)</span>
     </label>
   </section>
 
