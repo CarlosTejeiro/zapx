@@ -5,6 +5,13 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.2] - 2026-11-12
+
+### Fixed
+- **Shift+click on list items and Recent entries on Windows.** It behaved
+  like a plain click there. Shift is now also tracked from the keyboard and
+  read when the button is pressed, not only from the click event.
+
 ## [0.39.1] - 2026-11-12
 
 ### Fixed
