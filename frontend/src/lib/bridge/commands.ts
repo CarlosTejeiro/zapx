@@ -621,6 +621,45 @@ export async function deleteHighlightRule(id: number): Promise<void> {
   return invoke<void>('delete_highlight_rule', { id })
 }
 
+/** Change a rule's name and style. Its pattern and regex flag stay. */
+export async function updateHighlightRule(
+  id: number,
+  name: string,
+  fgColor: string | null,
+  bgColor: string | null,
+  bold: boolean,
+  underline: boolean,
+  enabled: boolean,
+): Promise<void> {
+  return invoke<void>('update_highlight_rule', {
+    id,
+    name,
+    fgColor,
+    bgColor,
+    bold,
+    underline,
+    enabled,
+  })
+}
+
+export interface RulesImportSummary {
+  added: number
+  /** Same pattern (and regex flag) as an existing rule. */
+  skipped: number
+  /** Rules left out, with the reason. */
+  invalid: string[]
+}
+
+/** Write every highlight rule to `path` as JSON. Returns how many. */
+export async function exportHighlightRules(path: string): Promise<number> {
+  return invoke<number>('export_highlight_rules', { path })
+}
+
+/** Add the rules of an export file, skipping the ones already present. */
+export async function importHighlightRules(path: string): Promise<RulesImportSummary> {
+  return invoke<RulesImportSummary>('import_highlight_rules', { path })
+}
+
 export async function startSessionLogging(
   sessionId: string,
   savedSessionId: number | null,

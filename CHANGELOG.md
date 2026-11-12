@@ -5,6 +5,23 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - 2026-11-12
+
+### Added
+- **Highlight rules: export and import.** Export writes the rules alone to a
+  JSON file; import adds the rules of such a file, skips the ones you already
+  have (same pattern) and lists the ones it left out (invalid regex, bad
+  color, no name). The full environment export still carries them too.
+- **Highlight rules: edit.** The pencil on a rule loads it in the form to
+  change its name, colors, bold and underline. The pattern stays: it is what
+  identifies the rule (also for sync).
+
+### Changed
+- **Highlight rules panel restyled** with the app's theme colors, so it reads
+  well in every theme (it had poor contrast in Midnight). Text color and
+  background can each be turned off, and the live test previews the match on
+  the terminal background with a match count.
+
 ## [0.36.0] - 2026-11-12
 
 ### Added
