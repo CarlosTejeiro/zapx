@@ -234,10 +234,12 @@
 
   async function stopDebug() {
     if (!vendor) return
-    // Ctrl+C first: a sniffer or a flow trace still printing holds the
-    // prompt, and the disable/reset lines would be lost in its output.
-    if (!(await sendKeys('\x03'))) return
-    await sleep(150)
+    // FortiOS: Ctrl+C first — a sniffer or flow trace still printing holds
+    // the prompt, and the disable/reset lines would be lost in its output.
+    if (vendor.stopKeys) {
+      if (!(await sendKeys(vendor.stopKeys))) return
+      await sleep(150)
+    }
     if (await send(vendor.stopDebug)) {
       const id = getFocusedSessionId()
       if (id) {
@@ -483,7 +485,9 @@
             type="button"
             class="stop-btn"
             onclick={stopDebug}
-            title={['Ctrl+C', ...(vendor?.stopDebug ?? [])].join(' + ')}
+            title={[...(vendor?.stopKeys ? ['Ctrl+C'] : []), ...(vendor?.stopDebug ?? [])].join(
+              ' + ',
+            )}
           >
             <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"
               ><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor" /></svg

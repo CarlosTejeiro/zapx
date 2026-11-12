@@ -64,26 +64,26 @@ describe('command lists', () => {
     expect(itemMatches(c, '')).toBe(true)
   })
 
-  it('has FortiGate lists and nothing for unknown platforms', () => {
-    const fg = listsForPlatform('fortigate')
-    expect(fg?.lists.length).toBeGreaterThanOrEqual(12)
-    expect(listsForPlatform('cisco_ios')).toBeNull()
+  it('has lists per vendor and nothing for unknown platforms', () => {
+    expect(listsForPlatform('fortigate')?.lists.length).toBeGreaterThanOrEqual(12)
+    expect(listsForPlatform('cisco_ios')?.lists.length).toBeGreaterThanOrEqual(9)
+    expect(listsForPlatform('mikrotik')).toBeNull()
     expect(listsForPlatform(null)).toBeNull()
   })
 
-  it('FortiGate data is well formed', () => {
-    const fg = listsForPlatform('fortigate')!
+  it.each(['fortigate', 'cisco_ios'])('%s data is well formed', (platform) => {
+    const vendor = listsForPlatform(platform)!
     const ids = new Set<string>()
-    for (const list of fg.lists) {
+    for (const list of vendor.lists) {
       expect(ids.has(list.id)).toBe(false)
       ids.add(list.id)
       for (const section of list.sections) {
         for (const item of section.items) {
           if (item.kind === 'command') {
             expect(item.cmd).not.toMatch(/\n/)
-            // Nothing that resets, formats or reboots the device.
+            // Nothing that resets, formats, erases or reboots the device.
             expect(item.cmd).not.toMatch(
-              /factoryreset|formatlogdisk|execute reboot|disk format|fsso refresh$|reset-uptime|test authserver/,
+              /factoryreset|formatlogdisk|execute reboot|disk format|fsso refresh$|reset-uptime|test authserver|^reload|^erase|^format|write erase/,
             )
           } else {
             const keys = new Set(item.fields.map((f) => f.key))

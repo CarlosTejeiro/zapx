@@ -5,6 +5,25 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-11-12
+
+### Added
+- **Command lists for Cisco IOS / IOS-XE**: System (with licenses),
+  Interfaces, Switching, Routing (with HSRP/VRRP), BGP, OSPF, IPsec,
+  Security (ACLs, AAA, 802.1X, port security, DHCP snooping, NAT) and Debug.
+  Debug has an Embedded Packet Capture recipe, a crypto debug limited to one
+  peer and a BGP updates debug; "Stop debug" sends `undebug all` and clears
+  the crypto debug condition.
+  - Every command was checked against Cisco's IOS XE 17.15 command
+    reference and the IOS XE 17 configuration guides; reload/erase commands
+    are left out.
+- **Command hints**: the FortiGate and Cisco list commands were added to the
+  suggestion catalogs (106 FortiGate, 29 Cisco).
+
+### Changed
+- "Stop debug" only sends Ctrl+C first on FortiGate, where a running
+  sniffer needs it.
+
 ## [0.33.0] - 2026-11-12
 
 ### Added

@@ -69,5 +69,8 @@ export interface VendorLists {
   label: string
   /** Lines that stop every running debug (debug lists). */
   stopDebug: string[]
+  /** Raw keys sent before `stopDebug` (FortiOS: Ctrl+C, so a sniffer or
+   *  trace still printing doesn't swallow the lines). */
+  stopKeys?: string
   lists: CommandList[]
 }
