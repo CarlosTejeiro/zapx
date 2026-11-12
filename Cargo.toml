@@ -61,7 +61,7 @@ uuid         = { version = "1", features = ["v4"] }
 # release matrix — it is also the backend rustls already uses here. `des`
 # keeps `3des-cbc` for legacy network gear (unconditional in older russh).
 # russh-keys was merged into russh (`russh::keys`) from 0.50.
-russh      = { version = "0.63", default-features = false, features = ["flate2", "ring", "rsa", "des"] }
+russh      = { version = "0.65", default-features = false, features = ["flate2", "ring", "rsa", "des"] }
 russh-sftp = "2.1"
 home       = "0.5"
 
