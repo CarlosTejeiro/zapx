@@ -739,7 +739,11 @@
       reconnecting = false
       reconnectAttempt = 0
       if (paneId != null) registerSession(paneId, id)
-      registerFocus(id, () => term?.focus())
+      registerFocus(
+        id,
+        () => term?.focus(),
+        (d) => hintController?.onOutgoing(d),
+      )
       onSessionOpen?.()
       showToast({ kind: 'success', title: 'Reconnected' })
       term.focus()
@@ -1154,7 +1158,12 @@
 
     // Make this session discoverable by the snippets / broadcast machinery.
     if (paneId != null && sessionId) registerSession(paneId, sessionId)
-    if (sessionId) registerFocus(sessionId, () => term?.focus())
+    if (sessionId)
+      registerFocus(
+        sessionId,
+        () => term?.focus(),
+        (d) => hintController?.onOutgoing(d),
+      )
 
     // Wire up the hint controller now that the session is live.
     hintController = new HintController({

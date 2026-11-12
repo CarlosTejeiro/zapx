@@ -2,7 +2,19 @@
 // bar. A command may carry `<placeholders>`; a recipe is several lines sent
 // in order after a small form fills its fields.
 
-export type ListIcon = 'system' | 'interfaces' | 'routing' | 'bgp' | 'ospf' | 'vpn' | 'debug'
+export type ListIcon =
+  | 'system'
+  | 'interfaces'
+  | 'routing'
+  | 'sdwan'
+  | 'bgp'
+  | 'ospf'
+  | 'vpn'
+  | 'ha'
+  | 'security'
+  | 'users'
+  | 'fortilink'
+  | 'debug'
 
 export interface CommandItem {
   kind: 'command'
@@ -11,6 +23,9 @@ export interface CommandItem {
   desc: string
   /** Changes state on the device (flush, clear…): asks before sending. */
   action?: boolean
+  /** Raw keys sent instead of `cmd` (e.g. "\x03" for Ctrl+C); `cmd` is then
+   *  only the label. */
+  keys?: string
 }
 
 export interface RecipeField {

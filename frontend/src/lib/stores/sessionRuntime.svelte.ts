@@ -65,13 +65,28 @@ export function unregisterSession(paneId: number, sessionId?: string): void {
 // after sending — otherwise a snippet without a trailing newline leaves the
 // caret on the button and the next keystrokes go nowhere.
 const focusCallbacks = new Map<string, () => void>()
+// Same idea for the terminal's input tracking (command history / hints):
+// text sent from outside the terminal goes through it as if typed, so a
+// command typed by a list and finished by hand is recorded whole.
+const outgoingFeeds = new Map<string, (data: Uint8Array) => void>()
 
-export function registerFocus(sessionId: string, focus: () => void): void {
+export function registerFocus(
+  sessionId: string,
+  focus: () => void,
+  onOutgoing?: (data: Uint8Array) => void,
+): void {
   focusCallbacks.set(sessionId, focus)
+  if (onOutgoing) outgoingFeeds.set(sessionId, onOutgoing)
 }
 
 export function unregisterFocus(sessionId: string): void {
   focusCallbacks.delete(sessionId)
+  outgoingFeeds.delete(sessionId)
+}
+
+/** Tell a session's terminal about input sent to it from outside (lists…). */
+export function noteOutgoing(sessionId: string, data: Uint8Array): void {
+  outgoingFeeds.get(sessionId)?.(data)
 }
 
 export function focusSession(sessionId: string): void {

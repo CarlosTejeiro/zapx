@@ -112,7 +112,6 @@
     exportMacros,
     importMacros,
   } from '$lib/bridge/commands'
-  import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
   import CommandListBar from '$lib/pylon/CommandListBar.svelte'
   import MacroDialog from '$lib/pylon/MacroDialog.svelte'
   import MacroImportDialog from '$lib/pylon/MacroImportDialog.svelte'
@@ -535,8 +534,8 @@
     broadcast.enabled = multiOn
   })
 
-  // Tell the bottom snippet bar which session is focused so it can filter
-  // snippets by platform AND show that session's recent-commands. Effects
+  // Tell the bottom bar which session is focused, so it shows that vendor's
+  // command lists and that session's recent commands. Effects
   // re-run when `focusedPaneId` flips; we resolve the saved-session id
   // inside so a folder/local tab cleanly resets to "no platform".
   $effect(() => {
@@ -2045,7 +2044,6 @@
       {/if}
 
       <CommandListBar {theme} />
-      <SnippetButtonBar {theme} />
 
       <StatusBar
         {theme}

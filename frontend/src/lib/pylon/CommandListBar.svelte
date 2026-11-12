@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// Row of vendor command lists above the button bar. Each chip opens a
+  /// Bottom bar: the detected vendor's command lists, then "Recent". Each chip opens a
   /// panel with the list's commands, grouped and searchable. A command runs
   /// on click (Shift+click types it without Enter); one ending in a
   /// `<placeholder>` is typed up to it and waits; other placeholders and
@@ -7,12 +7,15 @@
   import { ask } from '@tauri-apps/plugin-dialog'
   import { sendInputText } from '$lib/bridge/commands'
   import { errorText } from '$lib/bridge/errors'
-  import { barContext } from '$lib/stores/snippets.svelte'
+  import { barContext, recents, loadRecents } from '$lib/stores/snippets.svelte'
+  import Icon from '$lib/icons/Icon.svelte'
+  import type { RecentCommand } from '$lib/bridge/types'
   import {
     getFocusedSessionId,
     focusSession,
     broadcast,
     broadcastTargets,
+    noteOutgoing,
   } from '$lib/stores/sessionRuntime.svelte'
   import { terminalSettings } from '$lib/stores/settings.svelte'
   import { showToast } from '$lib/ui/toast-store.svelte'
@@ -135,8 +138,32 @@
       for (let i = 0; i < lines.length; i++) {
         const last = i === lines.length - 1
         const text = lines[i] + (last && noEnter ? '' : '\n')
-        for (const id of targets) await sendInputText(id, text)
+        for (const id of targets) {
+          noteOutgoing(id, new TextEncoder().encode(text))
+          await sendInputText(id, text)
+        }
         if (!last) await sleep(150)
+      }
+      focusSession(focused)
+      return true
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Send failed', detail: errorText(e) })
+      return false
+    }
+  }
+
+  /// Send raw keys (e.g. Ctrl+C) as they are, no Enter.
+  async function sendKeys(keys: string): Promise<boolean> {
+    const focused = getFocusedSessionId()
+    if (!focused) {
+      showToast({ kind: 'error', title: 'No session focused', detail: 'Click a terminal first.' })
+      return false
+    }
+    const targets = broadcast.enabled ? [focused, ...broadcastTargets(focused)] : [focused]
+    try {
+      for (const id of targets) {
+        noteOutgoing(id, new TextEncoder().encode(keys))
+        await sendInputText(id, keys)
       }
       focusSession(focused)
       return true
@@ -158,6 +185,11 @@
       const values: Record<string, string> = {}
       for (const f of item.fields) values[f.key] = f.default ?? ''
       form = { kind: 'recipe', item, values }
+      return
+    }
+    if (item.keys) {
+      close()
+      await sendKeys(item.keys)
       return
     }
     const mode = commandMode(item)
@@ -202,6 +234,10 @@
 
   async function stopDebug() {
     if (!vendor) return
+    // Ctrl+C first: a sniffer or a flow trace still printing holds the
+    // prompt, and the disable/reset lines would be lost in its output.
+    if (!(await sendKeys('\x03'))) return
+    await sleep(150)
     if (await send(vendor.stopDebug)) {
       const id = getFocusedSessionId()
       if (id) {
@@ -211,6 +247,41 @@
       }
     }
   }
+
+  // ── Recent commands ───────────────────────────────────────────────────
+  /// Reloaded on open: the list otherwise only refreshes when the focused
+  /// session changes, so it would miss what was just run.
+  let recentOpen = $state(false)
+  let recentWrap = $state<HTMLElement | null>(null)
+
+  function toggleRecent() {
+    recentOpen = !recentOpen
+    if (recentOpen) {
+      close()
+      void loadRecents()
+    }
+  }
+
+  async function pickRecent(r: RecentCommand) {
+    recentOpen = false
+    await send([r.text.replace(/\n+$/, '')])
+  }
+
+  $effect(() => {
+    if (!recentOpen) return
+    const onDown = (e: PointerEvent) => {
+      if (recentWrap && !recentWrap.contains(e.target as Node)) recentOpen = false
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') recentOpen = false
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  })
 
   // ── Keyboard (search box and form) ────────────────────────────────────
   function onSearchKey(e: KeyboardEvent) {
@@ -281,6 +352,25 @@
     {:else if name === 'vpn'}
       <rect x="3" y="7" width="10" height="7" rx="1.5" />
       <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+    {:else if name === 'sdwan'}
+      <path d="M2 8h3l2-4h2l2 4h3M2 8h3l2 4h2l2-4" />
+    {:else if name === 'ha'}
+      <rect x="2" y="3" width="5" height="10" rx="1.2" />
+      <rect x="9" y="3" width="5" height="10" rx="1.2" />
+      <path d="M7 6.5h2M7 9.5h2" />
+    {:else if name === 'security'}
+      <path d="M8 1.8l5 2v4c0 3.2-2.1 5.4-5 6.4-2.9-1-5-3.2-5-6.4v-4z" />
+      <path d="M5.8 8l1.6 1.6L10.4 6.6" />
+    {:else if name === 'users'}
+      <circle cx="6" cy="5.5" r="2.2" />
+      <path d="M2 13c.4-2.3 2-3.6 4-3.6s3.6 1.3 4 3.6" />
+      <circle cx="11.5" cy="6" r="1.7" />
+      <path d="M11 9.5c1.6 0 2.7 1 3 2.8" />
+    {:else if name === 'fortilink'}
+      <rect x="2" y="9" width="12" height="4" rx="1" />
+      <path
+        d="M5 11h.01M8 11h.01M11 11h.01M8 9V6M5.5 4.5a3.5 3.5 0 0 1 5 0M4 3a5.6 5.6 0 0 1 8 0"
+      />
     {:else}
       <ellipse cx="8" cy="9.5" rx="3.2" ry="4" />
       <path
@@ -296,18 +386,18 @@
   {/each}
 {/snippet}
 
-{#if vendor}
-  <div
-    class="lists-row"
-    bind:this={rowEl}
-    style:background={theme.tabBarBg}
-    style:border-color={theme.border}
-    style:--hover={theme.itemHoverBg}
-    style:--text={theme.textPrimary}
-    style:--dim={theme.textDim}
-    style:--border={theme.border}
-    style:--mono={terminalSettings.fontFamily}
-  >
+<div
+  class="lists-row"
+  bind:this={rowEl}
+  style:background={theme.tabBarBg}
+  style:border-color={theme.border}
+  style:--hover={theme.itemHoverBg}
+  style:--text={theme.textPrimary}
+  style:--dim={theme.textDim}
+  style:--border={theme.border}
+  style:--mono={terminalSettings.fontFamily}
+>
+  {#if vendor}
     <span class="row-label">Lists</span>
     <div class="chips">
       {#each vendor.lists as list (list.id)}
@@ -332,176 +422,210 @@
         </button>
       {/each}
     </div>
-    <span class="vendor">{vendor.label}</span>
+  {:else}
+    <span class="spacer"></span>
+  {/if}
 
-    {#if openList}
-      <div
-        class="panel"
-        class:wide={openList.debug}
-        bind:this={panelEl}
-        role="dialog"
-        aria-label={openList.name}
-        style:left="{panelLeft}px"
-        style:background={theme.bodyBg}
-        style:--c={openList.color}
-        style:--accent={theme.accent}
-        style:--on-accent={theme.onAccent}
-      >
-        <div class="panel-head">
-          <span class="head-icon">{@render icon(openList.icon, 16)}</span>
-          <div class="head-text">
-            <span class="head-title">{openList.name}</span>
-            <span class="head-sub">{openList.summary} · {count(openList)}</span>
-          </div>
-          {#if openList.debug}
+  <div class="recent-wrap" bind:this={recentWrap}>
+    <button
+      type="button"
+      class="recent-btn"
+      class:open={recentOpen}
+      onclick={toggleRecent}
+      title={recentOpen ? undefined : 'Last commands run in this session'}
+      aria-haspopup="menu"
+      aria-expanded={recentOpen}
+    >
+      <Icon name="clock" size={12} />
+      <span>Recent</span>
+    </button>
+    {#if recentOpen}
+      <div class="recent-menu" role="menu" style:background={theme.bodyBg}>
+        {#if recents.length === 0}
+          <div class="recent-empty">No commands yet</div>
+        {:else}
+          {#each recents as r (r.text)}
             <button
               type="button"
-              class="stop-btn"
-              onclick={stopDebug}
-              title={vendor.stopDebug.join(' + ')}
+              class="recent-item"
+              role="menuitem"
+              onclick={() => pickRecent(r)}
+              title={r.text}>{r.text}</button
             >
-              <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"
-                ><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor" /></svg
-              >
-              Stop debug
-            </button>
-          {/if}
-        </div>
-
-        {#if form}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="form" onkeydown={onFormKey}>
-            <button type="button" class="back" onclick={() => (form = null)}>‹ Back</button>
-            <div class="form-title">
-              {form.kind === 'recipe' ? form.item.name : 'Fill in the command'}
-            </div>
-            {#if form.kind === 'recipe'}
-              <div class="form-desc">{form.item.desc}</div>
-            {/if}
-            {#if Object.keys(form.values).length > 0}
-              <div class="fields">
-                {#if form.kind === 'recipe'}
-                  {#each form.item.fields as f, i (f.key)}
-                    <label class="field">
-                      <span>{f.label}</span>
-                      <!-- svelte-ignore a11y_autofocus -->
-                      <input
-                        type="text"
-                        bind:value={form.values[f.key]}
-                        placeholder={f.placeholder ?? ''}
-                        autofocus={i === 0}
-                        spellcheck="false"
-                      />
-                    </label>
-                  {/each}
-                {:else}
-                  {#each Object.keys(form.values) as key, i (key)}
-                    <label class="field">
-                      <span>{key}</span>
-                      <!-- svelte-ignore a11y_autofocus -->
-                      <input
-                        type="text"
-                        bind:value={form.values[key]}
-                        autofocus={i === 0}
-                        spellcheck="false"
-                      />
-                    </label>
-                  {/each}
-                {/if}
-              </div>
-            {/if}
-            <div class="preview-label">Will send</div>
-            <pre class="preview">{formLines.join('\n')}</pre>
-            <div class="form-actions">
-              <button
-                type="button"
-                class="ghost-btn"
-                disabled={!formReady}
-                onclick={() => submitForm(true)}>Type without Enter</button
-              >
-              <button
-                type="button"
-                class="primary-btn"
-                disabled={!formReady}
-                onclick={() => submitForm()}>{form.kind === 'recipe' ? 'Run recipe' : 'Run'}</button
-              >
-            </div>
-          </div>
-        {:else}
-          <label class="search">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg
-            >
-            <input
-              type="text"
-              bind:this={searchEl}
-              bind:value={query}
-              onkeydown={onSearchKey}
-              placeholder="Filter this list…"
-              aria-label="Filter commands"
-              spellcheck="false"
-            />
-            <kbd>Esc</kbd>
-          </label>
-
-          <div class="items">
-            {#if flat.length === 0}
-              <div class="empty">No command matches “{query}”.</div>
-            {/if}
-            {#each filtered as section (section.title)}
-              <div class="section-title">{section.title}</div>
-              {#each section.items as item (item.kind === 'command' ? item.cmd : item.name)}
-                {@const idx = flat.indexOf(item)}
-                <button
-                  type="button"
-                  class="item"
-                  class:active={idx === activeIndex}
-                  onmouseenter={() => (activeIndex = idx)}
-                  onclick={(e) => pick(item, e.shiftKey)}
-                >
-                  <span class="item-line">
-                    {#if item.kind === 'command'}
-                      <span class="item-cmd">{@render cmdText(item.cmd)}</span>
-                    {:else}
-                      <span class="item-name">{item.name}</span>
-                    {/if}
-                    <span class="spacer"></span>
-                    {#if item.kind === 'recipe'}
-                      <span class="tag tag-recipe"
-                        >{item.lines.length} {item.lines.length === 1 ? 'line' : 'lines'}</span
-                      >
-                    {:else if item.action}
-                      <span class="tag tag-action">changes state</span>
-                    {:else if commandMode(item) === 'type'}
-                      <span class="tag tag-type">you finish it</span>
-                    {:else if commandMode(item) === 'ask'}
-                      <span class="tag tag-type">asks values</span>
-                    {/if}
-                  </span>
-                  <span class="item-desc">{item.desc}</span>
-                </button>
-              {/each}
-            {/each}
-          </div>
-
-          <div class="panel-foot">
-            <span><b>Click</b> runs</span>
-            <span><b>Shift+click</b> types without Enter</span>
-            <span><span class="hole">value</span> you fill in</span>
-            <span class="spacer"></span>
-            <span>↑↓ ↵</span>
-          </div>
+          {/each}
         {/if}
       </div>
     {/if}
   </div>
-{/if}
+
+  {#if openList}
+    <div
+      class="panel"
+      class:wide={openList.debug}
+      bind:this={panelEl}
+      role="dialog"
+      aria-label={openList.name}
+      style:left="{panelLeft}px"
+      style:background={theme.bodyBg}
+      style:--c={openList.color}
+      style:--accent={theme.accent}
+      style:--on-accent={theme.onAccent}
+    >
+      <div class="panel-head">
+        <span class="head-icon">{@render icon(openList.icon, 16)}</span>
+        <div class="head-text">
+          <span class="head-title">{openList.name}</span>
+          <span class="head-sub">{openList.summary} · {count(openList)}</span>
+        </div>
+        <span class="vendor">{vendor?.label}</span>
+        {#if openList.debug}
+          <button
+            type="button"
+            class="stop-btn"
+            onclick={stopDebug}
+            title={['Ctrl+C', ...(vendor?.stopDebug ?? [])].join(' + ')}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"
+              ><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor" /></svg
+            >
+            Stop debug
+          </button>
+        {/if}
+      </div>
+
+      {#if form}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="form" onkeydown={onFormKey}>
+          <button type="button" class="back" onclick={() => (form = null)}>‹ Back</button>
+          <div class="form-title">
+            {form.kind === 'recipe' ? form.item.name : 'Fill in the command'}
+          </div>
+          {#if form.kind === 'recipe'}
+            <div class="form-desc">{form.item.desc}</div>
+          {/if}
+          {#if Object.keys(form.values).length > 0}
+            <div class="fields">
+              {#if form.kind === 'recipe'}
+                {#each form.item.fields as f, i (f.key)}
+                  <label class="field">
+                    <span>{f.label}</span>
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input
+                      type="text"
+                      bind:value={form.values[f.key]}
+                      placeholder={f.placeholder ?? ''}
+                      autofocus={i === 0}
+                      spellcheck="false"
+                    />
+                  </label>
+                {/each}
+              {:else}
+                {#each Object.keys(form.values) as key, i (key)}
+                  <label class="field">
+                    <span>{key}</span>
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input
+                      type="text"
+                      bind:value={form.values[key]}
+                      autofocus={i === 0}
+                      spellcheck="false"
+                    />
+                  </label>
+                {/each}
+              {/if}
+            </div>
+          {/if}
+          <div class="preview-label">Will send</div>
+          <pre class="preview">{formLines.join('\n')}</pre>
+          <div class="form-actions">
+            <button
+              type="button"
+              class="ghost-btn"
+              disabled={!formReady}
+              onclick={() => submitForm(true)}>Type without Enter</button
+            >
+            <button
+              type="button"
+              class="primary-btn"
+              disabled={!formReady}
+              onclick={() => submitForm()}>{form.kind === 'recipe' ? 'Run recipe' : 'Run'}</button
+            >
+          </div>
+        </div>
+      {:else}
+        <label class="search">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg
+          >
+          <input
+            type="text"
+            bind:this={searchEl}
+            bind:value={query}
+            onkeydown={onSearchKey}
+            placeholder="Filter this list…"
+            aria-label="Filter commands"
+            spellcheck="false"
+          />
+          <kbd>Esc</kbd>
+        </label>
+
+        <div class="items">
+          {#if flat.length === 0}
+            <div class="empty">No command matches “{query}”.</div>
+          {/if}
+          {#each filtered as section (section.title)}
+            <div class="section-title">{section.title}</div>
+            {#each section.items as item (item.kind === 'command' ? item.cmd : item.name)}
+              {@const idx = flat.indexOf(item)}
+              <button
+                type="button"
+                class="item"
+                class:active={idx === activeIndex}
+                onmouseenter={() => (activeIndex = idx)}
+                onclick={(e) => pick(item, e.shiftKey)}
+              >
+                <span class="item-line">
+                  {#if item.kind === 'command'}
+                    <span class="item-cmd">{@render cmdText(item.cmd)}</span>
+                  {:else}
+                    <span class="item-name">{item.name}</span>
+                  {/if}
+                  <span class="spacer"></span>
+                  {#if item.kind === 'recipe'}
+                    <span class="tag tag-recipe"
+                      >{item.lines.length} {item.lines.length === 1 ? 'line' : 'lines'}</span
+                    >
+                  {:else if item.action}
+                    <span class="tag tag-action">changes state</span>
+                  {:else if commandMode(item) === 'type'}
+                    <span class="tag tag-type">you finish it</span>
+                  {:else if commandMode(item) === 'ask'}
+                    <span class="tag tag-type">asks values</span>
+                  {/if}
+                </span>
+                <span class="item-desc">{item.desc}</span>
+              </button>
+            {/each}
+          {/each}
+        </div>
+
+        <div class="panel-foot">
+          <span><b>Click</b> runs</span>
+          <span><b>Shift+click</b> types without Enter</span>
+          <span><span class="hole">value</span> you fill in</span>
+          <span class="spacer"></span>
+          <span>↑↓ ↵</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
   .lists-row {
@@ -526,19 +650,17 @@
     flex-shrink: 0;
   }
 
+  /* Chips wrap onto a second line rather than hiding behind a scroll. */
   .chips {
     display: flex;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 5px;
     flex: 1;
     min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .chips::-webkit-scrollbar {
-    display: none;
   }
 
   .chip {
+    font-family: var(--mono) !important;
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -594,6 +716,70 @@
   }
   .chip.open .live-dot {
     background: #fff;
+  }
+
+  .recent-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .recent-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 7px;
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--dim);
+    font-size: 12px;
+    font-family: var(--mono);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .recent-btn:hover,
+  .recent-btn.open {
+    border-style: solid;
+    background: var(--hover);
+    color: var(--text);
+  }
+  .recent-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    min-width: 240px;
+    max-width: min(70ch, 80vw);
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .recent-item {
+    text-align: left;
+    font-size: 12px;
+    font-family: var(--mono);
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .recent-item:hover {
+    background: var(--hover);
+  }
+  .recent-empty {
+    font-size: 12px;
+    padding: 6px 8px;
+    color: var(--dim);
   }
 
   .vendor {
