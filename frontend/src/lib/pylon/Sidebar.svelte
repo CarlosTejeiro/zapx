@@ -34,6 +34,8 @@
     onAddSession?: () => void
     onSettings?: () => void
     onToggleTheme?: () => void
+    /** Reveal the session-log folder in the file explorer. */
+    onOpenLogs?: () => void
     /** Macro library shown in a section below the sessions. */
     macros?: Snippet[]
     onRunMacro?: (macro: Snippet) => void
@@ -76,6 +78,7 @@
     onAddSession,
     onSettings,
     onToggleTheme,
+    onOpenLogs,
     macros,
     onRunMacro,
     onEditMacro,
@@ -992,6 +995,17 @@
   <!-- Footer: user chip + theme + settings -->
   <div class="sb-footer" style:border-top="1px solid {theme.border}">
     <span class="sb-footer-spacer"></span>
+    {#if onOpenLogs}
+      <button
+        class="sb-settings-btn"
+        title="Open logs folder"
+        aria-label="Open logs folder"
+        onclick={onOpenLogs}
+        style:color={theme.textDim}
+      >
+        <Icon name="folder" size={14} />
+      </button>
+    {/if}
     {#if onOpenVault}
       <button
         class="sb-settings-btn"

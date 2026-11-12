@@ -5,6 +5,21 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-11-12
+
+### Added
+- **Logs folder button.** A folder icon at the bottom of the sidebar opens
+  the session-log folder in the file explorer (before, only from the
+  command palette or Settings → Logging).
+
+### Changed
+- **Recent commands moved to a "Recent" menu** pinned at the right end of
+  the button bar. They used to sit after all the buttons, often off-screen
+  and hard to scroll to. The menu lists the last 15 commands of the
+  session, newest first and in full; a click runs one. It reloads each time
+  it opens. Before, the list only refreshed when switching sessions, so it
+  missed the commands just run.
+
 ## [0.30.4] - 2026-11-11
 
 ### Changed

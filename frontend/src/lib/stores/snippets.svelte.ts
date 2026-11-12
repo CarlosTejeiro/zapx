@@ -27,8 +27,8 @@ import { eventToCombo, findSnippetForCombo } from '$lib/stores/shortcuts'
 /** Maximum number of user snippets shown in the bottom bar at once. The
  *  number-pill keyboard shortcut Ctrl+Shift+1..9 only addresses these. */
 export const SNIPPET_BAR_LIMIT = 9
-/** Maximum recents shown in the bar's "Recents" zone. */
-export const RECENTS_BAR_LIMIT = 5
+/** Maximum commands listed in the bar's "Recent" menu (newest first). */
+export const RECENTS_BAR_LIMIT = 15
 
 export const snippets = $state<Snippet[]>([])
 export const visibleSnippets = $state<Snippet[]>([])
