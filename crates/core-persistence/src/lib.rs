@@ -537,7 +537,6 @@ impl Database {
     // -----------------------------------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &self,
         folder_id: Option<i64>,
