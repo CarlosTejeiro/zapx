@@ -68,32 +68,36 @@ describe('command lists', () => {
     expect(listsForPlatform('fortigate')?.lists.length).toBeGreaterThanOrEqual(12)
     expect(listsForPlatform('cisco_ios')?.lists.length).toBeGreaterThanOrEqual(9)
     expect(listsForPlatform('cisco_iosxr')?.lists.length).toBeGreaterThanOrEqual(8)
+    expect(listsForPlatform('linux')?.lists.length).toBeGreaterThanOrEqual(7)
     expect(listsForPlatform('mikrotik')).toBeNull()
     expect(listsForPlatform(null)).toBeNull()
   })
 
-  it.each(['fortigate', 'cisco_ios', 'cisco_iosxr'])('%s data is well formed', (platform) => {
-    const vendor = listsForPlatform(platform)!
-    const ids = new Set<string>()
-    for (const list of vendor.lists) {
-      expect(ids.has(list.id)).toBe(false)
-      ids.add(list.id)
-      for (const section of list.sections) {
-        for (const item of section.items) {
-          if (item.kind === 'command') {
-            expect(item.cmd).not.toMatch(/\n/)
-            // Nothing that resets, formats, erases or reboots the device.
-            expect(item.cmd).not.toMatch(
-              /factoryreset|formatlogdisk|execute reboot|disk format|fsso refresh$|reset-uptime|test authserver|^reload|^erase|^format|write erase/,
-            )
-          } else {
-            const keys = new Set(item.fields.map((f) => f.key))
-            for (const line of item.lines) {
-              for (const m of line.matchAll(/\{\{(\w+)\}\}/g)) expect(keys.has(m[1]!)).toBe(true)
+  it.each(['fortigate', 'cisco_ios', 'cisco_iosxr', 'linux'])(
+    '%s data is well formed',
+    (platform) => {
+      const vendor = listsForPlatform(platform)!
+      const ids = new Set<string>()
+      for (const list of vendor.lists) {
+        expect(ids.has(list.id)).toBe(false)
+        ids.add(list.id)
+        for (const section of list.sections) {
+          for (const item of section.items) {
+            if (item.kind === 'command') {
+              expect(item.cmd).not.toMatch(/\n/)
+              // Nothing that resets, formats, erases or reboots the device.
+              expect(item.cmd).not.toMatch(
+                /factoryreset|formatlogdisk|execute reboot|disk format|fsso refresh$|reset-uptime|test authserver|^reload|^erase|^format|write erase/,
+              )
+            } else {
+              const keys = new Set(item.fields.map((f) => f.key))
+              for (const line of item.lines) {
+                for (const m of line.matchAll(/\{\{(\w+)\}\}/g)) expect(keys.has(m[1]!)).toBe(true)
+              }
             }
           }
         }
       }
-    }
-  })
+    },
+  )
 })

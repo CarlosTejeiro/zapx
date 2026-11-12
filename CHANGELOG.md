@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-11-12
+
+### Added
+- **Command lists for Linux** (SSH sessions detected as Linux and local
+  shell tabs): System (host, memory, disks, kernel messages, logins),
+  Services (systemd units, journal, processes), Network (addresses, links,
+  neighbors, DNS, sockets), Routing (routes, policy rules, namespaces),
+  Diagnostics (ping, tracepath, traceroute, arping, curl, watch), Firewall
+  (iptables) and Capture (tcpdump). "Stop debug" on Capture sends Ctrl+C.
+  - Every command and option was checked against its man page on man7.org.
+    Tools without a man7.org page (nft, nmcli, mtr, dig, nc…) are left out.
+- **Command hints**: 42 Linux list commands added to the Linux suggestion
+  catalog.
+
 ## [0.35.0] - 2026-11-12
 
 ### Added
