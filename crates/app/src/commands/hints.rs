@@ -215,6 +215,7 @@ fn seed_starter_catalogs(dir: &std::path::Path) {
         Platform::Fortigate,
         Platform::Fortimanager,
         Platform::CiscoIos,
+        Platform::CiscoIosXr,
         Platform::Linux,
     ] {
         let dst = dir.join(format!("{}.example.json", p.as_str()));
@@ -234,8 +235,9 @@ fn seed_starter_catalogs(dir: &std::path::Path) {
             command catalog for that platform. Each file must be a JSON array\n\
             of strings, ordered however you like (the engine sorts by prefix\n\
             match, not file order).\n\n\
-            Valid filenames: `linux.json`, `cisco_ios.json`, `juniper.json`,\n\
-            `mikrotik.json`, `aruba.json`, `fortigate.json`, `fortimanager.json`.\n\n\
+            Valid filenames: `linux.json`, `cisco_ios.json`, `cisco_iosxr.json`,\n\
+            `juniper.json`, `mikrotik.json`, `aruba.json`, `fortigate.json`,\n\
+            `fortimanager.json`.\n\n\
             The `*.example.json` files are starter copies of the bundled\n\
             catalogs — rename them (drop `.example`) to activate. Use the\n\
             \"Reload catalogs\" button in Settings → Hints to re-scan without\n\

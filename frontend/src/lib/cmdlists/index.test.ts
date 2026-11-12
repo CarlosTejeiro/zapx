@@ -67,11 +67,12 @@ describe('command lists', () => {
   it('has lists per vendor and nothing for unknown platforms', () => {
     expect(listsForPlatform('fortigate')?.lists.length).toBeGreaterThanOrEqual(12)
     expect(listsForPlatform('cisco_ios')?.lists.length).toBeGreaterThanOrEqual(9)
+    expect(listsForPlatform('cisco_iosxr')?.lists.length).toBeGreaterThanOrEqual(8)
     expect(listsForPlatform('mikrotik')).toBeNull()
     expect(listsForPlatform(null)).toBeNull()
   })
 
-  it.each(['fortigate', 'cisco_ios'])('%s data is well formed', (platform) => {
+  it.each(['fortigate', 'cisco_ios', 'cisco_iosxr'])('%s data is well formed', (platform) => {
     const vendor = listsForPlatform(platform)!
     const ids = new Set<string>()
     for (const list of vendor.lists) {

@@ -15,6 +15,7 @@ use crate::{Error, Platform};
 
 const LINUX_JSON: &str = include_str!("../data/linux.json");
 const CISCO_JSON: &str = include_str!("../data/cisco_ios.json");
+const CISCO_IOSXR_JSON: &str = include_str!("../data/cisco_iosxr.json");
 const JUNIPER_JSON: &str = include_str!("../data/juniper.json");
 const MIKROTIK_JSON: &str = include_str!("../data/mikrotik.json");
 const ARUBA_JSON: &str = include_str!("../data/aruba.json");
@@ -44,6 +45,7 @@ fn default_registry(user_dir: Option<PathBuf>) -> Registry {
     let mut catalogs: HashMap<Platform, Arc<Vec<String>>> = HashMap::new();
     catalogs.insert(Platform::Linux, parse_bundled(LINUX_JSON));
     catalogs.insert(Platform::CiscoIos, parse_bundled(CISCO_JSON));
+    catalogs.insert(Platform::CiscoIosXr, parse_bundled(CISCO_IOSXR_JSON));
     catalogs.insert(Platform::Juniper, parse_bundled(JUNIPER_JSON));
     catalogs.insert(Platform::Mikrotik, parse_bundled(MIKROTIK_JSON));
     catalogs.insert(Platform::Aruba, parse_bundled(ARUBA_JSON));
@@ -151,6 +153,7 @@ pub fn all_platforms() -> &'static [Platform] {
         Platform::Generic,
         Platform::Linux,
         Platform::CiscoIos,
+        Platform::CiscoIosXr,
         Platform::Juniper,
         Platform::Mikrotik,
         Platform::Aruba,

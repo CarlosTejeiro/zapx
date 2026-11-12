@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-11-12
+
+### Added
+- **Cisco IOS XR support**: a new platform, detected from the XR prompt
+  (`RP/0/RSP0/CPU0:router#`, `RP/0/RP0/CPU0:router(config)#`).
+- **Command lists for Cisco IOS XR**: System (software, commits, licenses),
+  Interfaces (optics, bundles), Routing (BFD, HSRP/VRRP), BGP (per address
+  family and VRF), OSPF & IS-IS, MPLS & L2VPN, Security and Monitor.
+  - Every command was checked against Cisco's IOS XR command references
+    (Cisco 8000, ASR 9000 and NCS 5500). Debug commands are left out because
+    they are not in those references.
+- **Command hints**: a Cisco IOS XR suggestion catalog (98 commands).
+
 ## [0.34.0] - 2026-11-12
 
 ### Added
