@@ -1,5 +1,6 @@
 import type { CommandItem, RecipeItem, VendorLists } from './types'
 import { fortigate } from './fortigate'
+import { ciscoIos } from './cisco_ios'
 
 export type * from './types'
 
@@ -7,6 +8,7 @@ export type * from './types'
  *  without lists get no list row. */
 const BY_PLATFORM: Record<string, VendorLists> = {
   fortigate,
+  cisco_ios: ciscoIos,
 }
 
 export function listsForPlatform(platform: string | null | undefined): VendorLists | null {

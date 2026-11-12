@@ -29,6 +29,7 @@ const c = (cmd: string, desc: string, extra: Partial<CommandItem> = {}): Command
 export const fortigate: VendorLists = {
   label: 'FortiGate · FortiOS 7.6',
   stopDebug: ['diagnose debug disable', 'diagnose debug reset'],
+  stopKeys: '\x03',
   lists: [
     {
       id: 'system',
