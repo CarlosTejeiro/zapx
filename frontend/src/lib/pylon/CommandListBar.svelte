@@ -264,9 +264,11 @@
     }
   }
 
-  async function pickRecent(r: RecentCommand) {
+  /// Click runs it again; Shift+click types it without Enter (to edit it
+  /// first), like the list items.
+  async function pickRecent(r: RecentCommand, typeOnly = false) {
     recentOpen = false
-    await send([r.text.replace(/\n+$/, '')])
+    await send([r.text.replace(/\n+$/, '')], typeOnly)
   }
 
   $effect(() => {
@@ -454,8 +456,8 @@
               type="button"
               class="recent-item"
               role="menuitem"
-              onclick={() => pickRecent(r)}
-              title={r.text}>{r.text}</button
+              onclick={(e) => pickRecent(r, e.shiftKey)}
+              title="{r.text} — Shift+click types it without Enter">{r.text}</button
             >
           {/each}
         {/if}
