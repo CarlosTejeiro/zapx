@@ -132,6 +132,7 @@ fn prompt_regex(p: Platform) -> &'static Regex {
         [
             Linux,
             CiscoIos,
+            CiscoIosXr,
             Juniper,
             Mikrotik,
             Aruba,
@@ -190,6 +191,9 @@ fn rules() -> &'static [Rule] {
             r!(Platform::BrocadeFos, &[]),
             r!(Platform::CheckpointGaia, &["Check Point", "Gaia"]),
             r!(Platform::HpComware, &[]),
+            // IOS XR names the node in the prompt (RP/0/RSP0/CPU0:host#),
+            // which no other vendor here does.
+            r!(Platform::CiscoIosXr, &[]),
             r!(Platform::Aruba, &["ArubaOS", "ProCurve", "Aruba"]),
             // ── Cisco-style `hostname#` prompt — needs a banner clue to
             //    pick the right vendor (Cisco vs Fortigate vs PAN-OS).
@@ -282,6 +286,11 @@ fn prompt_src_for(p: Platform) -> &'static str {
         // `hostname(config)#`.
         Platform::CiscoIos => r"^[A-Za-z][\w.-]*(?:\([^)]+\))?\s*[#>]\s*$",
 
+        // Cisco IOS XR: `RP/0/RSP0/CPU0:router#` (ASR 9000) or
+        // `RP/0/RP0/CPU0:router(config-if)#` (Cisco 8000, NCS) — the node
+        // path before the hostname is unique to XR.
+        Platform::CiscoIosXr => r"^RP/\d+/[A-Za-z0-9]+/CPU\d+:[\w.-]+(?:\([^)]+\))?#\s*$",
+
         // Linux/bash variants — broadest, last. The distro-signature gate
         // (see the rule table) keeps this broad regex from misfiring on
         // any-old-`host#` line, so we can accept the messy reality:
@@ -313,6 +322,37 @@ mod tests {
     fn cisco_config_mode() {
         let text = "Cisco IOS Software, ...\n\nrouter1(config-if)#";
         assert_eq!(detect(text), Some(Platform::CiscoIos));
+    }
+
+    #[test]
+    fn iosxr_prompt_alone() {
+        assert_eq!(
+            detect("RP/0/RSP0/CPU0:asr9k-pe1#"),
+            Some(Platform::CiscoIosXr)
+        );
+        assert_eq!(detect("RP/0/RP0/CPU0:router#"), Some(Platform::CiscoIosXr));
+    }
+
+    #[test]
+    fn iosxr_config_mode() {
+        let text = "Cisco IOS XR Software, Version 7.11.2\nRP/0/RP0/CPU0:pe2(config-if)#";
+        assert_eq!(detect(text), Some(Platform::CiscoIosXr));
+    }
+
+    #[test]
+    fn iosxr_wins_over_linux_keywords() {
+        // XR's `show version` mentions the kernel on some releases; the XR
+        // prompt must still win over the Linux catch-all.
+        let text = "Linux kernel ...\nRP/0/RP0/CPU0:pe2#";
+        assert_eq!(detect(text), Some(Platform::CiscoIosXr));
+    }
+
+    #[test]
+    fn iosxe_not_taken_for_iosxr() {
+        assert_eq!(
+            detect("Cisco IOS XE Software\nrouter1#"),
+            Some(Platform::CiscoIos)
+        );
     }
 
     #[test]
@@ -515,6 +555,10 @@ mod tests {
         assert!(ends_with_prompt(Platform::Mikrotik, "[admin@MikroTik] > "));
         assert!(ends_with_prompt(Platform::HpComware, "<HP-5130>"));
         assert!(ends_with_prompt(Platform::Linux, "carlos@bastion:~/work$ "));
+        assert!(ends_with_prompt(
+            Platform::CiscoIosXr,
+            "RP/0/RSP0/CPU0:pe1(config-bgp-nbr)#"
+        ));
     }
 
     #[test]
