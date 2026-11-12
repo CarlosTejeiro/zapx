@@ -28,6 +28,10 @@ describe('command lists', () => {
     expect(commandMode(cmd('get router info bgp neighbors <peer-ip> routes'))).toBe('ask')
   })
 
+  it('sends raw keys as a plain run', () => {
+    expect(commandMode({ kind: 'command', cmd: 'Ctrl+C', desc: '', keys: '\x03' })).toBe('run')
+  })
+
   it('types the text before a trailing placeholder', () => {
     expect(typedPrefix(cmd('execute ping <ip>'))).toBe('execute ping ')
   })
@@ -62,7 +66,7 @@ describe('command lists', () => {
 
   it('has FortiGate lists and nothing for unknown platforms', () => {
     const fg = listsForPlatform('fortigate')
-    expect(fg?.lists.length).toBeGreaterThanOrEqual(7)
+    expect(fg?.lists.length).toBeGreaterThanOrEqual(12)
     expect(listsForPlatform('cisco_ios')).toBeNull()
     expect(listsForPlatform(null)).toBeNull()
   })
@@ -78,7 +82,9 @@ describe('command lists', () => {
           if (item.kind === 'command') {
             expect(item.cmd).not.toMatch(/\n/)
             // Nothing that resets, formats or reboots the device.
-            expect(item.cmd).not.toMatch(/factoryreset|formatlogdisk|execute reboot|disk format/)
+            expect(item.cmd).not.toMatch(
+              /factoryreset|formatlogdisk|execute reboot|disk format|fsso refresh$|reset-uptime|test authserver/,
+            )
           } else {
             const keys = new Set(item.fields.map((f) => f.key))
             for (const line of item.lines) {

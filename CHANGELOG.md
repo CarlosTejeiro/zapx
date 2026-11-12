@@ -5,6 +5,37 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-11-12
+
+### Added
+- **Five more FortiGate lists**: SD-WAN and HA (moved out of Routing and
+  System, with more commands), Security (IPS engine, web and DNS filter,
+  signatures, WAD proxy), Users/ZTNA (authenticated users, FSSO, EMS) and
+  Switch/AP (managed FortiSwitches and FortiAPs). Twelve lists in all.
+- **Licenses** in System: `diagnose test update info contract` (contracts,
+  expiry dates and FortiCare registration) and its FMWR line.
+- **More debug recipes**: link monitor, IPS of a host and port, web filter,
+  DNS proxy, authentication, FSSO polling, SAML, FortiClient NAC, HA and a
+  wireless client.
+- **Ctrl+C in the Debug list**, to stop a running sniffer. "Stop debug" now
+  sends Ctrl+C first, so a sniffer or flow trace still printing doesn't
+  swallow the disable/reset lines.
+- Every command still comes from Fortinet's FortiOS 7.6 documentation;
+  commands that can cause an outage or put a password on the command line
+  are left out.
+
+### Changed
+- **The button row is gone**: the command lists replace it. "Recent" moved
+  to the lists row, which wraps onto a second line when the lists don't
+  fit. Snippets, their shortcuts and macros are unchanged.
+- **List chips use the terminal font** (Cascadia Code), like the commands.
+
+### Fixed
+- **A command typed by a list and finished by hand was saved incomplete**
+  in the history (only "10.1.1.1" from `execute ping 10.1.1.1`). Commands
+  sent from the lists now go through the history like typed ones, so they
+  also show in Recent.
+
 ## [0.32.0] - 2026-11-12
 
 ### Added

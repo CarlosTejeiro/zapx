@@ -6,14 +6,25 @@
 //    docs.fortinet.com/document/fortigate/7.6.0/cli-troubleshooting-cheat-sheet/420966
 //  • Administration guide 7.6.6: "Debugging the packet flow" (54688),
 //    "IPsec related diagnose commands" (44240), "Performing a sniffer trace
-//    or packet capture" (680228), "Routing concepts" (139692),
-//    "Using a session table" (562859)
+//    or packet capture" (680228: "To stop the sniffer, type CTRL+C"),
+//    "Routing concepts" (139692), "Using a session table" (562859),
+//    "How the FortiGate firmware license works" (7.6.4, 299518)
 //  • CLI reference 7.6.6: diagnose vpn ike (309172113), diagnose sys
 //    (235530229), diagnose ip router bgp (869760727) / ospf (929006518)
 // Left out on purpose: commands that reset, format or reboot the device
-// (factoryreset, formatlogdisk, execute reboot…) and ones whose 7.6 syntax
-// the docs don't spell out.
-import type { VendorLists } from './types'
+// (factoryreset, formatlogdisk, execute reboot…), ones the docs warn can
+// cause an outage (execute fsso refresh, diagnose sys ha reset-uptime), ones
+// that put a password on the command line (diagnose test authserver), and
+// ones whose 7.6 argument syntax the docs don't spell out.
+import type { CommandItem, VendorLists } from './types'
+
+/** A plain command. */
+const c = (cmd: string, desc: string, extra: Partial<CommandItem> = {}): CommandItem => ({
+  kind: 'command',
+  cmd,
+  desc,
+  ...extra,
+})
 
 export const fortigate: VendorLists = {
   label: 'FortiGate · FortiOS 7.6',
@@ -24,130 +35,68 @@ export const fortigate: VendorLists = {
       name: 'System',
       icon: 'system',
       color: '#5B4FC4',
-      summary: 'Status, resources, hardware, FortiGuard and HA',
+      summary: 'Status, resources, hardware and logging',
       sections: [
         {
           title: 'Status',
           items: [
-            {
-              kind: 'command',
-              cmd: 'get system status',
-              desc: 'Version, build, serial number, operation mode',
-            },
-            {
-              kind: 'command',
-              cmd: 'get system performance status',
-              desc: 'CPU and memory utilization, network usage, sessions',
-            },
-            { kind: 'command', cmd: 'execute time', desc: 'Current system time' },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys vd list',
-              desc: 'Virtual domains and their statistics',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys cmdb info',
-              desc: 'Latest configuration change made by a daemon',
-            },
+            c('get system status', 'Version, build, serial number, operation mode'),
+            c(
+              'get system performance status',
+              'CPU and memory utilization, network usage, sessions',
+            ),
+            c('execute time', 'Current system time'),
+            c('diagnose sys vd list', 'Virtual domains and their statistics'),
+            c('diagnose sys cmdb info', 'Latest configuration change made by a daemon'),
           ],
         },
         {
           title: 'Resources',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose sys top',
-              desc: 'Top processes (Shift+C sort by CPU, Shift+M by memory, q to quit)',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys mpstat <seconds>',
-              desc: 'CPU usage per core every n seconds',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose hardware sysinfo memory',
-              desc: 'System memory information',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose hardware sysinfo cpu',
-              desc: 'CPU information',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys process pidof <daemon>',
-              desc: 'PID of a running daemon (names from diagnose sys top)',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose debug crashlog read',
-              desc: 'System and application crashes',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose debug config-error-log read',
-              desc: 'Errors in the configuration file',
-            },
+            c(
+              'diagnose sys top',
+              'Top processes (Shift+C sort by CPU, Shift+M by memory, q to quit)',
+            ),
+            c('diagnose sys mpstat <seconds>', 'CPU usage per core every n seconds'),
+            c('diagnose hardware sysinfo memory', 'System memory information'),
+            c('diagnose hardware sysinfo cpu', 'CPU information'),
+            c(
+              'diagnose sys process pidof <daemon>',
+              'PID of a running daemon (names from diagnose sys top)',
+            ),
+            c('diagnose debug crashlog read', 'System and application crashes'),
+            c('diagnose debug config-error-log read', 'Errors in the configuration file'),
           ],
         },
         {
           title: 'Hardware',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose hardware deviceinfo disk',
-              desc: 'Disk information',
-            },
-            { kind: 'command', cmd: 'diagnose sys flash list', desc: 'Flash partitions' },
-            {
-              kind: 'command',
-              cmd: 'diagnose hardware sysinfo interrupts',
-              desc: 'Hardware interrupt statistics',
-            },
+            c('diagnose hardware deviceinfo disk', 'Disk information'),
+            c('diagnose sys flash list', 'Flash partitions'),
+            c('diagnose hardware sysinfo interrupts', 'Hardware interrupt statistics'),
           ],
         },
         {
-          title: 'FortiGuard & logging',
+          title: 'Licenses',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose autoupdate status',
-              desc: 'FortiGuard update and license status',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose autoupdate versions',
-              desc: 'Versions of engines and signature databases',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose debug rating',
-              desc: 'Web filter rating servers',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose webfilter fortiguard statistics',
-              desc: 'Rating cache and daemon statistics',
-            },
-            {
-              kind: 'command',
-              cmd: 'execute log fortianalyzer test-connectivity',
-              desc: 'Test the connection to FortiAnalyzer',
-            },
+            c(
+              'diagnose test update info contract',
+              'System contracts and their expiry dates; pending_registration shows FortiCare registration',
+            ),
+            c(
+              'diagnose test update info contract | grep FMWR',
+              'Firmware & General Updates (FMWR) contract expiry',
+            ),
           ],
         },
         {
-          title: 'High availability',
+          title: 'Logging',
           items: [
-            { kind: 'command', cmd: 'get system ha status', desc: 'HA status and members' },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys ha checksum cluster',
-              desc: 'Configuration checksums of every cluster member',
-            },
-            { kind: 'command', cmd: 'diagnose sys ha history read', desc: 'HA event history' },
+            c(
+              'execute log fortianalyzer test-connectivity',
+              'Test the connection to FortiAnalyzer',
+            ),
+            c('execute log filter', 'Show the log filters that are set'),
           ],
         },
       ],
@@ -162,72 +111,36 @@ export const fortigate: VendorLists = {
         {
           title: 'Interfaces',
           items: [
-            {
-              kind: 'command',
-              cmd: 'get system interface physical',
-              desc: 'Physical interfaces: status, speed, IP',
-            },
-            {
-              kind: 'command',
-              cmd: 'get system interface',
-              desc: 'Summary of every interface and its IP settings',
-            },
-            { kind: 'command', cmd: 'diagnose ip address list', desc: 'IP addresses in use' },
-            {
-              kind: 'command',
-              cmd: 'get hardware nic <interface>',
-              desc: 'Detailed NIC counters and errors',
-            },
-            {
-              kind: 'command',
-              cmd: 'get system interface transceiver',
-              desc: 'Connected transceivers',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose netlink brctl list',
-              desc: 'Software switches on the FortiGate',
-            },
+            c('get system interface physical', 'Physical interfaces: status, speed, IP'),
+            c('get system interface', 'Summary of every interface and its IP settings'),
+            c('diagnose ip address list', 'IP addresses in use'),
+            c('get hardware nic <interface>', 'Detailed NIC counters and errors'),
+            c('get system interface transceiver', 'Connected transceivers'),
+            c('diagnose netlink brctl list', 'Software switches on the FortiGate'),
           ],
         },
         {
           title: 'ARP',
           items: [
-            { kind: 'command', cmd: 'get system arp', desc: 'ARP table' },
-            { kind: 'command', cmd: 'diagnose ip arp list', desc: 'ARP entries in detail' },
+            c('get system arp', 'ARP table'),
+            c('diagnose ip arp list', 'ARP entries in detail'),
           ],
         },
         {
           title: 'Sessions',
           items: [
-            { kind: 'command', cmd: 'diagnose sys session stat', desc: 'Session table statistics' },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys session filter dst <ip>',
-              desc: 'Filter the session table by destination IP',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys session filter',
-              desc: 'Show the session filters that are set',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys session list',
-              desc: 'Sessions matching the filter',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose firewall iprope list',
-              desc: 'Internal firewall policy table',
-            },
+            c('diagnose sys session stat', 'Session table statistics'),
+            c('diagnose sys session filter dst <ip>', 'Filter the session table by destination IP'),
+            c('diagnose sys session filter', 'Show the session filters that are set'),
+            c('diagnose sys session list', 'Sessions matching the filter'),
+            c('diagnose firewall iprope list', 'Internal firewall policy table'),
           ],
         },
         {
           title: 'Reachability',
           items: [
-            { kind: 'command', cmd: 'execute ping <ip>', desc: 'Ping an address' },
-            { kind: 'command', cmd: 'execute traceroute <ip>', desc: 'Traceroute to an address' },
+            c('execute ping <ip>', 'Ping an address'),
+            c('execute traceroute <ip>', 'Traceroute to an address'),
           ],
         },
       ],
@@ -237,67 +150,56 @@ export const fortigate: VendorLists = {
       name: 'Routing',
       icon: 'routing',
       color: '#B26A1E',
-      summary: 'Routing table, kernel routes, BFD and SD-WAN',
+      summary: 'Routing table, kernel routes and BFD',
       sections: [
         {
           title: 'Routing table',
           items: [
-            { kind: 'command', cmd: 'get router info routing-table all', desc: 'Routing table' },
-            {
-              kind: 'command',
-              cmd: 'get router info routing-table database',
-              desc: 'Routing database, including inactive routes',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info routing-table details <ip>',
-              desc: 'Route lookup for a destination: next hops and interface',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info kernel',
-              desc: 'Kernel routing table',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info protocols',
-              desc: 'Routing protocols running',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info6 routing-table database',
-              desc: 'IPv6 routing database',
-            },
+            c('get router info routing-table all', 'Routing table'),
+            c(
+              'get router info routing-table database',
+              'Routing database, including inactive routes',
+            ),
+            c(
+              'get router info routing-table details <ip>',
+              'Route lookup for a destination: next hops and interface',
+            ),
+            c('get router info kernel', 'Kernel routing table'),
+            c('get router info protocols', 'Routing protocols running'),
+            c('get router info6 routing-table database', 'IPv6 routing database'),
           ],
         },
         {
           title: 'BFD',
-          items: [{ kind: 'command', cmd: 'get router info bfd neighbor', desc: 'BFD neighbors' }],
+          items: [c('get router info bfd neighbor', 'BFD neighbors')],
         },
+      ],
+    },
+    {
+      id: 'sdwan',
+      name: 'SD-WAN',
+      icon: 'sdwan',
+      color: '#C2577A',
+      summary: 'Members, health checks, rules and link monitor',
+      sections: [
         {
           title: 'SD-WAN',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose sys sdwan health-check status',
-              desc: 'Health check statistics per member',
-            },
-            { kind: 'command', cmd: 'diagnose sys sdwan member', desc: 'SD-WAN members' },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys sdwan service4',
-              desc: 'SD-WAN rules in the control plane',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose firewall proute list',
-              desc: 'SD-WAN rules and policy routes in the data plane',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose sys link-monitor status',
-              desc: 'Link monitor statistics',
-            },
+            c('diagnose sys sdwan health-check status', 'Health check statistics per member'),
+            c('diagnose sys sdwan member', 'SD-WAN members'),
+            c('diagnose sys sdwan service4', 'SD-WAN rules in the control plane (IPv4)'),
+            c('diagnose sys sdwan service6', 'SD-WAN rules in the control plane (IPv6)'),
+            c('diagnose firewall proute list', 'SD-WAN rules and policy routes in the data plane'),
+          ],
+        },
+        {
+          title: 'Link monitor',
+          items: [
+            c('diagnose sys link-monitor status', 'Link monitor statistics'),
+            c('diagnose sys link-monitor interface <interface>', 'Link monitor of one interface'),
+            c('diagnose test application lnkmtd 1', 'Link monitor daemon statistics (1)'),
+            c('diagnose test application lnkmtd 2', 'Link monitor daemon statistics (2)'),
+            c('diagnose test application lnkmtd 3', 'Link monitor daemon statistics (3)'),
           ],
         },
       ],
@@ -312,49 +214,37 @@ export const fortigate: VendorLists = {
         {
           title: 'Peers',
           items: [
-            { kind: 'command', cmd: 'get router info bgp summary', desc: 'BGP summary (IPv4)' },
-            { kind: 'command', cmd: 'get router info6 bgp summary', desc: 'BGP summary (IPv6)' },
-            {
-              kind: 'command',
-              cmd: 'get router info bgp neighbors',
-              desc: 'Every BGP peer in detail',
-            },
+            c('get router info bgp summary', 'BGP summary (IPv4)'),
+            c('get router info6 bgp summary', 'BGP summary (IPv6)'),
+            c('get router info bgp neighbors', 'Every BGP peer in detail'),
           ],
         },
         {
           title: 'Routes of a peer',
           items: [
-            {
-              kind: 'command',
-              cmd: 'get router info bgp neighbors <peer-ip> received-routes',
-              desc: 'Routes received from the peer',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info bgp neighbors <peer-ip> advertised-routes',
-              desc: 'Routes advertised to the peer',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info bgp neighbors <peer-ip> routes',
-              desc: 'Routes learned from the peer',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info bgp network <prefix>',
-              desc: 'BGP entry for a prefix and the peers it is advertised to',
-            },
+            c(
+              'get router info bgp neighbors <peer-ip> received-routes',
+              'Routes received from the peer',
+            ),
+            c(
+              'get router info bgp neighbors <peer-ip> advertised-routes',
+              'Routes advertised to the peer',
+            ),
+            c('get router info bgp neighbors <peer-ip> routes', 'Routes learned from the peer'),
+            c(
+              'get router info bgp network <prefix>',
+              'BGP entry for a prefix and the peers it is advertised to',
+            ),
           ],
         },
         {
           title: 'Actions',
           items: [
-            {
-              kind: 'command',
-              cmd: 'execute router clear bgp ip <peer-ip> soft',
-              desc: 'Soft reset of one peer (routes re-sent both ways)',
-              action: true,
-            },
+            c(
+              'execute router clear bgp ip <peer-ip> soft',
+              'Soft reset of one peer (routes re-sent both ways)',
+              { action: true },
+            ),
           ],
         },
       ],
@@ -369,35 +259,19 @@ export const fortigate: VendorLists = {
         {
           title: 'OSPF',
           items: [
-            { kind: 'command', cmd: 'get router info ospf status', desc: 'OSPF process status' },
-            { kind: 'command', cmd: 'get router info ospf neighbor', desc: 'OSPF neighbors' },
-            {
-              kind: 'command',
-              cmd: 'get router info ospf neighbor all',
-              desc: 'OSPF neighbor information in detail',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info ospf interface',
-              desc: 'Interfaces running OSPF',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info ospf database brief',
-              desc: 'OSPF database in brief',
-            },
-            {
-              kind: 'command',
-              cmd: 'get router info6 ospf neighbor',
-              desc: 'OSPFv3 neighbors (IPv6)',
-            },
+            c('get router info ospf status', 'OSPF process status'),
+            c('get router info ospf neighbor', 'OSPF neighbors'),
+            c('get router info ospf neighbor all', 'OSPF neighbor information in detail'),
+            c('get router info ospf interface', 'Interfaces running OSPF'),
+            c('get router info ospf database brief', 'OSPF database in brief'),
+            c('get router info6 ospf neighbor', 'OSPFv3 neighbors (IPv6)'),
           ],
         },
       ],
     },
     {
       id: 'vpn',
-      name: 'VPN IPsec',
+      name: 'IPsec',
       icon: 'vpn',
       color: '#1F7A55',
       summary: 'Phase 1, phase 2, IKE counters and filters',
@@ -405,69 +279,201 @@ export const fortigate: VendorLists = {
         {
           title: 'Tunnels',
           items: [
-            {
-              kind: 'command',
-              cmd: 'get vpn ipsec tunnel summary',
-              desc: 'Summary of every IPsec tunnel',
-            },
-            {
-              kind: 'command',
-              cmd: 'get vpn ipsec tunnel details',
-              desc: 'Detailed information of every tunnel',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ike gateway list',
-              desc: 'Phase 1 (IKE gateways)',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ike gateway list name <phase1-name>',
-              desc: 'Phase 1 of one tunnel',
-            },
-            { kind: 'command', cmd: 'diagnose vpn tunnel list', desc: 'Phase 2 SAs and counters' },
+            c('get vpn ipsec tunnel summary', 'Summary of every IPsec tunnel'),
+            c('get vpn ipsec tunnel details', 'Detailed information of every tunnel'),
+            c('diagnose vpn ike gateway list', 'Phase 1 (IKE gateways)'),
+            c('diagnose vpn ike gateway list name <phase1-name>', 'Phase 1 of one tunnel'),
+            c('diagnose vpn tunnel list', 'Phase 2 SAs and counters'),
           ],
         },
         {
           title: 'IKE',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ipsec status',
-              desc: 'Encryption and decryption counters',
-            },
-            { kind: 'command', cmd: 'diagnose vpn ike status', desc: 'IKE status' },
-            { kind: 'command', cmd: 'diagnose vpn ike counts', desc: 'IKE counts' },
-            { kind: 'command', cmd: 'diagnose vpn ike errors', desc: 'IKE errors' },
-            { kind: 'command', cmd: 'diagnose vpn ike stats', desc: 'IKE statistics' },
-            { kind: 'command', cmd: 'diagnose vpn ike routes', desc: 'Routes added by IKE' },
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ike log filter list',
-              desc: 'IKE debug filter currently set',
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ike log filter clear',
-              desc: 'Clear the IKE debug filter',
-            },
+            c('diagnose vpn ipsec status', 'Encryption and decryption counters'),
+            c('diagnose vpn ike status', 'IKE status'),
+            c('diagnose vpn ike counts', 'IKE counts'),
+            c('diagnose vpn ike errors', 'IKE errors'),
+            c('diagnose vpn ike stats', 'IKE statistics'),
+            c('diagnose vpn ike routes', 'Routes added by IKE'),
+            c('diagnose vpn ike log filter list', 'IKE debug filter currently set'),
+            c('diagnose vpn ike log filter clear', 'Clear the IKE debug filter'),
           ],
         },
         {
           title: 'Actions',
           items: [
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn tunnel flush <phase2-name>',
-              desc: 'Flush the phase 2 SAs of a tunnel (it renegotiates)',
+            c(
+              'diagnose vpn tunnel flush <phase2-name>',
+              'Flush the phase 2 SAs of a tunnel (it renegotiates)',
+              { action: true },
+            ),
+            c(
+              'diagnose vpn ike gateway clear name <phase1-name>',
+              'Clear a phase 1 (the tunnel goes down and renegotiates)',
+              { action: true },
+            ),
+          ],
+        },
+      ],
+    },
+    {
+      id: 'ha',
+      name: 'HA',
+      icon: 'ha',
+      color: '#8A6D1F',
+      summary: 'Cluster status, checksums and history',
+      sections: [
+        {
+          title: 'Cluster',
+          items: [
+            c('get system ha status', 'HA status and members'),
+            c('diagnose system ha status', 'HA status and information'),
+            c('diagnose sys ha history read', 'HA event history'),
+            c('execute ha manage <index> <username>', 'Log into a specific cluster member'),
+          ],
+        },
+        {
+          title: 'Synchronization',
+          items: [
+            c('diagnose sys ha checksum cluster', 'Configuration checksums of every member'),
+            c('diagnose sys ha checksum show <vdom>', 'Detailed checksums of one VDOM'),
+            c('diagnose sys ha checksum recalculate', 'Recalculate the HA checksums', {
               action: true,
-            },
-            {
-              kind: 'command',
-              cmd: 'diagnose vpn ike gateway clear name <phase1-name>',
-              desc: 'Clear a phase 1 (the tunnel goes down and renegotiates)',
+            }),
+            c('execute ha synchronize start', 'Start HA synchronization manually', {
               action: true,
-            },
+            }),
+          ],
+        },
+      ],
+    },
+    {
+      id: 'security',
+      name: 'Security',
+      icon: 'security',
+      color: '#A23B72',
+      summary: 'IPS engine, web filter, DNS filter, signatures and proxy',
+      sections: [
+        {
+          title: 'IPS engine',
+          items: [
+            c('diagnose test application ipsmonitor 1', 'IPS engine information'),
+            c('diagnose ips session list', 'IPS sessions in each engine'),
+            c('diagnose test application ipsmonitor 13', 'IPS sessions in each engine (monitor)'),
+            c('diagnose test application ipsmonitor 99', 'Restart all IPS engines and monitor', {
+              action: true,
+            }),
+          ],
+        },
+        {
+          title: 'Web & DNS filter',
+          items: [
+            c('diagnose webfilter fortiguard statistics', 'Rating cache and daemon statistics'),
+            c('diagnose debug rating', 'Web filter rating servers'),
+            c(
+              'diagnose test application urlfilter <option>',
+              'Web filter test output for an option',
+            ),
+            c('diagnose test application dnsproxy <option>', 'DNS proxy test output for an option'),
+          ],
+        },
+        {
+          title: 'Signatures & FortiGuard',
+          items: [
+            c('diagnose autoupdate versions', 'Versions of engines and signature databases'),
+            c('diagnose autoupdate status', 'FortiGuard update and license status'),
+            c('execute update-now', 'Run a FortiGuard update now', { action: true }),
+          ],
+        },
+        {
+          title: 'Proxy (WAD)',
+          items: [
+            c('diagnose test application wad 1000', 'All WAD processes'),
+            c('diagnose test application wad 2', 'Total WAD memory usage'),
+          ],
+        },
+      ],
+    },
+    {
+      id: 'users',
+      name: 'Users/ZTNA',
+      icon: 'users',
+      color: '#2E7D9A',
+      summary: 'Authenticated users, FSSO and EMS / ZTNA',
+      sections: [
+        {
+          title: 'Authenticated users',
+          items: [
+            c('diagnose firewall auth list', 'Authenticated IPv4 users'),
+            c('diagnose wad user list', 'Users authenticated by the proxy (WAD)'),
+          ],
+        },
+        {
+          title: 'FSSO',
+          items: [
+            c(
+              'diagnose debug authd fsso server-status',
+              'Connection between FortiGate and the collector agent',
+            ),
+            c('diagnose debug authd fsso list', 'FSSO logged-on users'),
+            c('diagnose debug fsso-polling summary', 'Polls from FortiGate to the DC (summary)'),
+            c('diagnose debug fsso-polling detail', 'Polls from FortiGate to the DC (detail)'),
+            c('diagnose debug fsso-polling user', 'Users seen by DC polling'),
+            c(
+              'diagnose debug authd fsso refresh-logons',
+              'Ask the collector agent to resend its logged-on users',
+              { action: true },
+            ),
+          ],
+        },
+        {
+          title: 'EMS / ZTNA',
+          items: [
+            c(
+              'diagnose endpoint fctems test-connectivity <ems>',
+              'Test connectivity to FortiClient EMS',
+            ),
+            c('execute fctems verify <ems>', "Verify the EMS's certificate"),
+            c('diagnose test application fcnacd 2', 'EMS connectivity information'),
+            c('diagnose firewall dynamic list', 'EMS posture tags and dynamic IP / MAC addresses'),
+            c('diagnose wad worker policy list', 'Application gateway rule statistics'),
+          ],
+        },
+      ],
+    },
+    {
+      id: 'fortilink',
+      name: 'Switch/AP',
+      icon: 'fortilink',
+      color: '#5C7A2E',
+      summary: 'Managed FortiSwitches and FortiAPs',
+      sections: [
+        {
+          title: 'FortiSwitch',
+          items: [
+            c(
+              'execute switch-controller get-conn-status <fortiswitch-sn>',
+              'Connection status of a FortiSwitch',
+            ),
+            c('diagnose switch-controller switch-info mac-table', 'MAC address table'),
+            c('diagnose switch-controller switch-info port-stats', 'Port statistics'),
+            c('diagnose switch-controller switch-info port-properties', 'Port properties'),
+            c('diagnose switch-controller switch-info trunk status', 'Trunk information'),
+            c('diagnose switch-controller switch-info stp', 'STP instance status'),
+            c('diagnose switch-controller switch-info lldp', 'LLDP information'),
+            c('diagnose switch-controller switch-info poe', 'PoE information'),
+            c('diagnose switch-controller switch-info mclag', 'MCLAG information'),
+            c('diagnose switch-controller switch-info modules', 'Transceiver modules'),
+            c('diagnose switch-controller switch-info 802.1X', '802.1X status per port'),
+          ],
+        },
+        {
+          title: 'FortiAP',
+          items: [
+            c('diagnose wireless-controller wlac -c wtp', 'Managed FortiAPs'),
+            c('diagnose wireless-controller wlac -c sta', 'Wireless clients'),
+            c('diagnose wireless-controller wlac -c vap', 'Virtual APs: SSID, BSSID, interface'),
+            c('diagnose wireless-controller wlac help', 'Wireless controller debug options'),
           ],
         },
       ],
@@ -481,7 +487,7 @@ export const fortigate: VendorLists = {
       debug: true,
       sections: [
         {
-          title: 'Recipes',
+          title: 'Traffic',
           items: [
             {
               kind: 'recipe',
@@ -514,6 +520,16 @@ export const fortigate: VendorLists = {
               ],
               lines: ["diagnose sniffer packet {{iface}} '{{filter}}' {{verbose}} {{count}} l"],
             },
+            c('Ctrl+C', 'Stop a running sniffer (or any command waiting on output)', {
+              keys: '\x03',
+            }),
+            c('diagnose debug flow trace stop', 'Stop a running flow trace'),
+            c('diagnose debug flow filter clear', 'Clear the IPv4 debug flow filters'),
+          ],
+        },
+        {
+          title: 'VPN & routing',
+          items: [
             {
               kind: 'recipe',
               name: 'IKE debug of a peer',
@@ -550,20 +566,114 @@ export const fortigate: VendorLists = {
                 'diagnose debug enable',
               ],
             },
+            {
+              kind: 'recipe',
+              name: 'Link monitor debug',
+              desc: 'Real-time link monitor (SD-WAN health) debugging',
+              fields: [],
+              lines: ['diagnose debug application link-monitor -1', 'diagnose debug enable'],
+            },
           ],
         },
         {
-          title: 'Commands',
+          title: 'Security',
           items: [
             {
-              kind: 'command',
-              cmd: 'diagnose debug flow trace stop',
-              desc: 'Stop a running flow trace',
+              kind: 'recipe',
+              name: 'IPS debug of a host and port',
+              desc: 'IPS engine debugs for Application Control and IPS (CPU intensive)',
+              fields: [
+                { key: 'ip', label: 'Host IP', placeholder: '10.0.0.25' },
+                { key: 'port', label: 'Port', placeholder: '443' },
+              ],
+              lines: [
+                'diagnose ips filter set "host {{ip}} and port {{port}}"',
+                'diagnose ips debug enable all',
+                'diagnose debug enable',
+              ],
             },
             {
-              kind: 'command',
-              cmd: 'diagnose debug flow filter clear',
-              desc: 'Clear the IPv4 debug flow filters',
+              kind: 'recipe',
+              name: 'Web filter debug',
+              desc: 'Real-time web filter daemon debugging',
+              fields: [],
+              lines: ['diagnose debug application urlfilter -1', 'diagnose debug enable'],
+            },
+            {
+              kind: 'recipe',
+              name: 'DNS proxy debug',
+              desc: 'DNS filter, translation and resolution',
+              fields: [],
+              lines: ['diagnose debug application dnsproxy -1', 'diagnose debug enable'],
+            },
+          ],
+        },
+        {
+          title: 'Users',
+          items: [
+            {
+              kind: 'recipe',
+              name: 'Authentication debug',
+              desc: 'Remote and local authentication (fnbamd, authd)',
+              fields: [],
+              lines: [
+                'diagnose debug application fnbamd -1',
+                'diagnose debug application authd -1',
+                'diagnose debug enable',
+              ],
+            },
+            {
+              kind: 'recipe',
+              name: 'FSSO polling debug',
+              desc: 'FortiGate polling the domain controllers',
+              fields: [],
+              lines: [
+                'diagnose debug application fssod -1',
+                'diagnose debug application smbcd -1',
+                'diagnose debug enable',
+              ],
+            },
+            {
+              kind: 'recipe',
+              name: 'SAML debug',
+              desc: 'Real-time SAML debugging',
+              fields: [],
+              lines: ['diagnose debug application samld -1', 'diagnose debug enable'],
+            },
+            {
+              kind: 'recipe',
+              name: 'FortiClient NAC debug',
+              desc: 'FortiGate to EMS connectivity (fcnacd)',
+              fields: [],
+              lines: ['diagnose debug application fcnacd -1', 'diagnose debug enable'],
+            },
+          ],
+        },
+        {
+          title: 'Platform',
+          items: [
+            {
+              kind: 'recipe',
+              name: 'HA debug',
+              desc: 'HA daemons (hatalk, hasync, harelay)',
+              fields: [],
+              lines: [
+                'diagnose debug application hatalk -1',
+                'diagnose debug application hasync -1',
+                'diagnose debug application harelay -1',
+                'diagnose debug enable',
+              ],
+            },
+            {
+              kind: 'recipe',
+              name: 'Wireless client debug',
+              desc: 'A station connecting to a FortiAP',
+              fields: [{ key: 'mac', label: 'Client MAC', placeholder: 'aa:bb:cc:dd:ee:ff' }],
+              lines: [
+                'diagnose wireless-controller wlac sta_filter clear',
+                'diagnose wireless-controller wlac sta_filter {{mac}} 255',
+                'diagnose debug enable',
+              ],
             },
           ],
         },

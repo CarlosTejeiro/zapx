@@ -37,6 +37,7 @@ export function commandParts(cmd: string): { text: string; placeholder: boolean 
  *  • `ask`    — placeholders elsewhere: ask for their values first.
  */
 export function commandMode(item: CommandItem): 'run' | 'type' | 'ask' {
+  if (item.keys) return 'run'
   const parts = commandParts(item.cmd)
   const holes = parts.filter((p) => p.placeholder).length
   if (holes === 0) return 'run'
