@@ -6,8 +6,9 @@
   ///   • User snippets — capped at SNIPPET_BAR_LIMIT (9), filtered by the
   ///     focused session's platform (globals + matches). First 9 carry a
   ///     `[N]` pill so the user knows which Ctrl+Shift+N fires them.
-  ///   • Recents — top frequently-typed commands surfaced from the history
-  ///     table. Read-only, rotates as the user works.
+  ///   • Recent — a menu pinned at the right end (outside the scrolling row,
+  ///     so it never ends up off-screen) listing the last commands run in
+  ///     this session, newest first. Reloaded each time it opens.
   ///
   /// The bar refreshes when the focused session changes (App.svelte calls
   /// `setBarContext`) and when CRUD happens in the manage dialog.
@@ -18,6 +19,7 @@
     barContext,
     loadVisibleSnippets,
     loadSnippets,
+    loadRecents,
     SNIPPET_BAR_LIMIT,
   } from '$lib/stores/snippets.svelte'
   import {
@@ -178,13 +180,39 @@
     fireText(withNl, r.text)
   }
 
-  /// Truncate a recent for display (the bar is horizontal — long commands
-  /// blow up the layout). Tooltip carries the full text.
-  function shortLabel(text: string, max = 28): string {
-    return text.length > max ? text.slice(0, max - 1) + '…' : text
+  let collapsed = $state(false)
+
+  // "Recent" menu. Reloaded on open: the list otherwise only refreshes when
+  // the focused session changes, so it would miss what was just run.
+  let recentOpen = $state(false)
+  let recentWrap = $state<HTMLElement | null>(null)
+
+  function toggleRecent() {
+    recentOpen = !recentOpen
+    if (recentOpen) void loadRecents()
   }
 
-  let collapsed = $state(false)
+  function pickRecent(r: RecentCommand) {
+    recentOpen = false
+    fireRecent(r)
+  }
+
+  // Close on a click outside the menu or on Escape.
+  $effect(() => {
+    if (!recentOpen) return
+    const onDown = (e: PointerEvent) => {
+      if (recentWrap && !recentWrap.contains(e.target as Node)) recentOpen = false
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') recentOpen = false
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  })
 
   /// The button row scrolls sideways with a hidden scrollbar (on Linux the
   /// GTK overlay scrollbar was drawn over the buttons), so map a plain
@@ -310,25 +338,45 @@
         title="New button"
         aria-label="New button"><Icon name="plus" size={12} /></button
       >
+    </div>
 
-      {#if recents.length > 0}
-        <span class="divider" style:background={theme.border}></span>
-      {/if}
-
-      {#each recents as r (r.text)}
-        <button
-          class="snippet-btn recent"
-          style:color={theme.textPrimary}
+    <div class="recent-wrap" bind:this={recentWrap}>
+      <button
+        class="recent-btn"
+        class:open={recentOpen}
+        style:color={theme.textDim}
+        style:border-color={theme.border}
+        onclick={toggleRecent}
+        title={recentOpen ? undefined : 'Last commands run in this session'}
+        aria-haspopup="menu"
+        aria-expanded={recentOpen}
+      >
+        <Icon name="clock" size={12} />
+        <span>Recent</span>
+      </button>
+      {#if recentOpen}
+        <div
+          class="recent-menu"
+          role="menu"
+          style:background={theme.tabBarBg}
           style:border-color={theme.border}
-          onclick={() => fireRecent(r)}
-          title={`Recent: ${r.text}`}
+          style:font-family={terminalSettings.fontFamily}
         >
-          <span class="recent-mark" title="From your recent history"
-            ><Icon name="clock" size={11} /></span
-          >
-          <span class="snippet-name">{shortLabel(r.text)}</span>
-        </button>
-      {/each}
+          {#if recents.length === 0}
+            <div class="recent-empty" style:color={theme.textDim}>No commands yet</div>
+          {:else}
+            {#each recents as r (r.text)}
+              <button
+                class="recent-item"
+                role="menuitem"
+                style:color={theme.textPrimary}
+                onclick={() => pickRecent(r)}
+                title={r.text}>{r.text}</button
+              >
+            {/each}
+          {/if}
+        </div>
+      {/if}
     </div>
 
     {#if status}
@@ -494,18 +542,6 @@
     transform: translateY(1px);
   }
 
-  /* Recents are visually subtler than user snippets — dotted border + no
-     filled background. Conveys "this is auto-suggested, not your fixed list". */
-  .snippet-btn.recent {
-    background: transparent;
-    border-style: dashed;
-    opacity: 0.78;
-  }
-
-  .snippet-btn.recent:hover {
-    opacity: 1;
-  }
-
   .key-pill {
     font-size: 9.5px;
     font-weight: 700;
@@ -523,19 +559,71 @@
     flex-shrink: 0;
   }
 
-  .recent-mark {
-    display: inline-flex;
-    align-items: center;
-    opacity: 0.7;
-    line-height: 1;
+  /* "Recent" menu, pinned right of the scrolling row. Opens upwards: the
+     bar sits at the bottom of the window. */
+  .recent-wrap {
+    position: relative;
+    flex-shrink: 0;
   }
 
-  .divider {
-    width: 1px;
-    align-self: stretch;
-    margin: 3px 6px;
-    opacity: 0.6;
-    flex-shrink: 0;
+  .recent-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-family: inherit;
+    background: transparent;
+    border: 1px dashed;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .recent-btn:hover,
+  .recent-btn.open {
+    border-style: solid;
+    background: var(--hover);
+  }
+
+  .recent-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    max-width: min(70ch, 80vw);
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .recent-item {
+    text-align: left;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .recent-item:hover {
+    background: var(--hover);
+  }
+
+  .recent-empty {
+    font-size: 12px;
+    padding: 6px 8px;
   }
 
   .snippet-name {

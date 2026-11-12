@@ -174,6 +174,16 @@
 
   const theme = $derived(getTheme())
 
+  /** Reveal the session-log folder in the file explorer (sidebar + palette). */
+  async function openLogsFolder() {
+    try {
+      const path = await openLogsDir()
+      showToast({ kind: 'info', title: 'Logs', detail: path })
+    } catch (e) {
+      showToast({ kind: 'error', title: 'Logs', detail: errorText(e) })
+    }
+  }
+
   /// Cycle through the theme registry in declaration order.
   function toggleTheme() {
     const keys = Object.keys(themes)
@@ -1500,18 +1510,7 @@
       label: 'Open logs folder',
       icon: 'folder' as const,
       section: 'Actions' as const,
-      run: async () => {
-        try {
-          const path = await openLogsDir()
-          showToast({ kind: 'info', title: 'Logs', detail: path })
-        } catch (e) {
-          showToast({
-            kind: 'error',
-            title: 'Logs',
-            detail: errorText(e),
-          })
-        }
-      },
+      run: openLogsFolder,
     },
     {
       id: 'act-export',
@@ -1950,6 +1949,7 @@
       onAddSession={() => (showNewSession = true)}
       onSettings={() => (showSettings = true)}
       onToggleTheme={toggleTheme}
+      onOpenLogs={openLogsFolder}
       {macros}
       onRunMacro={(m) => runMacroOnFocused(m)}
       onEditMacro={(m) => (editingMacro = m)}
