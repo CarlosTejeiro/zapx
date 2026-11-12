@@ -5,6 +5,21 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-11-12
+
+### Added
+- **Arista EOS support**: a new platform, detected from the IOS-like prompt
+  together with "Arista" (the first line of `show version`), vEOS or cEOS.
+- **Command lists for Arista EOS**: System (version, time, logging, NTP,
+  environment), Interfaces (status, counters, optics, port-channels, LLDP,
+  ARP), Switching (VLANs, trunks, spanning tree, MLAG), Routing (routes, VRFs,
+  BFD, VRRP, VARP), BGP, OSPF, VXLAN and Security (ACLs, route maps, prefix
+  lists).
+  - Every command was checked against the Arista EOS 4.37.0F User Manual.
+    Commands not found there (MAC address table, inventory, debugs…) are
+    left out.
+- **Command hints**: an Arista EOS suggestion catalog (72 commands).
+
 ## [0.37.0] - 2026-11-12
 
 ### Added

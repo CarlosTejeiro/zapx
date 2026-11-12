@@ -3,6 +3,7 @@ import { fortigate } from './fortigate'
 import { ciscoIos } from './cisco_ios'
 import { ciscoIosXr } from './cisco_iosxr'
 import { linux } from './linux'
+import { aristaEos } from './arista_eos'
 
 export type * from './types'
 
@@ -13,6 +14,7 @@ const BY_PLATFORM: Record<string, VendorLists> = {
   cisco_ios: ciscoIos,
   cisco_iosxr: ciscoIosXr,
   linux,
+  arista_eos: aristaEos,
 }
 
 export function listsForPlatform(platform: string | null | undefined): VendorLists | null {
