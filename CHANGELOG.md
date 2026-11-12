@@ -5,6 +5,30 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-11-12
+
+### Added
+- **Command lists for FortiGate (FortiOS 7.6).** A new row above the buttons
+  shows the lists of the detected vendor: System, Interfaces, Routing, BGP,
+  OSPF, VPN IPsec and Debug. Each opens a panel with its commands grouped,
+  a short description of each and a search box (↑↓ and Enter work too).
+  - A click runs the command; Shift+click types it without Enter.
+  - A command ending in a value (`execute ping <ip>`) is typed up to it and
+    waits for you to finish it.
+  - A value in the middle (`get router info bgp neighbors <peer-ip>
+    advertised-routes`) is asked first in a small form that shows what will
+    be sent.
+  - Commands that change state (BGP soft clear, flushing a tunnel) ask for
+    confirmation.
+  - Debug recipes (debug flow of an IP, packet sniffer, IKE debug of a peer,
+    BGP and OSPF debug) fill their values in a form and send the lines one
+    by one. "Stop debug" sends `diagnose debug disable` + `reset`, and the
+    Debug chip shows a dot while a debug started from it is running.
+  - Every command was checked against Fortinet's FortiOS 7.6 documentation
+    (CLI troubleshooting cheat sheet, administration guide, CLI reference).
+    Commands that reset, format or reboot the device are left out.
+  - Your buttons stay in their own row below. Other vendors will follow.
+
 ## [0.31.0] - 2026-11-12
 
 ### Added

@@ -113,6 +113,7 @@
     importMacros,
   } from '$lib/bridge/commands'
   import SnippetButtonBar from '$lib/pylon/SnippetButtonBar.svelte'
+  import CommandListBar from '$lib/pylon/CommandListBar.svelte'
   import MacroDialog from '$lib/pylon/MacroDialog.svelte'
   import MacroImportDialog from '$lib/pylon/MacroImportDialog.svelte'
   import VaultDialog from '$lib/sessions/VaultDialog.svelte'
@@ -2043,6 +2044,7 @@
         />
       {/if}
 
+      <CommandListBar {theme} />
       <SnippetButtonBar {theme} />
 
       <StatusBar
