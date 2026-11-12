@@ -4,6 +4,7 @@ import { ciscoIos } from './cisco_ios'
 import { ciscoIosXr } from './cisco_iosxr'
 import { linux } from './linux'
 import { aristaEos } from './arista_eos'
+import { juniper } from './juniper'
 
 export type * from './types'
 
@@ -15,6 +16,7 @@ const BY_PLATFORM: Record<string, VendorLists> = {
   cisco_iosxr: ciscoIosXr,
   linux,
   arista_eos: aristaEos,
+  juniper,
 }
 
 export function listsForPlatform(platform: string | null | undefined): VendorLists | null {
