@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] - 2026-11-12
+
+### Added
+- **Command lists for Juniper Junos**: System (version, chassis, alarms,
+  resources, commits, logs), Interfaces (terse, statistics, optics, LACP,
+  LLDP, ARP), Routing (route tables, forwarding table, instances, BFD, VRRP),
+  BGP, OSPF & IS-IS, MPLS (LSPs, LDP, RSVP), Security (SRX zones, policies,
+  sessions, IKE/IPsec, firewall filters) and Monitor (`monitor traffic`,
+  `monitor start messages`). "Stop debug" sends Ctrl+C and `monitor stop`.
+  - Every command was checked against its page in the Junos OS CLI
+    Reference.
+- **Command hints**: 35 Junos list commands added to the Juniper suggestion
+  catalog.
+
 ## [0.38.0] - 2026-11-12
 
 ### Added
