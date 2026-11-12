@@ -14,6 +14,7 @@ export type ListIcon =
   | 'security'
   | 'users'
   | 'fortilink'
+  | 'logs'
   | 'debug'
 
 export interface CommandItem {

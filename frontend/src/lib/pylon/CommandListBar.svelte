@@ -368,6 +368,9 @@
       <path d="M2 13c.4-2.3 2-3.6 4-3.6s3.6 1.3 4 3.6" />
       <circle cx="11.5" cy="6" r="1.7" />
       <path d="M11 9.5c1.6 0 2.7 1 3 2.8" />
+    {:else if name === 'logs'}
+      <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
+      <path d="M5 5.5h6M5 8h6M5 10.5h3.5" />
     {:else if name === 'fortilink'}
       <rect x="2" y="9" width="12" height="4" rx="1" />
       <path
