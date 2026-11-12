@@ -133,6 +133,7 @@ fn prompt_regex(p: Platform) -> &'static Regex {
             Linux,
             CiscoIos,
             CiscoIosXr,
+            AristaEos,
             Juniper,
             Mikrotik,
             Aruba,
@@ -204,6 +205,9 @@ fn rules() -> &'static [Rule] {
             ),
             r!(Platform::PaloAlto, &["Palo Alto Networks", "PAN-OS"]),
             r!(Platform::Juniper, &["JUNOS", "Juniper"]),
+            // EOS prompts look like IOS (`switch#`, `switch(config-if-Et1)#`);
+            // `show version` starts with "Arista <model>".
+            r!(Platform::AristaEos, &["Arista", "vEOS", "cEOS"]),
             r!(
                 Platform::CiscoIos,
                 &[
@@ -291,6 +295,10 @@ fn prompt_src_for(p: Platform) -> &'static str {
         // path before the hostname is unique to XR.
         Platform::CiscoIosXr => r"^RP/\d+/[A-Za-z0-9]+/CPU\d+:[\w.-]+(?:\([^)]+\))?#\s*$",
 
+        // Arista EOS: same shape as IOS — `switch>`, `switch#`,
+        // `switch(config-router-bgp)#`. Told apart by the banner clue.
+        Platform::AristaEos => r"^[A-Za-z][\w.-]*(?:\([^)]+\))?\s*[#>]\s*$",
+
         // Linux/bash variants — broadest, last. The distro-signature gate
         // (see the rule table) keeps this broad regex from misfiring on
         // any-old-`host#` line, so we can accept the messy reality:
@@ -351,6 +359,29 @@ mod tests {
     fn iosxe_not_taken_for_iosxr() {
         assert_eq!(
             detect("Cisco IOS XE Software\nrouter1#"),
+            Some(Platform::CiscoIos)
+        );
+    }
+
+    #[test]
+    fn arista_from_show_version() {
+        let text =
+            "switch#show version\nArista DCS-7150S-64-CL-F\nHardware version:    01.01\n\nswitch#";
+        assert_eq!(detect(text), Some(Platform::AristaEos));
+    }
+
+    #[test]
+    fn arista_config_mode() {
+        let text = "Arista vEOS\nleaf1(config-if-Et24)#";
+        assert_eq!(detect(text), Some(Platform::AristaEos));
+    }
+
+    #[test]
+    fn arista_needs_its_banner() {
+        // A bare `switch#` stays undetected, and an IOS banner stays IOS.
+        assert_eq!(detect("switch#"), None);
+        assert_eq!(
+            detect("Cisco IOS Software, Version 15.7\nswitch#"),
             Some(Platform::CiscoIos)
         );
     }
@@ -555,6 +586,10 @@ mod tests {
         assert!(ends_with_prompt(Platform::Mikrotik, "[admin@MikroTik] > "));
         assert!(ends_with_prompt(Platform::HpComware, "<HP-5130>"));
         assert!(ends_with_prompt(Platform::Linux, "carlos@bastion:~/work$ "));
+        assert!(ends_with_prompt(
+            Platform::AristaEos,
+            "leaf1(config-router-bgp)#"
+        ));
         assert!(ends_with_prompt(
             Platform::CiscoIosXr,
             "RP/0/RSP0/CPU0:pe1(config-bgp-nbr)#"
