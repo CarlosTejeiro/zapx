@@ -5,6 +5,14 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.1] - 2026-11-12
+
+### Fixed
+- **Recent menu: Shift+click types the command without Enter**, like the
+  list items (it always ran it).
+- **Recent menu only shows the focused session's commands.** It also listed
+  every command typed in local shells and quick connects, in every session.
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

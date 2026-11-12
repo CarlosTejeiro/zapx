@@ -1784,6 +1784,10 @@ impl Database {
     ///
     /// We hide short / trivial commands (≤ 2 chars) — they're noisy and
     /// don't earn their slot in the bar.
+    /// The last commands run in one session — only that session's rows. With
+    /// `None` (local shells, quick connects) only the rows with no session.
+    /// Unlike [`Self::history_by_prefix`], rows of other sessions never mix
+    /// in: this is the "Recent" menu of the focused session.
     pub fn recent_commands(
         &self,
         session_id: Option<i64>,
@@ -1792,7 +1796,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT command, freq, last_used FROM command_history
-              WHERE (session_id = ?1 OR session_id IS NULL)
+              WHERE session_id IS ?1
                 AND length(command) > 2
               ORDER BY last_used DESC, freq DESC
               LIMIT ?2",
@@ -1954,6 +1958,40 @@ mod tests {
         let path = std::env::temp_dir().join(format!("zapx_groups_test_{nanos}.db"));
         let db = Database::open(&path).expect("open db");
         (db, path)
+    }
+
+    #[test]
+    fn recent_commands_stay_in_their_session() {
+        let (db, path) = temp_db();
+        let mk = |name: &str| {
+            db.create_session(
+                None,
+                name,
+                "ssh",
+                Some("10.0.0.1"),
+                Some(22),
+                None,
+                None,
+                "{}",
+            )
+            .unwrap()
+        };
+        let (a, b) = (mk("a"), mk("b"));
+        db.record_command(Some(a), "show clock").unwrap();
+        db.record_command(Some(b), "show version").unwrap();
+        db.record_command(None, "sleep 30").unwrap();
+        let texts = |sid| -> Vec<String> {
+            db.recent_commands(sid, 10)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.command)
+                .collect()
+        };
+        assert_eq!(texts(Some(a)), vec!["show clock"]);
+        assert_eq!(texts(Some(b)), vec!["show version"]);
+        assert_eq!(texts(None), vec!["sleep 30"]);
+        drop(db);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
