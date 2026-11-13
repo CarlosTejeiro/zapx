@@ -547,11 +547,13 @@
         .then((p) => setBarContext(p, sid))
         .catch(() => setBarContext(null, sid))
     } else if (pane && !pane.ssh && !pane.telnet) {
-      // Local shell tab (no saved row, not SSH/Telnet). It's a unix shell, so
-      // give the bar the Linux/bash catalog — useful local commands instead of
+      // Local shell tab (no saved row, not SSH/Telnet). On macOS/Linux it's a
+      // unix shell, so give the bar the Linux/bash catalog — useful local commands instead of
       // every vendor's snippets. This is also what makes a local session count
       // as "recognised" for hints.
-      setBarContext('linux', null).catch(() => {})
+      // On Windows the local tab runs PowerShell, so it gets the Windows lists.
+      const localPlatform = navigator.userAgent.includes('Windows') ? 'windows' : 'linux'
+      setBarContext(localPlatform, null).catch(() => {})
     } else {
       setBarContext(null, null).catch(() => {})
     }

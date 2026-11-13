@@ -17,6 +17,7 @@ const LINUX_JSON: &str = include_str!("../data/linux.json");
 const CISCO_JSON: &str = include_str!("../data/cisco_ios.json");
 const CISCO_IOSXR_JSON: &str = include_str!("../data/cisco_iosxr.json");
 const ARISTA_EOS_JSON: &str = include_str!("../data/arista_eos.json");
+const WINDOWS_JSON: &str = include_str!("../data/windows.json");
 const JUNIPER_JSON: &str = include_str!("../data/juniper.json");
 const MIKROTIK_JSON: &str = include_str!("../data/mikrotik.json");
 const ARUBA_JSON: &str = include_str!("../data/aruba.json");
@@ -48,6 +49,7 @@ fn default_registry(user_dir: Option<PathBuf>) -> Registry {
     catalogs.insert(Platform::CiscoIos, parse_bundled(CISCO_JSON));
     catalogs.insert(Platform::CiscoIosXr, parse_bundled(CISCO_IOSXR_JSON));
     catalogs.insert(Platform::AristaEos, parse_bundled(ARISTA_EOS_JSON));
+    catalogs.insert(Platform::Windows, parse_bundled(WINDOWS_JSON));
     catalogs.insert(Platform::Juniper, parse_bundled(JUNIPER_JSON));
     catalogs.insert(Platform::Mikrotik, parse_bundled(MIKROTIK_JSON));
     catalogs.insert(Platform::Aruba, parse_bundled(ARUBA_JSON));
@@ -157,6 +159,7 @@ pub fn all_platforms() -> &'static [Platform] {
         Platform::CiscoIos,
         Platform::CiscoIosXr,
         Platform::AristaEos,
+        Platform::Windows,
         Platform::Juniper,
         Platform::Mikrotik,
         Platform::Aruba,
