@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.1] - 2026-11-13
+
+### Fixed
+- **Local terminal on locked-down Windows machines.** When PowerShell can't
+  be started (e.g. a corporate policy: "Access is denied"), the local tab
+  falls back to the next shell — Windows PowerShell, then cmd — instead of
+  failing.
+
+### Added
+- **Windows list**: "Start-Process -FilePath "powershell" -Verb RunAs" opens
+  an elevated PowerShell in a new window.
+
 ## [0.40.0] - 2026-11-13
 
 ### Added
