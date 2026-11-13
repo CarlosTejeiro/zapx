@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0] - 2026-11-13
+
+### Added
+- **WSL sessions** (Windows): New Session → Protocol → WSL. Pick an
+  installed distribution (listed from `wsl --list --quiet`, or type its
+  name) and optionally a user; opening it runs `wsl.exe --distribution
+  <distro> [--user <user>]` in a terminal tab. The session gets the Linux
+  command lists.
+
+### Changed
+- Saved local terminals (WSL) don't auto-reconnect when they end: that's
+  usually `exit`. The Reconnect button still works.
+
 ## [0.41.1] - 2026-11-13
 
 ### Added

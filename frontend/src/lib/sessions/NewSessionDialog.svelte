@@ -9,6 +9,8 @@
     createSavedSession,
     createTelnetSession,
     createSerialSession,
+    createWslSession,
+    listWslDistros,
     listSerialPorts,
     listSessions,
     setLoginScript,
@@ -37,11 +39,13 @@
   } from '$lib/bridge/types'
   import { colorSchemes } from '$lib/stores/settings.svelte'
   import { setCachedPassword } from '$lib/credentialCache'
+  import { isWindowsHost } from '$lib/stores/localShellPlatform'
   import { listSnippets } from '$lib/bridge/commands'
   import { escapeControls, unescapeControls } from './stepEscapes'
   import type { Snippet } from '$lib/bridge/types'
 
-  type Protocol = 'ssh' | 'telnet' | 'serial'
+  // 'wsl' is UI-only: it's saved as protocol 'local' with options_json.wsl_distro.
+  type Protocol = 'ssh' | 'telnet' | 'serial' | 'wsl'
 
   interface Props {
     folders: Folder[]
@@ -95,6 +99,7 @@
     }
     if (existing) {
       protocol = (existing.protocol as Protocol) ?? 'ssh'
+      if (existing.protocol === 'local') protocol = 'wsl'
       name = existing.name
       host = existing.host ?? ''
       port = existing.port ?? defaultPort[protocol]
@@ -124,6 +129,8 @@
         if (opts.key_path) keyPath = opts.key_path
         if (opts.device) device = opts.device
         if (opts.baud_rate) baudRate = opts.baud_rate
+        if (typeof opts.wsl_distro === 'string') wslDistro = opts.wsl_distro
+        if (typeof opts.wsl_user === 'string') wslUser = opts.wsl_user
         if (typeof opts.color_scheme === 'string' && opts.color_scheme) {
           colorScheme = opts.color_scheme
         }
@@ -175,6 +182,7 @@
     } else if (protocol === 'serial') {
       loadPorts()
     }
+    if (protocol === 'wsl') loadDistros()
   })
 
   let protocol = $state<Protocol>('ssh')
@@ -286,7 +294,21 @@
   let saving = $state(false)
   let availablePorts = $state<string[]>([])
 
-  const defaultPort: Record<Protocol, number> = { ssh: 22, telnet: 23, serial: 0 }
+  const defaultPort: Record<Protocol, number> = { ssh: 22, telnet: 23, serial: 0, wsl: 0 }
+  /// Network protocols: the only ones with a host and port.
+  const isNet = $derived(protocol === 'ssh' || protocol === 'telnet')
+  let wslDistro = $state('')
+  let wslUser = $state('')
+  let wslDistros = $state<string[]>([])
+
+  async function loadDistros() {
+    try {
+      wslDistros = await listWslDistros()
+      if (wslDistros.length > 0 && !wslDistro) wslDistro = wslDistros[0] ?? ''
+    } catch {
+      wslDistros = []
+    }
+  }
 
   function onProtocolChange() {
     port = defaultPort[protocol]
@@ -294,6 +316,7 @@
     if (protocol === 'serial' && availablePorts.length === 0) {
       loadPorts()
     }
+    if (protocol === 'wsl' && wslDistros.length === 0) loadDistros()
   }
 
   async function loadPorts() {
@@ -312,11 +335,11 @@
       error = 'Name is required.'
       return
     }
-    if (protocol !== 'serial' && !host.trim()) {
+    if (isNet && !host.trim()) {
       error = 'Host is required.'
       return
     }
-    if (protocol !== 'serial' && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+    if (isNet && (!Number.isInteger(port) || port < 1 || port > 65535)) {
       error = 'Port must be a number from 1 to 65535.'
       return
     }
@@ -332,6 +355,10 @@
       error = 'Serial device is required.'
       return
     }
+    if (protocol === 'wsl' && !wslDistro.trim()) {
+      error = 'WSL distribution is required.'
+      return
+    }
 
     saving = true
     error = ''
@@ -345,6 +372,10 @@
         if (protocol === 'serial') {
           opts.device = device.trim()
           opts.baud_rate = baudRate
+        }
+        if (protocol === 'wsl') {
+          opts.wsl_distro = wslDistro.trim()
+          if (wslUser.trim()) opts.wsl_user = wslUser.trim()
         }
         if (colorScheme) opts.color_scheme = colorScheme
         if (notes.trim()) opts.notes = notes.trim()
@@ -384,8 +415,8 @@
           existing.id,
           name.trim(),
           folderId,
-          protocol === 'serial' ? null : host.trim(),
-          protocol === 'serial' ? null : port,
+          isNet ? host.trim() : null,
+          isNet ? port : null,
           protocol === 'ssh' ? username.trim() : null,
           protocol === 'ssh' ? viaSessionId : null,
           optsJson,
@@ -426,6 +457,8 @@
         }
       } else if (protocol === 'telnet') {
         id = await createTelnetSession(name.trim(), folderId, host.trim(), port)
+      } else if (protocol === 'wsl') {
+        id = await createWslSession(name.trim(), folderId, wslDistro.trim(), wslUser.trim() || null)
       } else {
         id = await createSerialSession(name.trim(), folderId, device.trim(), baudRate)
       }
@@ -445,8 +478,8 @@
           id,
           name.trim(),
           folderId,
-          protocol === 'serial' ? null : host.trim(),
-          protocol === 'serial' ? null : port,
+          isNet ? host.trim() : null,
+          isNet ? port : null,
           protocol === 'ssh' ? username.trim() : null,
           protocol === 'ssh' ? viaSessionId : null,
           buildOptsJson(),
@@ -540,6 +573,9 @@
         <option value="ssh">SSH</option>
         <option value="telnet">Telnet</option>
         <option value="serial">Serial</option>
+        {#if isWindowsHost || protocol === 'wsl'}
+          <option value="wsl">WSL</option>
+        {/if}
       </select>
     </label>
 
@@ -683,6 +719,30 @@
       </label>
     {/if}
 
+    {#if protocol === 'wsl'}
+      <label>
+        Distribution
+        {#if wslDistros.length > 0}
+          <select bind:value={wslDistro}>
+            {#each wslDistros as d (d)}
+              <option value={d}>{d}</option>
+            {/each}
+          </select>
+        {:else}
+          <input bind:value={wslDistro} placeholder="Ubuntu" autocomplete="off" />
+        {/if}
+      </label>
+      <label>
+        User <span class="hint-pill">optional</span>
+        <input
+          bind:value={wslUser}
+          placeholder="the distribution's default user"
+          autocomplete="off"
+          autocapitalize="off"
+        />
+      </label>
+    {/if}
+
     {#if folders.length > 0}
       <label>
         Folder
@@ -730,7 +790,7 @@
       >
     </label>
 
-    {#if protocol !== 'serial'}
+    {#if isNet}
       <label class="checkbox-row">
         <input type="checkbox" bind:checked={autoReconnect} />
         <span>

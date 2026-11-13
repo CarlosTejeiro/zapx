@@ -92,3 +92,13 @@ fn local_pty_falls_back_when_preferred_shell_is_missing() {
     assert_eq!(pty.shell(), "/bin/sh");
     assert!(pty.failed_shells().is_empty());
 }
+
+/// A program with arguments runs as given.
+#[test]
+#[ignore = "requires PTY allocation (run locally, not in CI containers)"]
+fn local_pty_spawns_a_program_with_args() {
+    let pty = LocalPty::spawn_program(80, 24, "/bin/sh", &["-c".into(), "exit 0".into()])
+        .expect("spawn failed");
+    assert_eq!(pty.shell(), "/bin/sh");
+    assert!(LocalPty::spawn_program(80, 24, "/nonexistent/wsl", &[]).is_err());
+}
