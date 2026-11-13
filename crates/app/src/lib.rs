@@ -220,6 +220,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::sessions::open_local_session,
+            commands::sessions::create_wsl_session,
+            commands::sessions::list_wsl_distros,
             commands::sessions::open_ssh_session,
             commands::sessions::ssh_preflight_host_key,
             commands::sessions::ssh_trust_host_key,

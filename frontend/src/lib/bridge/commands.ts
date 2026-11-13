@@ -572,6 +572,22 @@ export async function createTelnetSession(
   return invoke<number>('create_telnet_session', { name, folderId, host, port })
 }
 
+/** Save a WSL session: a local terminal running `wsl.exe --distribution
+ *  <distro>` (and `--user <user>` when given). Windows only. */
+export async function createWslSession(
+  name: string,
+  folderId: number | null,
+  distro: string,
+  user: string | null,
+): Promise<number> {
+  return invoke<number>('create_wsl_session', { name, folderId, distro, user })
+}
+
+/** Installed WSL distributions (`wsl --list --quiet`); empty off Windows. */
+export async function listWslDistros(): Promise<string[]> {
+  return invoke<string[]>('list_wsl_distros')
+}
+
 export async function createSerialSession(
   name: string,
   folderId: number | null,

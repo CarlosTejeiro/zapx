@@ -27,6 +27,45 @@ impl LocalPty {
         Self::spawn_with(cols, rows, None)
     }
 
+    /// Spawn one program with arguments in a PTY (e.g. `wsl.exe
+    /// --distribution Ubuntu`). No fallback: if it can't start, that's the
+    /// error.
+    pub fn spawn_program(
+        cols: u16,
+        rows: u16,
+        program: &str,
+        args: &[String],
+    ) -> Result<Self, Error> {
+        let pair = NativePtySystem::default()
+            .openpty(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| Error::SpawnFailed(e.to_string()))?;
+        let mut cmd = shell_command(program);
+        cmd.args(args);
+        let child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(|e| Error::SpawnFailed(format!("{program}: {e}")))?;
+        let portable_pty::PtyPair { master, slave } = pair;
+        drop(slave);
+        let writer = master
+            .take_writer()
+            .map_err(|e| Error::SpawnFailed(e.to_string()))?;
+        Ok(Self {
+            master,
+            child,
+            writer: Arc::new(Mutex::new(writer)),
+            cols,
+            rows,
+            shell: program.to_string(),
+            failed: Vec::new(),
+        })
+    }
+
     /// Like [`Self::spawn`], trying `preferred` first: `"pwsh"`,
     /// `"powershell"`, `"cmd"` (Windows) or any shell path/command. When it
     /// can't start, the automatic choice is used instead of failing.

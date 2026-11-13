@@ -336,6 +336,23 @@ pub async fn open_local_session(
         tracing::warn!(shell, failed = %failed.join("; "), "local shell fell back");
     }
 
+    start_local_pty(app, &state, session_id.clone(), pty)?;
+    tracing::debug!(session_id, shell, "local session opened");
+    Ok(LocalSessionInfo {
+        id: session_id,
+        shell,
+        failed,
+    })
+}
+
+/// Wire a spawned local PTY (local tab or saved local/WSL session) to the
+/// frontend under `session_id`: input/resize bridge, reader thread, registry.
+fn start_local_pty(
+    app: AppHandle,
+    state: &AppState,
+    session_id: String,
+    pty: core_transport::LocalPty,
+) -> Result<(), AppError> {
     let reader = pty
         .take_reader()
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -397,13 +414,7 @@ pub async fn open_local_session(
             mss_task: None,
         },
     );
-
-    tracing::debug!(session_id, shell, "local session opened");
-    Ok(LocalSessionInfo {
-        id: session_id,
-        shell,
-        failed,
-    })
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2093,9 +2104,167 @@ pub async fn open_saved_session(
             );
             Ok(session_id)
         }
+        "local" => {
+            // A saved local session: a WSL distribution (`wsl_distro` in the
+            // options) or, without one, the configured local shell.
+            let opts: serde_json::Value =
+                serde_json::from_str(&session.options_json).unwrap_or(serde_json::json!({}));
+            let pty = match opts["wsl_distro"].as_str().filter(|d| !d.trim().is_empty()) {
+                Some(distro) => core_transport::LocalPty::spawn_program(
+                    cols,
+                    rows,
+                    "wsl.exe",
+                    &wsl_args(distro, opts["wsl_user"].as_str()),
+                ),
+                None => {
+                    let preferred = state.db.get_setting(LOCAL_SHELL_SETTING).ok().flatten();
+                    core_transport::LocalPty::spawn_with(cols, rows, preferred.as_deref())
+                }
+            }
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+            let session_id = Uuid::new_v4().to_string();
+            start_local_pty(app, &state, session_id.clone(), pty)?;
+            Ok(session_id)
+        }
         p => Err(AppError::Internal(format!(
             "protocol '{p}' not yet supported"
         ))),
+    }
+}
+
+/// `wsl.exe` arguments to open one distribution, optionally as one user
+/// (`wsl --distribution <name> --user <user>`, from "Basic commands for WSL").
+fn wsl_args(distro: &str, user: Option<&str>) -> Vec<String> {
+    let mut args = vec!["--distribution".to_string(), distro.trim().to_string()];
+    if let Some(user) = user.map(str::trim).filter(|u| !u.is_empty()) {
+        args.push("--user".into());
+        args.push(user.to_string());
+    }
+    args
+}
+
+/// Save a WSL session: a local session that opens one distribution. Its
+/// platform is Linux, so it gets the Linux command lists and hints.
+#[tauri::command]
+pub async fn create_wsl_session(
+    state: State<'_, AppState>,
+    name: String,
+    folder_id: Option<i64>,
+    distro: String,
+    user: Option<String>,
+) -> Result<i64, AppError> {
+    if distro.trim().is_empty() {
+        return Err(AppError::Internal("Pick a WSL distribution".into()));
+    }
+    let mut opts = serde_json::json!({ "wsl_distro": distro.trim() });
+    if let Some(user) = user.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+        opts["wsl_user"] = serde_json::json!(user);
+    }
+    let id = state
+        .db
+        .create_session(
+            folder_id,
+            &name,
+            "local",
+            None,
+            None,
+            None,
+            None,
+            &opts.to_string(),
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    state
+        .db
+        .set_session_platform(id, "linux")
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(id)
+}
+
+/// Names of the installed WSL distributions (`wsl --list --quiet`). Empty
+/// when WSL isn't there (and on macOS/Linux).
+#[tauri::command]
+pub async fn list_wsl_distros() -> Result<Vec<String>, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let out = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("wsl.exe")
+                .args(["--list", "--quiet"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(match out {
+            Ok(o) if o.status.success() => parse_wsl_list(&o.stdout),
+            _ => Vec::new(),
+        })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Parse `wsl --list --quiet` output: one name per line, written as UTF-16LE
+/// by wsl.exe (plain UTF-8 accepted too).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn parse_wsl_list(bytes: &[u8]) -> Vec<String> {
+    // A UTF-16LE byte-order mark, if any, would break the zero-byte check.
+    let bytes = bytes.strip_prefix(&[0xFF, 0xFE]).unwrap_or(bytes);
+    let utf16 = bytes.len() >= 2
+        && bytes.len().is_multiple_of(2)
+        && bytes.iter().skip(1).step_by(2).all(|b| *b == 0);
+    let text = if utf16 {
+        let units: Vec<u16> = bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+    text.lines()
+        .map(|l| {
+            l.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+                .to_string()
+        })
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+#[cfg(test)]
+mod wsl_tests {
+    use super::{parse_wsl_list, wsl_args};
+
+    #[test]
+    fn wsl_list_utf16_and_utf8() {
+        let utf16: Vec<u8> = "Ubuntu\r\nDebian\r\n"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        assert_eq!(parse_wsl_list(&utf16), vec!["Ubuntu", "Debian"]);
+        assert_eq!(parse_wsl_list(b"Ubuntu-24.04\n\n"), vec!["Ubuntu-24.04"]);
+        let mut with_bom = vec![0xFF, 0xFE];
+        with_bom.extend_from_slice(&utf16);
+        assert_eq!(parse_wsl_list(&with_bom), vec!["Ubuntu", "Debian"]);
+        assert!(parse_wsl_list(b"").is_empty());
+    }
+
+    #[test]
+    fn wsl_args_with_and_without_user() {
+        assert_eq!(wsl_args(" Ubuntu ", None), vec!["--distribution", "Ubuntu"]);
+        assert_eq!(
+            wsl_args("Debian", Some("root")),
+            vec!["--distribution", "Debian", "--user", "root"]
+        );
+        assert_eq!(
+            wsl_args("Debian", Some("  ")),
+            vec!["--distribution", "Debian"]
+        );
     }
 }
 
