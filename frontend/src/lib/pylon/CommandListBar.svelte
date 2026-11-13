@@ -180,6 +180,28 @@
     })
   }
 
+  // ── Shift tracking ────────────────────────────────────────────────────
+  /// Shift+click types without Enter. `click.shiftKey` alone isn't relied
+  /// on (it came through unset on Windows/WebView2): Shift is also tracked
+  /// from the keyboard and read again when the button is pressed.
+  let shiftHeld = false
+  let shiftAtPress = false
+  function trackShift(e: KeyboardEvent) {
+    if (e.key === 'Shift') shiftHeld = e.type === 'keydown'
+  }
+  function clearShift() {
+    shiftHeld = false
+  }
+  function notePress(e: PointerEvent) {
+    shiftAtPress = e.shiftKey || shiftHeld
+  }
+  /// Whether this click is a Shift+click; resets the press state.
+  function shiftClick(e: MouseEvent): boolean {
+    const shift = e.shiftKey || shiftHeld || shiftAtPress
+    shiftAtPress = false
+    return shift
+  }
+
   async function pick(item: ListItem, typeOnly = false) {
     if (item.kind === 'recipe') {
       const values: Record<string, string> = {}
@@ -322,6 +344,8 @@
   })
 </script>
 
+<svelte:window onkeydown={trackShift} onkeyup={trackShift} onblur={clearShift} />
+
 {#snippet icon(name: ListIcon, size: number)}
   <svg
     width={size}
@@ -456,7 +480,8 @@
               type="button"
               class="recent-item"
               role="menuitem"
-              onclick={(e) => pickRecent(r, e.shiftKey)}
+              onpointerdown={notePress}
+              onclick={(e) => pickRecent(r, shiftClick(e))}
               title="{r.text} — Shift+click types it without Enter">{r.text}</button
             >
           {/each}
@@ -597,7 +622,8 @@
                 class="item"
                 class:active={idx === activeIndex}
                 onmouseenter={() => (activeIndex = idx)}
-                onclick={(e) => pick(item, e.shiftKey)}
+                onpointerdown={notePress}
+                onclick={(e) => pick(item, shiftClick(e))}
               >
                 <span class="item-line">
                   {#if item.kind === 'command'}
