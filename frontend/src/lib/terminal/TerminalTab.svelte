@@ -42,7 +42,7 @@
   } from '$lib/stores/sessionRuntime.svelte'
   import { matchAction } from '$lib/stores/keybindings.svelte'
   import { matchSnippetShortcut } from '$lib/stores/snippets.svelte'
-  import { noteLocalShell } from '$lib/stores/localShell.svelte'
+  import { forgetLocalShell, noteLocalShell } from '$lib/stores/localShell.svelte'
   import { terminalSettings, colorSchemes, connectionSettings } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
   import { HintController } from '$lib/hints/controller.svelte'
@@ -850,6 +850,7 @@
     if (paneId != null) unregisterSession(paneId)
     if (old) {
       unregisterFocus(old)
+      forgetLocalShell(old)
       await invoke('close_session', { sessionId: old }).catch(() => {})
     }
     await reconnect()
@@ -1324,6 +1325,7 @@
       const id = sessionId
       sessionId = null
       unregisterFocus(id)
+      forgetLocalShell(id)
       // onDestroy can't await; do the async teardown fire-and-forget but keep
       // the order (stop logging before closing the backend session/PTY).
       void (async () => {

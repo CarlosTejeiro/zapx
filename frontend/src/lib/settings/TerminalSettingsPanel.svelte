@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { errorText } from '$lib/bridge/errors'
   import ThemeSelector from './ThemeSelector.svelte'
   import {
     isWindowsHost,
@@ -43,6 +44,8 @@
   let customOpen = $state(false)
   let customPath = $state('')
   let shellSaved = $state(false)
+  let shellError = $state('')
+  let savedTimer: ReturnType<typeof setTimeout> | undefined
   const shellChoice = $derived(
     customOpen || !presetValues.includes(localShellSetting.value)
       ? CUSTOM
@@ -55,9 +58,16 @@
   })
 
   async function saveShell(value: string) {
-    await saveLocalShellSetting(value)
-    shellSaved = true
-    setTimeout(() => (shellSaved = false), 1500)
+    if (value.trim() === localShellSetting.value) return
+    try {
+      await saveLocalShellSetting(value)
+      shellError = ''
+      shellSaved = true
+      clearTimeout(savedTimer)
+      savedTimer = setTimeout(() => (shellSaved = false), 1500)
+    } catch (e) {
+      shellError = `Couldn't save: ${errorText(e)}`
+    }
   }
 
   function onShellChoice(value: string) {
@@ -139,6 +149,7 @@
       For new local tabs. If it can't start, ZAPX falls back to the automatic choice.
       {#if shellSaved}<span class="saved">Saved</span>{/if}
     </p>
+    {#if shellError}<p class="hint error">{shellError}</p>{/if}
   </section>
 
   <section>
@@ -229,6 +240,10 @@
   .saved {
     color: var(--zx-ok);
     margin-left: 0.4rem;
+  }
+
+  .error {
+    color: var(--zx-err);
   }
 
   .cursor-row {

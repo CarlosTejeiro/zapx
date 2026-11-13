@@ -5,6 +5,17 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.1] - 2026-11-13
+
+### Fixed
+- **Drop-down boxes no longer render blank in dark themes** (Settings, Edit
+  Session: platform, color scheme, font…). The app now tells the web view
+  whether the theme is dark or light (`color-scheme`), and the options use
+  the theme's colors.
+- Settings → Local shell: a failed save now says so instead of showing a
+  choice that wasn't kept.
+- The shell recorded for each local tab is forgotten when the tab closes.
+
 ## [0.42.0] - 2026-11-13
 
 ### Added
