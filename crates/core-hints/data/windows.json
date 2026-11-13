@@ -54,5 +54,6 @@
   "Get-NetFirewallRule -Enabled True -Direction Inbound",
   "Get-WinEvent -FilterHashtable @{LogName='System'; Level=2} -MaxEvents 50",
   "Get-WinEvent -LogName System -MaxEvents 50",
-  "Get-WinEvent -LogName Application -MaxEvents 50"
+  "Get-WinEvent -LogName Application -MaxEvents 50",
+  "Start-Process -FilePath \"powershell\" -Verb RunAs"
 ]

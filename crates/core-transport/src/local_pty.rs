@@ -30,26 +30,26 @@ impl LocalPty {
             })
             .map_err(|e| Error::SpawnFailed(e.to_string()))?;
 
-        let shell = detect_shell();
-        let mut cmd = CommandBuilder::new(&shell);
-        if let Some(home) = home::home_dir() {
-            cmd.cwd(home);
+        // Try each candidate shell in turn: a locked-down machine may refuse
+        // to start one (e.g. a corporate policy blocking powershell.exe from
+        // other programs: "Access is denied") while another works.
+        let mut failures = Vec::new();
+        let mut spawned = None;
+        for shell in shell_candidates() {
+            match pair.slave.spawn_command(shell_command(&shell)) {
+                Ok(child) => {
+                    spawned = Some((shell, child));
+                    break;
+                }
+                Err(e) => failures.push(format!("{shell}: {e}")),
+            }
         }
-        // Force TERM so shells launched from the macOS .app bundle (which
-        // inherits a sparse env from LaunchServices) still load the right
-        // terminfo. Without this, zsh-syntax-highlighting + auto-suggestions
-        // repaint the input line without proper cursor positioning and the
-        // user sees doubled characters (typed `ls` shows as `lls`).
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
-        // Self-identification so user prompts / scripts can detect the host.
-        cmd.env("TERM_PROGRAM", "zapx");
-        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
-
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| Error::SpawnFailed(e.to_string()))?;
+        let Some((shell, child)) = spawned else {
+            return Err(Error::SpawnFailed(failures.join("; ")));
+        };
+        if !failures.is_empty() {
+            tracing::warn!(shell = %shell, failed = %failures.join("; "), "fell back to another local shell");
+        }
         // Close our copy of the slave end: only the child may hold it, so that
         // reads on the master end (EOF / EIO) when the shell exits. Keeping it
         // would leave the reader blocked forever after `exit`.
@@ -115,20 +115,43 @@ impl LocalPty {
     }
 }
 
-fn detect_shell() -> String {
+/// The shells to try, best first. Windows: PowerShell 7 (pwsh), then Windows
+/// PowerShell, then the command interpreter (COMSPEC, normally cmd.exe), so
+/// a machine that blocks PowerShell still gets a terminal.
+fn shell_candidates() -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
-        // PowerShell 7 (pwsh) when installed, else Windows PowerShell, else
-        // the configured command interpreter (cmd.exe).
         let path = std::env::var_os("PATH").unwrap_or_default();
-        first_on_path(&path, &["pwsh.exe", "powershell.exe"])
+        let mut shells: Vec<String> = ["pwsh.exe", "powershell.exe"]
+            .iter()
+            .filter_map(|name| first_on_path(&path, &[name]))
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()))
+            .collect();
+        shells.push(std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()));
+        shells
     }
     #[cfg(not(target_os = "windows"))]
     {
-        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+        vec![std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())]
     }
+}
+
+fn shell_command(shell: &str) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(shell);
+    if let Some(home) = home::home_dir() {
+        cmd.cwd(home);
+    }
+    // Force TERM so shells launched from the macOS .app bundle (which
+    // inherits a sparse env from LaunchServices) still load the right
+    // terminfo. Without this, zsh-syntax-highlighting + auto-suggestions
+    // repaint the input line without proper cursor positioning and the
+    // user sees doubled characters (typed `ls` shows as `lls`).
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    // Self-identification so user prompts / scripts can detect the host.
+    cmd.env("TERM_PROGRAM", "zapx");
+    cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+    cmd
 }
 
 /// The first of `names` found in a directory of `path` (a PATH-style list),

@@ -54,6 +54,15 @@ export const windows: VendorLists = {
             c('Restart-Service -Name <name>', 'Restart a service', { action: true }),
           ],
         },
+        {
+          title: 'Administrator',
+          items: [
+            c(
+              'Start-Process -FilePath "powershell" -Verb RunAs',
+              'Open an elevated PowerShell in a new window (asks for admin credentials)',
+            ),
+          ],
+        },
       ],
     },
     {
