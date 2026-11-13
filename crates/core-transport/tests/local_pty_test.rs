@@ -80,3 +80,15 @@ fn local_pty_reader_ends_after_exit() {
         .expect("PTY reader still blocked 5 s after the shell exited");
     drop(pty);
 }
+
+/// A preferred shell that can't start falls back to the automatic one.
+#[test]
+#[ignore = "requires PTY allocation (run locally, not in CI containers)"]
+fn local_pty_falls_back_when_preferred_shell_is_missing() {
+    let pty = LocalPty::spawn_with(80, 24, Some("/nonexistent/zapx-shell")).expect("spawn failed");
+    assert_ne!(pty.shell(), "/nonexistent/zapx-shell");
+    assert!(pty.failed_shells()[0].starts_with("/nonexistent/zapx-shell: "));
+    let pty = LocalPty::spawn_with(80, 24, Some("/bin/sh")).expect("spawn failed");
+    assert_eq!(pty.shell(), "/bin/sh");
+    assert!(pty.failed_shells().is_empty());
+}

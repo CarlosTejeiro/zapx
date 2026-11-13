@@ -70,6 +70,7 @@
   import type { ImportSummary } from '$lib/bridge/commands'
   import { loadHintsSettings } from '$lib/hints/store.svelte'
   import { broadcast, sessionRuntime, paneToSession } from '$lib/stores/sessionRuntime.svelte'
+  import { localShells, platformForShell } from '$lib/stores/localShell.svelte'
   import { loadBindings, matchAction, type ShortcutAction } from '$lib/stores/keybindings.svelte'
   import {
     listSessions,
@@ -551,8 +552,10 @@
       // unix shell, so give the bar the Linux/bash catalog — useful local commands instead of
       // every vendor's snippets. This is also what makes a local session count
       // as "recognised" for hints.
-      // On Windows the local tab runs PowerShell, so it gets the Windows lists.
-      const localPlatform = navigator.userAgent.includes('Windows') ? 'windows' : 'linux'
+      // The lists follow the shell that actually started (PowerShell/cmd →
+      // Windows, bash/zsh/fish → Linux); before it's known, the host OS.
+      const runtimeId = paneToSession.get(pane.id)
+      const localPlatform = platformForShell(runtimeId ? localShells[runtimeId] : null)
       setBarContext(localPlatform, null).catch(() => {})
     } else {
       setBarContext(null, null).catch(() => {})
