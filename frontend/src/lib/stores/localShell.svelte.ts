@@ -15,6 +15,11 @@ export function noteLocalShell(sessionId: string, shell: string): void {
   localShells[sessionId] = shell
 }
 
+/** Drop a closed tab's entry. */
+export function forgetLocalShell(sessionId: string): void {
+  delete localShells[sessionId]
+}
+
 export async function loadLocalShellSetting(): Promise<void> {
   try {
     localShellSetting.value = (await getSetting(LOCAL_SHELL_KEY)) ?? ''
@@ -24,6 +29,8 @@ export async function loadLocalShellSetting(): Promise<void> {
 }
 
 export async function saveLocalShellSetting(value: string): Promise<void> {
-  localShellSetting.value = value.trim()
-  await setSetting(LOCAL_SHELL_KEY, localShellSetting.value)
+  const v = value.trim()
+  await setSetting(LOCAL_SHELL_KEY, v)
+  // Only once stored, so a failed save doesn't show a choice that isn't kept.
+  localShellSetting.value = v
 }

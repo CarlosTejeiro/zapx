@@ -2,7 +2,7 @@
   import { errorText } from '$lib/bridge/errors'
   import { onMount } from 'svelte'
   import { getTheme, applyTheme } from '$lib/themes/store.svelte'
-  import { themes, themeLabels } from '$lib/themes/index'
+  import { themes, themeLabels, colorSchemeFor } from '$lib/themes/index'
   import MarkTile from '$lib/icons/MarkTile.svelte'
   import Icon from '$lib/icons/Icon.svelte'
   import TitleBar from '$lib/pylon/TitleBar.svelte'
@@ -228,6 +228,7 @@
     set('--zx-term-ok', theme.terminal.ok)
     set('--zx-term-warn', theme.terminal.warn)
     set('--zx-term-err', theme.terminal.err)
+    root.colorScheme = colorSchemeFor(theme.appBg)
   })
 
   // ── state ────────────────────────────────────────────────────────────────────
