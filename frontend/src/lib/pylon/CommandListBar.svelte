@@ -202,6 +202,12 @@
     return shift
   }
 
+  /// Plain commands get a visible "Type" button (types without Enter). The
+  /// others already stop before Enter or open a form with its own button.
+  function canTypeOnly(item: ListItem): boolean {
+    return item.kind === 'command' && !item.keys && commandMode(item) === 'run'
+  }
+
   async function pick(item: ListItem, typeOnly = false) {
     if (item.kind === 'recipe') {
       const values: Record<string, string> = {}
@@ -476,14 +482,23 @@
           <div class="recent-empty">No commands yet</div>
         {:else}
           {#each recents as r (r.text)}
-            <button
-              type="button"
-              class="recent-item"
-              role="menuitem"
-              onpointerdown={notePress}
-              onclick={(e) => pickRecent(r, shiftClick(e))}
-              title="{r.text} — Shift+click types it without Enter">{r.text}</button
-            >
+            <div class="recent-row">
+              <button
+                type="button"
+                class="recent-item"
+                role="menuitem"
+                onpointerdown={notePress}
+                onclick={(e) => pickRecent(r, shiftClick(e))}
+                title="{r.text} — Shift+click types it without Enter">{r.text}</button
+              >
+              <button
+                type="button"
+                class="type-btn"
+                title="Type without Enter — edit it before running"
+                aria-label="Type {r.text} without Enter"
+                onclick={() => pickRecent(r, true)}>Type</button
+              >
+            </div>
           {/each}
         {/if}
       </div>
@@ -617,42 +632,57 @@
             <div class="section-title">{section.title}</div>
             {#each section.items as item (item.kind === 'command' ? item.cmd : item.name)}
               {@const idx = flat.indexOf(item)}
-              <button
-                type="button"
-                class="item"
+              <div
+                class="item-row"
                 class:active={idx === activeIndex}
+                role="presentation"
                 onmouseenter={() => (activeIndex = idx)}
-                onpointerdown={notePress}
-                onclick={(e) => pick(item, shiftClick(e))}
               >
-                <span class="item-line">
-                  {#if item.kind === 'command'}
-                    <span class="item-cmd">{@render cmdText(item.cmd)}</span>
-                  {:else}
-                    <span class="item-name">{item.name}</span>
-                  {/if}
-                  <span class="spacer"></span>
-                  {#if item.kind === 'recipe'}
-                    <span class="tag tag-recipe"
-                      >{item.lines.length} {item.lines.length === 1 ? 'line' : 'lines'}</span
-                    >
-                  {:else if item.action}
-                    <span class="tag tag-action">changes state</span>
-                  {:else if commandMode(item) === 'type'}
-                    <span class="tag tag-type">you finish it</span>
-                  {:else if commandMode(item) === 'ask'}
-                    <span class="tag tag-type">asks values</span>
-                  {/if}
-                </span>
-                <span class="item-desc">{item.desc}</span>
-              </button>
+                <button
+                  type="button"
+                  class="item"
+                  class:with-type={canTypeOnly(item)}
+                  onpointerdown={notePress}
+                  onclick={(e) => pick(item, shiftClick(e))}
+                >
+                  <span class="item-line">
+                    {#if item.kind === 'command'}
+                      <span class="item-cmd">{@render cmdText(item.cmd)}</span>
+                    {:else}
+                      <span class="item-name">{item.name}</span>
+                    {/if}
+                    <span class="spacer"></span>
+                    {#if item.kind === 'recipe'}
+                      <span class="tag tag-recipe"
+                        >{item.lines.length} {item.lines.length === 1 ? 'line' : 'lines'}</span
+                      >
+                    {:else if item.action}
+                      <span class="tag tag-action">changes state</span>
+                    {:else if commandMode(item) === 'type'}
+                      <span class="tag tag-type">you finish it</span>
+                    {:else if commandMode(item) === 'ask'}
+                      <span class="tag tag-type">asks values</span>
+                    {/if}
+                  </span>
+                  <span class="item-desc">{item.desc}</span>
+                </button>
+                {#if canTypeOnly(item)}
+                  <button
+                    type="button"
+                    class="type-btn"
+                    title="Type without Enter — edit it before running"
+                    aria-label="Type {item.kind === 'command' ? item.cmd : ''} without Enter"
+                    onclick={() => pick(item, true)}>Type</button
+                  >
+                {/if}
+              </div>
             {/each}
           {/each}
         </div>
 
         <div class="panel-foot">
           <span><b>Click</b> runs</span>
-          <span><b>Shift+click</b> types without Enter</span>
+          <span><b>Type</b> or <b>Shift+click</b> types without Enter</span>
           <span><span class="hole">value</span> you fill in</span>
           <span class="spacer"></span>
           <span>↑↓ ↵</span>
@@ -963,8 +993,68 @@
     color: var(--text);
     font-family: inherit;
   }
-  .item.active {
+  .item-row {
+    position: relative;
+    display: flex;
+    border-radius: 7px;
+  }
+  .item-row.active {
     background: var(--hover);
+  }
+  .item-row .item {
+    flex: 1;
+    min-width: 0;
+  }
+  .item.with-type {
+    padding-right: 58px;
+  }
+  .type-btn {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg, transparent);
+    color: var(--dim);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .type-btn:hover {
+    color: var(--text);
+    border-color: var(--dim);
+  }
+  .item-row .type-btn {
+    position: absolute;
+    right: 8px;
+    top: 7px;
+    opacity: 0;
+  }
+  .item-row:hover .type-btn,
+  .item-row.active .type-btn,
+  .type-btn:focus-visible {
+    opacity: 1;
+  }
+  .recent-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 4px;
+  }
+  .recent-row:hover {
+    background: var(--hover);
+  }
+  .recent-row .recent-item {
+    flex: 1;
+    min-width: 0;
+  }
+  .recent-row .type-btn {
+    opacity: 0;
+    margin-right: 4px;
+  }
+  .recent-row:hover .type-btn,
+  .recent-row .type-btn:focus-visible {
+    opacity: 1;
   }
   .item-line {
     display: flex;
