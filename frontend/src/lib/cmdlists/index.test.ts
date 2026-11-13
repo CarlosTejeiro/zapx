@@ -71,11 +71,12 @@ describe('command lists', () => {
     expect(listsForPlatform('linux')?.lists.length).toBeGreaterThanOrEqual(7)
     expect(listsForPlatform('arista_eos')?.lists.length).toBeGreaterThanOrEqual(8)
     expect(listsForPlatform('juniper')?.lists.length).toBeGreaterThanOrEqual(8)
+    expect(listsForPlatform('windows')?.lists.length).toBeGreaterThanOrEqual(6)
     expect(listsForPlatform('mikrotik')).toBeNull()
     expect(listsForPlatform(null)).toBeNull()
   })
 
-  it.each(['fortigate', 'cisco_ios', 'cisco_iosxr', 'linux', 'arista_eos', 'juniper'])(
+  it.each(['fortigate', 'cisco_ios', 'cisco_iosxr', 'linux', 'arista_eos', 'juniper', 'windows'])(
     '%s data is well formed',
     (platform) => {
       const vendor = listsForPlatform(platform)!

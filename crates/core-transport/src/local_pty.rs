@@ -118,10 +118,50 @@ impl LocalPty {
 fn detect_shell() -> String {
     #[cfg(target_os = "windows")]
     {
-        std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+        // PowerShell 7 (pwsh) when installed, else Windows PowerShell, else
+        // the configured command interpreter (cmd.exe).
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        first_on_path(&path, &["pwsh.exe", "powershell.exe"])
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()))
     }
     #[cfg(not(target_os = "windows"))]
     {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+    }
+}
+
+/// The first of `names` found in a directory of `path` (a PATH-style list),
+/// trying each name in order across every directory.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn first_on_path(path: &std::ffi::OsStr, names: &[&str]) -> Option<std::path::PathBuf> {
+    let dirs: Vec<std::path::PathBuf> = std::env::split_paths(path).collect();
+    names.iter().find_map(|name| {
+        dirs.iter()
+            .map(|d| d.join(name))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first_on_path;
+
+    #[test]
+    fn prefers_the_first_name_over_directory_order() {
+        let base = std::env::temp_dir().join(format!("zapx_path_{}", std::process::id()));
+        let (a, b) = (base.join("a"), base.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(a.join("powershell.exe"), b"").unwrap();
+        std::fs::write(b.join("pwsh.exe"), b"").unwrap();
+        let path = std::env::join_paths([&a, &b]).unwrap();
+        // pwsh wins although its directory comes later in PATH.
+        assert_eq!(
+            first_on_path(&path, &["pwsh.exe", "powershell.exe"]),
+            Some(b.join("pwsh.exe"))
+        );
+        assert_eq!(first_on_path(&path, &["nothing.exe"]), None);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

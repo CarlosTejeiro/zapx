@@ -134,6 +134,7 @@ fn prompt_regex(p: Platform) -> &'static Regex {
             CiscoIos,
             CiscoIosXr,
             AristaEos,
+            Windows,
             Juniper,
             Mikrotik,
             Aruba,
@@ -195,6 +196,9 @@ fn rules() -> &'static [Rule] {
             // IOS XR names the node in the prompt (RP/0/RSP0/CPU0:host#),
             // which no other vendor here does.
             r!(Platform::CiscoIosXr, &[]),
+            // A drive path before `>` (`PS C:\Users\me>` or `C:\Users\me>`)
+            // is a Windows shell; nothing else here prompts like that.
+            r!(Platform::Windows, &[]),
             r!(Platform::Aruba, &["ArubaOS", "ProCurve", "Aruba"]),
             // ── Cisco-style `hostname#` prompt — needs a banner clue to
             //    pick the right vendor (Cisco vs Fortigate vs PAN-OS).
@@ -299,6 +303,9 @@ fn prompt_src_for(p: Platform) -> &'static str {
         // `switch(config-router-bgp)#`. Told apart by the banner clue.
         Platform::AristaEos => r"^[A-Za-z][\w.-]*(?:\([^)]+\))?\s*[#>]\s*$",
 
+        // Windows: PowerShell `PS C:\Users\me> ` or cmd `C:\Users\me>`.
+        Platform::Windows => r"^(?:PS )?[A-Za-z]:\\[^>\r\n]*>\s*$",
+
         // Linux/bash variants — broadest, last. The distro-signature gate
         // (see the rule table) keeps this broad regex from misfiring on
         // any-old-`host#` line, so we can accept the messy reality:
@@ -384,6 +391,22 @@ mod tests {
             detect("Cisco IOS Software, Version 15.7\nswitch#"),
             Some(Platform::CiscoIos)
         );
+    }
+
+    #[test]
+    fn windows_powershell_and_cmd_prompts() {
+        assert_eq!(detect("PS C:\\Users\\carlos> "), Some(Platform::Windows));
+        assert_eq!(detect("PS C:\\> "), Some(Platform::Windows));
+        assert_eq!(
+            detect("Microsoft Windows [Version 10.0.26100.2314]\r\nC:\\Users\\carlos>"),
+            Some(Platform::Windows)
+        );
+    }
+
+    #[test]
+    fn windows_prompt_not_taken_from_linux_paths() {
+        assert_eq!(detect("Ubuntu 24.04\nuser@host:~$ "), Some(Platform::Linux));
+        assert_eq!(detect("router1>"), None);
     }
 
     #[test]
@@ -589,6 +612,10 @@ mod tests {
         assert!(ends_with_prompt(
             Platform::AristaEos,
             "leaf1(config-router-bgp)#"
+        ));
+        assert!(ends_with_prompt(
+            Platform::Windows,
+            "PS C:\\Windows\\System32> "
         ));
         assert!(ends_with_prompt(
             Platform::CiscoIosXr,

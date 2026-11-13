@@ -5,6 +5,26 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0] - 2026-11-13
+
+### Added
+- **Windows support (PowerShell)**: a new platform, detected from the
+  PowerShell prompt (`PS C:\Users\me>`) or the cmd prompt (`C:\Users\me>`).
+- **Command lists for Windows**: System (systeminfo, uptime, updates,
+  volumes, processes, services), Network (addresses, adapters, routes, ARP,
+  TCP/UDP ports, DNS), Diagnostics (ping, tracert, pathping,
+  Test-NetConnection), WSL, Hyper-V (host, VMs, switches, adapters, disks,
+  checkpoints, replication, integration services) and Firewall & events
+  (firewall profiles and rules, System/Application event logs).
+  - Every command was checked against Microsoft's documentation on
+    learn.microsoft.com.
+- **Command hints**: a Windows suggestion catalog (56 commands).
+
+### Changed
+- **The local terminal on Windows opens PowerShell**: PowerShell 7 (pwsh)
+  when installed, else Windows PowerShell, else cmd as before. Local tabs on
+  Windows show the Windows lists instead of the Linux ones.
+
 ## [0.39.2] - 2026-11-12
 
 ### Fixed
