@@ -15,11 +15,22 @@ pub struct LocalPty {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     cols: u16,
     rows: u16,
+    /// The shell that was started (a path or a command name).
+    shell: String,
+    /// Shells tried before it that failed to start, as "shell: error".
+    failed: Vec<String>,
 }
 
 impl LocalPty {
     /// Spawn a PTY with the system shell at the given initial dimensions.
     pub fn spawn(cols: u16, rows: u16) -> Result<Self, Error> {
+        Self::spawn_with(cols, rows, None)
+    }
+
+    /// Like [`Self::spawn`], trying `preferred` first: `"pwsh"`,
+    /// `"powershell"`, `"cmd"` (Windows) or any shell path/command. When it
+    /// can't start, the automatic choice is used instead of failing.
+    pub fn spawn_with(cols: u16, rows: u16, preferred: Option<&str>) -> Result<Self, Error> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -35,7 +46,18 @@ impl LocalPty {
         // other programs: "Access is denied") while another works.
         let mut failures = Vec::new();
         let mut spawned = None;
-        for shell in shell_candidates() {
+        let mut candidates: Vec<String> = preferred
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(resolve_preferred)
+            .into_iter()
+            .collect();
+        for auto in shell_candidates() {
+            if !candidates.contains(&auto) {
+                candidates.push(auto);
+            }
+        }
+        for shell in candidates {
             match pair.slave.spawn_command(shell_command(&shell)) {
                 Ok(child) => {
                     spawned = Some((shell, child));
@@ -47,9 +69,6 @@ impl LocalPty {
         let Some((shell, child)) = spawned else {
             return Err(Error::SpawnFailed(failures.join("; ")));
         };
-        if !failures.is_empty() {
-            tracing::warn!(shell = %shell, failed = %failures.join("; "), "fell back to another local shell");
-        }
         // Close our copy of the slave end: only the child may hold it, so that
         // reads on the master end (EOF / EIO) when the shell exits. Keeping it
         // would leave the reader blocked forever after `exit`.
@@ -66,7 +85,20 @@ impl LocalPty {
             writer: Arc::new(Mutex::new(writer)),
             cols,
             rows,
+            shell,
+            failed: failures,
         })
+    }
+
+    /// The shell that was started (a path or a command name).
+    pub fn shell(&self) -> &str {
+        &self.shell
+    }
+
+    /// Shells tried before [`Self::shell`] that failed to start, each as
+    /// "shell: error". Empty when the first choice started.
+    pub fn failed_shells(&self) -> &[String] {
+        &self.failed
     }
 
     /// Clone the reader end of the PTY.
@@ -136,6 +168,23 @@ fn shell_candidates() -> Vec<String> {
     }
 }
 
+/// A preset name to the shell it means; anything else is used as given (a
+/// path or a command on PATH).
+fn resolve_preferred(preferred: &str) -> String {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let on_path = |exe: &str| {
+        first_on_path(&path, &[exe])
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| exe.to_string())
+    };
+    match preferred {
+        "pwsh" => on_path("pwsh.exe"),
+        "powershell" => on_path("powershell.exe"),
+        "cmd" => std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()),
+        other => other.to_string(),
+    }
+}
+
 fn shell_command(shell: &str) -> CommandBuilder {
     let mut cmd = CommandBuilder::new(shell);
     if let Some(home) = home::home_dir() {
@@ -156,7 +205,6 @@ fn shell_command(shell: &str) -> CommandBuilder {
 
 /// The first of `names` found in a directory of `path` (a PATH-style list),
 /// trying each name in order across every directory.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn first_on_path(path: &std::ffi::OsStr, names: &[&str]) -> Option<std::path::PathBuf> {
     let dirs: Vec<std::path::PathBuf> = std::env::split_paths(path).collect();
     names.iter().find_map(|name| {
@@ -168,7 +216,16 @@ fn first_on_path(path: &std::ffi::OsStr, names: &[&str]) -> Option<std::path::Pa
 
 #[cfg(test)]
 mod tests {
-    use super::first_on_path;
+    use super::{first_on_path, resolve_preferred};
+
+    #[test]
+    fn custom_shells_are_used_as_given() {
+        assert_eq!(resolve_preferred("/bin/zsh"), "/bin/zsh");
+        assert_eq!(
+            resolve_preferred("C:\\Program Files\\Git\\bin\\bash.exe"),
+            "C:\\Program Files\\Git\\bin\\bash.exe"
+        );
+    }
 
     #[test]
     fn prefers_the_first_name_over_directory_order() {

@@ -5,6 +5,20 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] - 2026-11-13
+
+### Added
+- **Choose the local shell** (Settings → Appearance → Local shell):
+  Automatic, or on Windows PowerShell 7, Windows PowerShell or Command
+  Prompt, or any shell path (Git Bash, zsh, fish…). New local tabs use it;
+  if it can't start, the automatic choice is used instead.
+- **A notice when the local shell falls back**: "Opened cmd.exe — Couldn't
+  start: …" says which shell opened and why the others didn't.
+
+### Changed
+- **The command lists of a local tab follow its shell**: PowerShell and cmd
+  get the Windows lists; bash, zsh, fish (Git Bash included) the Linux ones.
+
 ## [0.40.1] - 2026-11-13
 
 ### Fixed

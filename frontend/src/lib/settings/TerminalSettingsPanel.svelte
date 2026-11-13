@@ -1,5 +1,12 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import ThemeSelector from './ThemeSelector.svelte'
+  import {
+    isWindowsHost,
+    localShellSetting,
+    loadLocalShellSetting,
+    saveLocalShellSetting,
+  } from '$lib/stores/localShell.svelte'
   import {
     terminalSettings,
     colorSchemes,
@@ -20,6 +27,47 @@
   ]
 
   const FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24]
+
+  // ── local shell ──────────────────────────────────────────────────────────
+  const SHELL_PRESETS: { value: string; label: string }[] = isWindowsHost
+    ? [
+        { value: '', label: 'Automatic (PowerShell 7 › PowerShell › cmd)' },
+        { value: 'pwsh', label: 'PowerShell 7 (pwsh)' },
+        { value: 'powershell', label: 'Windows PowerShell' },
+        { value: 'cmd', label: 'Command Prompt (cmd)' },
+      ]
+    : [{ value: '', label: 'Automatic ($SHELL)' }]
+  const CUSTOM = '__custom__'
+  const presetValues = SHELL_PRESETS.map((p) => p.value)
+
+  let customOpen = $state(false)
+  let customPath = $state('')
+  let shellSaved = $state(false)
+  const shellChoice = $derived(
+    customOpen || !presetValues.includes(localShellSetting.value)
+      ? CUSTOM
+      : localShellSetting.value,
+  )
+
+  onMount(async () => {
+    await loadLocalShellSetting()
+    if (!presetValues.includes(localShellSetting.value)) customPath = localShellSetting.value
+  })
+
+  async function saveShell(value: string) {
+    await saveLocalShellSetting(value)
+    shellSaved = true
+    setTimeout(() => (shellSaved = false), 1500)
+  }
+
+  function onShellChoice(value: string) {
+    if (value === CUSTOM) {
+      customOpen = true
+      return
+    }
+    customOpen = false
+    void saveShell(value)
+  }
 </script>
 
 <div class="panel">
@@ -58,6 +106,39 @@
         {/each}
       </select>
     </label>
+  </section>
+
+  <section>
+    <h3 class="section-title">Local shell</h3>
+    <label class="field">
+      <span class="label">Shell</span>
+      <select
+        class="select"
+        value={shellChoice}
+        onchange={(e) => onShellChoice((e.target as HTMLSelectElement).value)}
+      >
+        {#each SHELL_PRESETS as p (p.value)}
+          <option value={p.value}>{p.label}</option>
+        {/each}
+        <option value={CUSTOM}>Custom path…</option>
+      </select>
+    </label>
+    {#if shellChoice === CUSTOM}
+      <label class="field">
+        <span class="label">Path</span>
+        <input
+          class="select mono"
+          bind:value={customPath}
+          placeholder={isWindowsHost ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/bin/zsh'}
+          onchange={() => customPath.trim() && saveShell(customPath)}
+          onkeydown={(e) => e.key === 'Enter' && customPath.trim() && saveShell(customPath)}
+        />
+      </label>
+    {/if}
+    <p class="hint">
+      For new local tabs. If it can't start, ZAPX falls back to the automatic choice.
+      {#if shellSaved}<span class="saved">Saved</span>{/if}
+    </p>
   </section>
 
   <section>
@@ -139,6 +220,15 @@
     padding: 0.15rem 0.4rem;
     flex: 1;
     max-width: 210px;
+  }
+
+  .mono {
+    font-family: var(--zx-font-mono);
+  }
+
+  .saved {
+    color: var(--zx-ok);
+    margin-left: 0.4rem;
   }
 
   .cursor-row {

@@ -305,16 +305,36 @@ struct SessionStatsPayload {
 // Local PTY session
 // ---------------------------------------------------------------------------
 
-/// Spawn a local PTY session and return its UUID.
+/// Settings key of the local shell: empty/absent = automatic, `pwsh`,
+/// `powershell`, `cmd`, or a shell path/command.
+pub const LOCAL_SHELL_SETTING: &str = "terminal.localShell";
+
+/// What [`open_local_session`] returns: the session id and the shell that
+/// actually started (the preferred one may have fallen back).
+#[derive(serde::Serialize)]
+pub struct LocalSessionInfo {
+    pub id: String,
+    pub shell: String,
+    /// Shells that couldn't start before `shell`, as "shell: error".
+    pub failed: Vec<String>,
+}
+
+/// Spawn a local PTY session with the configured shell.
 #[tauri::command]
 pub async fn open_local_session(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<String, AppError> {
+) -> Result<LocalSessionInfo, AppError> {
     let session_id = Uuid::new_v4().to_string();
 
-    let pty =
-        core_transport::LocalPty::spawn(80, 24).map_err(|e| AppError::Internal(e.to_string()))?;
+    let preferred = state.db.get_setting(LOCAL_SHELL_SETTING).ok().flatten();
+    let pty = core_transport::LocalPty::spawn_with(80, 24, preferred.as_deref())
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let shell = pty.shell().to_string();
+    let failed = pty.failed_shells().to_vec();
+    if !failed.is_empty() {
+        tracing::warn!(shell, failed = %failed.join("; "), "local shell fell back");
+    }
 
     let reader = pty
         .take_reader()
@@ -378,8 +398,12 @@ pub async fn open_local_session(
         },
     );
 
-    tracing::debug!(session_id, "local session opened");
-    Ok(session_id)
+    tracing::debug!(session_id, shell, "local session opened");
+    Ok(LocalSessionInfo {
+        id: session_id,
+        shell,
+        failed,
+    })
 }
 
 // ---------------------------------------------------------------------------

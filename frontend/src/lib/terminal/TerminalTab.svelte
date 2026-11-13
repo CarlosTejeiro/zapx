@@ -42,6 +42,7 @@
   } from '$lib/stores/sessionRuntime.svelte'
   import { matchAction } from '$lib/stores/keybindings.svelte'
   import { matchSnippetShortcut } from '$lib/stores/snippets.svelte'
+  import { noteLocalShell } from '$lib/stores/localShell.svelte'
   import { terminalSettings, colorSchemes, connectionSettings } from '$lib/stores/settings.svelte'
   import type { ColorPalette } from '$lib/bridge/types'
   import { HintController } from '$lib/hints/controller.svelte'
@@ -584,7 +585,19 @@
     }
     if (ssh) return await openSshSession(ssh.host, ssh.port, ssh.user, ssh.auth, cols, rows)
     if (telnet) return await openTelnetSession(telnet.host, telnet.port, cols, rows)
-    return await invoke<string>('open_local_session')
+    const local = await invoke<{ id: string; shell: string; failed: string[] }>(
+      'open_local_session',
+    )
+    noteLocalShell(local.id, local.shell)
+    if (local.failed.length) {
+      // e.g. a corporate policy blocking PowerShell: say why another shell opened.
+      showToast({
+        kind: 'warning',
+        title: `Opened ${local.shell.split(/[\\/]/).pop()}`,
+        detail: `Couldn't start: ${local.failed.join(' · ')}`,
+      })
+    }
+    return local.id
   }
 
   function clearReconnectTimer() {
