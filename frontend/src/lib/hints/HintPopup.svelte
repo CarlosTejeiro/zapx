@@ -125,9 +125,9 @@
       </button>
     {/each}
     <div class="footer">
-      <span>↑↓ navega</span>
-      <span>Tab acepta</span>
-      <span>Esc cierra</span>
+      <span>↑↓ navigate</span>
+      <span>Tab accept</span>
+      <span>Esc close</span>
     </div>
   </div>
 {/if}

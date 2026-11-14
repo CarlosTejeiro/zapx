@@ -64,29 +64,29 @@ pub async fn set_data_dir(
 ) -> Result<String, AppError> {
     let new_dir = PathBuf::from(new_dir.trim());
     if !new_dir.is_absolute() {
-        return Err(AppError::Internal("la ruta debe ser absoluta".into()));
+        return Err(AppError::Internal("the path must be absolute".into()));
     }
     if new_dir == state.data_dir.dir {
         return Err(AppError::Internal(
-            "esa ya es la carpeta de datos actual".into(),
+            "that is already the current data folder".into(),
         ));
     }
     if new_dir.starts_with(&state.data_dir.dir) {
         return Err(AppError::Internal(
-            "la carpeta destino no puede estar dentro de la actual".into(),
+            "the destination folder can't be inside the current one".into(),
         ));
     }
     std::fs::create_dir_all(&new_dir).map_err(|e| AppError::Internal(e.to_string()))?;
 
     let new_db = new_dir.join("zapx.db");
     let summary = if new_db.exists() {
-        "Carpeta con datos ZAPX existentes adoptada (no se copió nada).".to_owned()
+        "Adopted folder with existing ZAPX data (nothing was copied).".to_owned()
     } else {
         // 1. Clean DB snapshot (WAL-safe).
         state
             .db
             .vacuum_into(&new_db)
-            .map_err(|e| AppError::Internal(format!("copia de la DB falló: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("DB copy failed: {e}")))?;
 
         // 2. Re-encrypt the SQLite fallback secrets for the new seed. The
         //    OS keyring (primary store) is untouched. Blobs that fail to
@@ -94,9 +94,9 @@ pub async fn set_data_dir(
         //    a fresh prompt covers those sessions. The seed is the new dir's
         //    own random `vault.key` (created here), not the dir path.
         let new_seed = core_vault::load_or_create_seed(&new_dir)
-            .map_err(|e| AppError::Internal(format!("vault keyfile en destino: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("vault keyfile at destination: {e}")))?;
         let migrated_db = core_persistence::Database::open(&new_db)
-            .map_err(|e| AppError::Internal(format!("DB migrada no abre: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("migrated DB won't open: {e}")))?;
         let mut reencrypted = 0usize;
         for session in state.db.list_sessions().unwrap_or_default() {
             let Ok(Some(blob)) = state.db.get_session_secret(session.id) else {
@@ -161,12 +161,12 @@ pub async fn set_data_dir(
         );
 
         format!(
-            "Datos migrados: DB copiada, {reencrypted} credenciales re-cifradas, {logs} logs y {cats} catálogos copiados."
+            "Data migrated: DB copied, {reencrypted} credentials re-encrypted, {logs} logs and {cats} catalogs copied."
         )
     };
 
     let pointer = data_dir::pointer_path(&app)
-        .ok_or_else(|| AppError::Internal("no se pudo resolver el directorio de config".into()))?;
+        .ok_or_else(|| AppError::Internal("couldn't resolve the config directory".into()))?;
     if let Some(parent) = pointer.parent() {
         std::fs::create_dir_all(parent).map_err(|e| AppError::Internal(e.to_string()))?;
     }

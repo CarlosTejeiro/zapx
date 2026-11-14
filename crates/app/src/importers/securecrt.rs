@@ -140,12 +140,12 @@ fn decode_session(
         if strings.contains_key("Hostname") {
             "ssh"
         } else {
-            warnings.push(format!("«{name}»: sin protocolo ni host — omitida"));
+            warnings.push(format!("«{name}»: no protocol or host — skipped"));
             return None;
         }
     } else {
         warnings.push(format!(
-            "«{name}»: protocolo «{proto_name}» no soportado — omitida"
+            "«{name}»: protocol «{proto_name}» not supported — skipped"
         ));
         return None;
     };
@@ -163,7 +163,7 @@ fn decode_session(
             .cloned()
             .unwrap_or_default();
         if device.is_empty() {
-            warnings.push(format!("«{name}»: serial sin puerto — omitida"));
+            warnings.push(format!("«{name}»: serial without a port — skipped"));
             return None;
         }
         *next_id += 1;
@@ -188,7 +188,7 @@ fn decode_session(
 
     let host = strings.get("Hostname").cloned().filter(|h| !h.is_empty());
     let Some(host) = host else {
-        warnings.push(format!("«{name}»: sin Hostname — omitida"));
+        warnings.push(format!("«{name}»: no Hostname — skipped"));
         return None;
     };
     let username = strings.get("Username").cloned().filter(|u| !u.is_empty());
