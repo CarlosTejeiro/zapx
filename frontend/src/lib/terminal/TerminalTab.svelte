@@ -29,6 +29,7 @@
   } from '$lib/bridge/commands'
   import type { SavedSession, SessionLog, AuthMethod, HostKeyStatus } from '$lib/bridge/types'
   import { sanitizeDims, isSaneDim } from './dims'
+  import { createVisibilityTracker } from './visibility'
   import HostKeyDialog from './HostKeyDialog.svelte'
   import TunnelsDialog from './TunnelsDialog.svelte'
   import SftpDialog from './SftpDialog.svelte'
@@ -1284,8 +1285,19 @@
     // Resize terminal when the container size changes. safeFit re-validates the
     // measurement (with retry), and we only forward the resize when the fitted
     // size is sane — never send a 1×1 / NaN resize to the PTY.
-    resizeObserver = new ResizeObserver(() => {
+    //
+    // The same observer sees the pane hidden (0×0 under the inactive tab's
+    // `display: none`) and shown again. Rows drawn while hidden carry wrong
+    // glyph spacing (see visibility.ts), so redraw the viewport on show. While
+    // hidden there is nothing to fit: skip it and the redundant PTY resize.
+    const visibility = createVisibilityTracker()
+    resizeObserver = new ResizeObserver((entries) => {
       if (!term) return
+      const box = entries[entries.length - 1]?.contentRect
+      if (box) {
+        if (visibility.update(box.width, box.height)) term.refresh(0, term.rows - 1)
+        if (visibility.hidden) return
+      }
       void safeFit().then((ok) => {
         if (!term || !sessionId) return
         if (ok && isSaneDim(term.cols) && isSaneDim(term.rows)) {

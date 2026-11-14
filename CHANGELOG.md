@@ -5,6 +5,15 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.2] - 2026-11-14
+
+### Fixed
+- **Text in background tabs no longer shows gaps inside words** when you go
+  back to the tab (e.g. `C isco I O S  X E`). Output that arrived just as a
+  tab was hidden — typical when a script opens several sessions in a row —
+  was drawn with the wrong spacing and stayed that way. The terminal now
+  redraws its screen whenever its tab is shown again.
+
 ## [0.42.1] - 2026-11-13
 
 ### Fixed
