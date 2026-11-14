@@ -139,7 +139,9 @@ fn attach_forwards(
         };
         let f: Vec<&str> = rhs.split(';').collect();
         if f.len() < 4 {
-            warnings.push(format!("túnel «{line}» con formato inesperado — omitido"));
+            warnings.push(format!(
+                "tunnel «{line}» has an unexpected format — skipped"
+            ));
             continue;
         }
         let kind = match f[0].trim().to_ascii_lowercase().as_str() {
@@ -148,7 +150,7 @@ fn attach_forwards(
             "dynamic" => "dynamic",
             other => {
                 warnings.push(format!(
-                    "túnel «{}»: tipo «{other}» no soportado — omitido",
+                    "tunnel «{}»: type «{other}» not supported — skipped",
                     f[0].trim()
                 ));
                 continue;
@@ -166,14 +168,14 @@ fn attach_forwards(
             .and_then(|(h, p)| p.trim().parse::<u16>().ok().map(|pp| (h.trim(), pp)))
             .unwrap_or((gw_hostport, 22));
         if gw_host.is_empty() {
-            warnings.push(format!("túnel «{line}»: sin gateway — omitido"));
+            warnings.push(format!("tunnel «{line}»: no gateway — skipped"));
             continue;
         }
 
         let bind_port: u16 = match f.get(3).and_then(|s| s.trim().parse().ok()) {
             Some(p) if p > 0 => p,
             _ => {
-                warnings.push(format!("túnel «{line}»: puerto local inválido — omitido"));
+                warnings.push(format!("tunnel «{line}»: invalid local port — skipped"));
                 continue;
             }
         };
@@ -191,12 +193,12 @@ fn attach_forwards(
                 Some((h, p)) => match p.trim().parse::<u16>() {
                     Ok(pp) if !h.is_empty() => (Some(h.to_owned()), Some(pp)),
                     _ => {
-                        warnings.push(format!("túnel «{line}»: destino inválido — omitido"));
+                        warnings.push(format!("tunnel «{line}»: invalid destination — skipped"));
                         continue;
                     }
                 },
                 None => {
-                    warnings.push(format!("túnel «{line}»: sin destino — omitido"));
+                    warnings.push(format!("tunnel «{line}»: no destination — skipped"));
                     continue;
                 }
             }
@@ -234,7 +236,7 @@ fn attach_forwards(
                     *next_id - 1,
                 ));
                 warnings.push(format!(
-                    "túnel: creada sesión «{name}» para el gateway del túnel"
+                    "tunnel: created session «{name}» for the tunnel gateway"
                 ));
                 *next_id
             }
@@ -274,7 +276,7 @@ fn decode_session(
         "serial"
     } else {
         warnings.push(format!(
-            "«{name}»: tipo no soportado (icon {icon}, type {type_id}) — omitida"
+            "«{name}»: unsupported type (icon {icon}, type {type_id}) — skipped"
         ));
         return None;
     };
@@ -285,11 +287,11 @@ fn decode_session(
         // Best-effort: field 1 tends to be the COM/tty line, field 2 the speed.
         let device = field(1).unwrap_or("").to_owned();
         if device.is_empty() {
-            warnings.push(format!("«{name}»: serial sin línea — omitida"));
+            warnings.push(format!("«{name}»: serial without a line — skipped"));
             return None;
         }
         warnings.push(format!(
-            "«{name}»: serial importada en modo best-effort, revisa device/baudios"
+            "«{name}»: serial imported best-effort, check device/baud rate"
         ));
         *next_id += 1;
         let mut row = common::session(

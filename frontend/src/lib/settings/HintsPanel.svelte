@@ -38,7 +38,7 @@
     try {
       const path = await hintCatalogsDir()
       catalogDir = path
-      flashCatalog('ok', path ? `Carpeta abierta: ${path}` : 'Carpeta no configurada.')
+      flashCatalog('ok', path ? `Folder opened: ${path}` : 'Folder not configured.')
     } catch (e) {
       flashCatalog('err', errorText(e))
     }

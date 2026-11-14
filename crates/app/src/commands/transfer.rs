@@ -179,7 +179,7 @@ pub fn apply_import_with(
 ) -> Result<ImportSummary, AppError> {
     if file.zapx_export > EXPORT_VERSION {
         return Err(AppError::Internal(format!(
-            "el fichero es de una versión de ZAPX más nueva (export v{}, soportado v{EXPORT_VERSION})",
+            "the file is from a newer ZAPX version (export v{}, supported v{EXPORT_VERSION})",
             file.zapx_export
         )));
     }
@@ -215,7 +215,7 @@ pub fn apply_import_with(
                         id
                     }
                     Err(e) => {
-                        summary.warnings.push(format!("carpeta «{}»: {e}", f.name));
+                        summary.warnings.push(format!("folder «{}»: {e}", f.name));
                         return false;
                     }
                 },
@@ -227,7 +227,7 @@ pub fn apply_import_with(
             // Orphans (parent missing from the file) land at root.
             for f in pending.drain(..) {
                 summary.warnings.push(format!(
-                    "carpeta «{}»: padre no incluido en el export — movida a la raíz",
+                    "folder «{}»: parent not included in the export — moved to the root",
                     f.name
                 ));
                 if let Ok(id) = db.create_folder(&f.name, None) {
@@ -331,7 +331,7 @@ pub fn apply_import_with(
                 if let Some(path) = opts.get("key_path").and_then(|v| v.as_str()) {
                     if !std::path::Path::new(path).exists() {
                         summary.warnings.push(format!(
-                            "sesión «{}»: la clave {path} no existe en esta máquina",
+                            "session «{}»: key {path} doesn't exist on this machine",
                             s.name
                         ));
                     }
@@ -412,7 +412,7 @@ pub fn apply_import_with(
                 }
             }
             None => summary.warnings.push(format!(
-                "sesión id {new_id}: bastión (jump host) no incluido en el export — queda sin via"
+                "session id {new_id}: jump host not included in the export — left without one"
             )),
         }
     }
@@ -441,7 +441,7 @@ pub fn apply_import_with(
         }
         if members.len() < g.session_ids.len() {
             summary.warnings.push(format!(
-                "grupo «{}»: {} miembro(s) no resueltos, omitidos",
+                "group «{}»: {} unresolved member(s) skipped",
                 g.name,
                 g.session_ids.len() - members.len()
             ));
@@ -634,7 +634,7 @@ pub async fn import_sessions(
 ) -> Result<ImportSummary, AppError> {
     let raw = std::fs::read_to_string(&path).map_err(|e| AppError::Internal(e.to_string()))?;
     let file: ExportFile = serde_json::from_str(&raw)
-        .map_err(|e| AppError::Internal(format!("no es un export válido de ZAPX: {e}")))?;
+        .map_err(|e| AppError::Internal(format!("not a valid ZAPX export: {e}")))?;
     let summary = apply_import(&state.db, &file)?;
     if summary.rules_added > 0 {
         super::highlight::rebuild_highlighter(&state);
@@ -700,7 +700,7 @@ pub async fn import_putty(
             let sessions = crate::importers::putty::read_registry();
             if sessions.is_empty() && !cfg!(target_os = "windows") {
                 return Err(AppError::Internal(
-                    "en macOS/Linux exporta primero las sesiones de PuTTY a un .reg y elígelo"
+                    "on macOS/Linux, first export the PuTTY sessions to a .reg file and choose it"
                         .into(),
                 ));
             }

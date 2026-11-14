@@ -172,14 +172,14 @@
       {/each}
 
       {#if flat.length === 0}
-        <div class="empty">Sin resultados para "{query}"</div>
+        <div class="empty">No results for "{query}"</div>
       {/if}
     </div>
 
     <div class="footer">
-      <span><kbd>↑↓</kbd> navega</span>
-      <span><kbd>Enter</kbd> ejecuta</span>
-      <span><kbd>Esc</kbd> cierra</span>
+      <span><kbd>↑↓</kbd> navigate</span>
+      <span><kbd>Enter</kbd> run</span>
+      <span><kbd>Esc</kbd> close</span>
     </div>
   </div>
 </div>

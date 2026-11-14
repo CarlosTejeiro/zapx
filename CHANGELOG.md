@@ -5,6 +5,18 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.2] - 2026-11-14
+
+### Fixed
+- **Leftover Spanish UI text is now in English**: the "Connected" toast
+  when a session opens, the command-palette and hint-popup footers
+  (navigate / run / accept / close) and "No results", the "Theme · …"
+  palette entries, the snippet "No color" swatch, and the Hints catalog
+  folder messages.
+- Import warnings (PuTTY, MobaXterm, SecureCRT, `~/.ssh/config`), backup
+  restore warnings and errors, and data-folder move messages are now in
+  English.
+
 ## [0.42.1] - 2026-11-13
 
 ### Fixed

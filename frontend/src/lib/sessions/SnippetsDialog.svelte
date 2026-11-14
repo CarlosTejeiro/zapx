@@ -252,7 +252,7 @@
               class="swatch none"
               class:sel={newColor === null}
               onclick={() => (newColor = null)}
-              title="Sin color">✕</button
+              title="No color">✕</button
             >
             {#each SWATCHES as c (c)}
               <button
@@ -308,7 +308,7 @@
                       class="swatch none"
                       class:sel={editColor === null}
                       onclick={() => (editColor = null)}
-                      title="Sin color">✕</button
+                      title="No color">✕</button
                     >
                     {#each SWATCHES as c (c)}
                       <button
