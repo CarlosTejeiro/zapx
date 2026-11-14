@@ -5,6 +5,19 @@ All notable changes to ZAPX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.2] - 2026-11-14
+
+### Fixed
+- **Arista EOS no longer auto-detected as Linux** when the login only shows
+  "Last login: …" and then a bare `switch#` prompt (EOS is Linux-based and
+  prints that line too). "Last login:" now counts as a Linux clue only
+  together with a shell-style prompt (`user@host:~$`, `[root@db ~]#`); a
+  bare `host#` stays undetected, so a later `show version` ("Arista …") can
+  still pick the right platform.
+- Scripts: `open()` and session info report the platform stored on a saved
+  session (e.g. `arista_eos`) instead of a different live detection. The
+  live detection is still used when the session has no platform set.
+
 ## [0.42.1] - 2026-11-13
 
 ### Fixed
